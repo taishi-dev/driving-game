@@ -24,7 +24,6 @@ export function HomeScreen() {
         return;
     }
 
-    // @ts-ignore
     setLesson(lessonId);
 
     // free-mode はブリーフィング/ゴール判定なしで即運転
