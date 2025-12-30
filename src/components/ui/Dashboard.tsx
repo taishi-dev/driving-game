@@ -4,19 +4,7 @@
 import { useDrivingStore } from "@/lib/store";
 
 export function Dashboard() {
-  const speed = useDrivingStore(state => state.speed);
-  const gear = useDrivingStore(state => state.gear);
-  const steering = useDrivingStore(state => state.steeringAngle); // -1 to 1
-  const throttle = useDrivingStore(state => state.throttle);
-  const brake = useDrivingStore(state => state.brake);
-  const feedback = useDrivingStore(state => state.drivingFeedback);
   const isOffTrack = useDrivingStore(state => state.isOffTrack);
-
-  // Speedometer Arc Calculation
-  // Max speed visual 100km/h
-  const maxSpeedVis = 100;
-  const speedRatio = Math.min(speed / maxSpeedVis, 1);
-  const dashOffset = 283 - (283 * speedRatio); // 2 * pi * 45 (r) ~= 283
 
   return (
     <div style={{

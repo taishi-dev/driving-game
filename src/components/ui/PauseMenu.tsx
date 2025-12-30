@@ -1,5 +1,4 @@
 import { useDrivingStore } from "@/lib/store";
-import { useEffect } from "react";
 
 export function PauseMenu() {
   const isPaused = useDrivingStore(state => state.isPaused);
