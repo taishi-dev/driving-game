@@ -1,6 +1,5 @@
 import { useDrivingStore } from "@/lib/store";
 import { Scene } from "../simulation/Scene"; // Re-use scene for replay
-import { Canvas } from "@react-three/fiber";
 import { Suspense, useEffect, useRef } from "react";
 import { getCoursePath } from "@/lib/course";
 import {addDoc, collection } from 'firebase/firestore';
@@ -20,7 +19,6 @@ export function FeedbackScreen() {
   const calculateMissionResult = useDrivingStore(state => state.calculateMissionResult); // Action
   const analyzedRef = useRef(false);
 
-  const user = useDrivingStore(state => state.user);
   const addHistoryItem = useDrivingStore(state => state.addHistoryItem);
 
   // Auto-start replay mode when entering this screen
@@ -42,7 +40,7 @@ export function FeedbackScreen() {
     return () => {
       setIsReplaying(false);
     };
-  }, [setIsReplaying, currentLesson, calculateMissionResult]);
+  }, []);
 
   const saveResultToFirestore = async ( state: any) => {
     try {
@@ -120,7 +118,6 @@ export function FeedbackScreen() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left: 3D Replay View (Third Person) */}
         <div className="w-1/2 relative border-r border-slate-700 bg-black flex flex-col">
-             
              {/* Main 3D Area */}
              <div className="flex-1 relative">
                  {/* Replay Overlay Info */}

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import { FilesetResolver, FaceLandmarker, HandLandmarker, DrawingUtils, FaceLandmarkerResult, HandLandmarkerResult, PoseLandmarker, PoseLandmarkerResult } from "@mediapipe/tasks-vision";
+import { useEffect, useRef, useCallback } from "react";
+import { FilesetResolver, FaceLandmarker, HandLandmarker, DrawingUtils, HandLandmarkerResult, PoseLandmarker, PoseLandmarkerResult } from "@mediapipe/tasks-vision";
 import { useDrivingStore } from "@/lib/store";
-import { calibrateFootPosition, processPedalRecognition, checkFootStability } from "@/lib/footPedalRecognition";
+import { processPedalRecognition, checkFootStability } from "@/lib/footPedalRecognition";
 import { PoseLandmarkFilterManager } from "@/lib/oneEuroFilter";
 
 export default function VisionController({ isPaused }: { isPaused: boolean }) {
@@ -15,14 +15,12 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
   const setSteering = useDrivingStore((state) => state.setSteering);
   const setVisionReady = useDrivingStore((state) => state.setVisionReady);
   const setDebugInfo = useDrivingStore((state) => state.setDebugInfo);
-  const setPedals = useDrivingStore((state) => state.setPedals);
   const setSpeed = useDrivingStore((state => state.setSpeed));
   const setFootCalibration = useDrivingStore((state) => state.setFootCalibration);
   const updatePedalState = useDrivingStore((state) => state.updatePedalState);
   const setCalibrationStage = useDrivingStore((state) => state.setCalibrationStage);
   const setScreen = useDrivingStore((state) => state.setScreen);
   const setGaze = useDrivingStore((state) => state.setGaze); // Gaze action
-  const [webcamRunning, setWebcamRunning] = useState(false);
 
 
   // References
@@ -55,13 +53,6 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
       setDebugInfo("Paused");
     }
   }, [isPaused, setSteering, setSpeed, setDebugInfo]);
-
-  const stopLoop = useCallback(() => {
-    if (requestRef.current) {
-      cancelAnimationFrame(requestRef.current);
-      requestRef.current = 0;
-    }
-  }, [])
 
   // ■ カメラを停止する関数（物理的に切断）
   const stopCamera = useCallback(() => {
@@ -164,7 +155,6 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
 
         setDebugInfo("Models loaded. Starting Camera...");
         setVisionReady(true);
-        setWebcamRunning(true); 
 
         if (isMounted) {
             faceLandmarkerRef.current = faceLandmarker;
@@ -287,7 +277,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
                     drawingUtils.drawLandmarks(landmarks, {color: "#FF0000", lineWidth: 2});
                 }
             }
-            const handInfo = processHandGestures(handResult, setSteering, setPedals, setDebugInfo);
+            const handInfo = processHandGestures(handResult, setSteering);
 
             // Run Pose Detection for Foot Pedal Recognition
             const poseResult = poseLandmarkerRef.current 
@@ -306,7 +296,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
   };
 
 
-  const processHandGestures = (result: HandLandmarkerResult, setSteering: any, setPedals: any, setDebugInfo: any) => {
+  const processHandGestures = (result: HandLandmarkerResult, setSteering: any) => {
       const hands = result.landmarks.length;
       let info = `Hands: ${hands}`;
 

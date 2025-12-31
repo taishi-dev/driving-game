@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas } from "@react-three/fiber";
-import { Environment, ContactShadows, Grid } from "@react-three/drei";
+import { Environment, Grid } from "@react-three/drei";
 import { Car } from "@/components/simulation/Car";
 
 import { Suspense } from "react";
