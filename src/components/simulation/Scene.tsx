@@ -12,6 +12,7 @@ import { ThreeModelLoader } from "./ThreeModelLoader";
 import { MISSION_GOALS } from "./MissionController";
 import { useDrivingStore } from "@/lib/store";
 import { Text } from "@react-three/drei";
+import { TrafficSystem } from "./TrafficSystem";
 
 export function Scene({ cameraTarget = "player" }: { cameraTarget?: "player" | "ghost" }) {
   const currentLesson = useDrivingStore((s) => s.currentLesson);
@@ -35,12 +36,16 @@ export function Scene({ cameraTarget = "player" }: { cameraTarget?: "player" | "
               <Road />
               <RoadProps />
               <GoalMarker />
+              <TrafficSystem />
             </>
           )}
 
           {/* 街は free-mode のときだけ出す（常時でもOK） */}
           {isFreeMode && (
-            <ThreeModelLoader url="/models/city.glb" position={[16, 0, -100]} rotation={[0, Math.PI / 2, 0]} scale={0.01} />
+            <>
+              <ThreeModelLoader url="/models/city.glb" position={[16, 0, -100]} rotation={[0, Math.PI / 2, 0]} scale={0.01} />
+              <TrafficSystem />
+            </>
           )}
         </Suspense>
       </Canvas>

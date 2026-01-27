@@ -1,10 +1,12 @@
-
 "use client";
 
 import { useDrivingStore } from "@/lib/store";
 
 export function Dashboard() {
   const isOffTrack = useDrivingStore(state => state.isOffTrack);
+  
+  // ★追加: ストアからメッセージを取得
+  const drivingFeedback = useDrivingStore(state => state.drivingFeedback);
 
   return (
     <div style={{
@@ -17,26 +19,39 @@ export function Dashboard() {
         userSelect: 'none',
         fontFamily: "'Segoe UI', Roboto, sans-serif",
         overflow: 'hidden',
-        zIndex: 50 // Ensure high z-index
+        zIndex: 50
     }}>
       
-      {/* 
-        HEADS UP DISPLAY (HUD) LAYER 
-        Projected "on glass" feeling
+      {/* ★追加: 採点フィードバック（OKメッセージ）の表示エリア 
+        画面の上部中央に緑色で表示します
       */}
-      
-      {/* 
-        1. MECHANICAL INSTRUMENT CLUSTER LAYER (Bottom)
-        REMOVED as per user request ("Remove speedometer")
-      */}
+      {drivingFeedback && (
+          <div style={{
+              position: 'absolute',
+              top: '20%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              textAlign: 'center',
+              zIndex: 100,
+              animation: 'popIn 0.3s ease-out forwards'
+          }}>
+              <div style={{
+                  backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                  border: '2px solid #4ade80', // 明るい緑
+                  borderRadius: '12px',
+                  padding: '16px 32px',
+                  color: '#4ade80',
+                  fontSize: '24px',
+                  fontWeight: 'bold',
+                  boxShadow: '0 0 20px rgba(74, 222, 128, 0.3)',
+                  whiteSpace: 'nowrap'
+              }}>
+                  {drivingFeedback}
+              </div>
+          </div>
+      )}
 
-      {/* 
-        2. HEADS UP DISPLAY (HUD) LAYER
-        REMOVED speed and pedals as per user request.
-        Only Critical Warnings remain.
-      */}
-
-      {/* Warning Overlay (HUD Style) */}
+      {/* Warning Overlay (脱輪警告) */}
       {isOffTrack && (
           <div style={{
               position: 'absolute',
@@ -59,6 +74,10 @@ export function Dashboard() {
             0% { opacity: 1; }
             50% { opacity: 0.5; }
             100% { opacity: 1; }
+        }
+        @keyframes popIn {
+            0% { opacity: 0; transform: translateX(-50%) scale(0.8); }
+            100% { opacity: 1; transform: translateX(-50%) scale(1); }
         }
       `}</style>
     </div>

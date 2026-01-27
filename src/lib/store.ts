@@ -27,7 +27,6 @@ export interface FeedbackEvent {
   message: string;
 }
 
-/** ✅ ここが追加：free-mode を含めた Lesson 型 */
 export type LessonId =
   | "free-mode"
   | "straight"
@@ -38,6 +37,16 @@ export type LessonId =
 
 export type ScreenId = "home" | "driving" | "feedback" | "auth" | "history" | "tutorial";
 export type MissionState = "idle" | "briefing" | "active" | "success" | "failed";
+
+// ✅ 追加: チェックポイントの型定義
+export type MissionCheckpoint = {
+  id: string;
+  position: [number, number, number];
+  radius: number;
+  type: 'stop' | 'speed-limit' | 'mirror' | 'safety-check';
+  label?: string;
+  targetYaw?: number; 
+};
 
 export interface DrivingState {
   // Screen Management
@@ -55,7 +64,6 @@ export interface DrivingState {
   speed: number;
   gear: "P" | "D" | "R";
 
-  /** ✅ free-mode を追加 */
   currentLesson: LessonId;
 
   missionState: MissionState;
@@ -84,7 +92,6 @@ export interface DrivingState {
   setPedals: (throttle: number, brake: number) => void;
   setSpeed: (speed: number) => void;
 
-  /** ✅ free-mode を受け取れるように */
   setLesson: (lesson: LessonId) => void;
 
   setMissionState: (state: MissionState) => void;
@@ -119,6 +126,16 @@ export interface DrivingState {
   addFeedbackLog: (log: FeedbackEvent) => void;
   clearFeedbackLogs: () => void;
   setRecordedVideo: (url: string | null) => void;
+
+  // ✅ 追加: チェックポイント管理用のアクション
+  activeCheckpoints: MissionCheckpoint[];
+  registerCheckpoint: (cp: MissionCheckpoint) => void;
+  unregisterCheckpoint: (id: string) => void;
+
+  // ✅ 追加: クリア済みチェックポイント管理
+  clearedCheckpointIds: string[];
+  addClearedCheckpoint: (id: string) => void;
+  resetClearedCheckpoints: () => void;
 }
 
 export const useDrivingStore = create<DrivingState>((set) => ({
@@ -144,7 +161,6 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   speed: 0,
   gear: "D",
 
-  /** ✅ 初期値は今まで通り */
   currentLesson: "straight",
 
   missionState: "idle",
@@ -174,11 +190,6 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   setPedals: (throttle, brake) => set({ throttle, brake }),
   setSpeed: (speed) => set({ speed }),
 
-  /**
-   * ✅ ここが重要：
-   * - free-mode なら briefing に入れない（自由運転）
-   * - それ以外は従来どおり briefing に入れる
-   */
   setLesson: (lesson) =>
     set(() => ({
       currentLesson: lesson,
@@ -210,7 +221,6 @@ export const useDrivingStore = create<DrivingState>((set) => ({
     set((s) => ({ deviationPenalty: s.deviationPenalty + amount })),
 
   calculateMissionResult: (coursePath) => {
-    // free-mode は採点しない
     const st = useDrivingStore.getState();
     if (st.currentLesson === "free-mode") return;
 
@@ -247,8 +257,31 @@ export const useDrivingStore = create<DrivingState>((set) => ({
       }
     });
 
+    // ▼▼▼ 追加: 未クリアのチェックポイント判定 ▼▼▼
+    const newLogs = [...st.feedbackLogs];
+    
+    // 未クリア（activeにはあるが、clearedにはないID）を抽出
+    const missedCheckpoints = st.activeCheckpoints.filter(
+      cp => !st.clearedCheckpointIds.includes(cp.id)
+    );
+
+    missedCheckpoints.forEach(cp => {
+      let msg = "";
+      if (cp.type === 'stop') msg = `${cp.label || '一時停止'}を無視しました`;
+      else if (cp.type === 'safety-check') msg = `${cp.label || '安全確認'}を行いませんでした`;
+      
+      if (msg) {
+        newLogs.push({
+          time: Date.now(),
+          type: "KAIZEN",
+          message: msg
+        });
+      }
+    });
+    // ▲▲▲ 追加終わり ▲▲▲
+
     set((s) => {
-      const newLogs = [...s.feedbackLogs];
+      // 既存の速度違反ログ
       if (speedViolations > 30) {
         newLogs.push({
           time: Date.now(),
@@ -256,8 +289,12 @@ export const useDrivingStore = create<DrivingState>((set) => ({
           message: `速度超過がありました (最大制限: ${SPEED_LIMIT}km/h)`,
         });
       }
+
+      // 未クリア数に応じたペナルティ加算 (例: 1つにつき20点)
+      const missedPenalty = missedCheckpoints.length * 20;
+
       return {
-        deviationPenalty: s.deviationPenalty + deviationPenalty,
+        deviationPenalty: s.deviationPenalty + deviationPenalty + missedPenalty,
         feedbackLogs: newLogs,
       };
     });
@@ -291,4 +328,20 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   addFeedbackLog: (log) => set((state) => ({ feedbackLogs: [...state.feedbackLogs, log] })),
   clearFeedbackLogs: () => set({ feedbackLogs: [] }),
   setRecordedVideo: (url) => set({ recordedVideo: url }),
+
+  // ✅ 追加: チェックポイント管理の実装
+  activeCheckpoints: [],
+  registerCheckpoint: (cp) => set((state) => ({ 
+    activeCheckpoints: [...state.activeCheckpoints, cp] 
+  })),
+  unregisterCheckpoint: (id) => set((state) => ({ 
+    activeCheckpoints: state.activeCheckpoints.filter((c) => c.id !== id) 
+  })),
+
+  // ✅ 追加: クリア済み管理の実装
+  clearedCheckpointIds: [],
+  addClearedCheckpoint: (id) => set((state) => ({
+    clearedCheckpointIds: [...state.clearedCheckpointIds, id]
+  })),
+  resetClearedCheckpoints: () => set({ clearedCheckpointIds: [] }),
 }));
