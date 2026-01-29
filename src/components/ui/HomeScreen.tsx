@@ -8,6 +8,7 @@ const LESSONS = [
   { id: "right-turn", label: "右折", sub: "LEVEL 03", desc: "TURNING RIGHT", icon: "RIGHT" },
   { id: "s-curve", label: "S字カーブ", sub: "LEVEL 04", desc: "S-CURVE", icon: "S" },
   { id: "crank", label: "クランク", sub: "LEVEL 05", desc: "CRANK", icon: "C" },
+  { id: "traffic-light", label: "信号", sub: "LEVEL 06", desc: "TRAFFIC LIGHT PRACTICE", icon: "TL" },
 
   { id: "free-mode", label: "フリーモード", sub: "FREE", desc: "EXPLORE THE CITY", icon: "FREE" },
 ] as const;

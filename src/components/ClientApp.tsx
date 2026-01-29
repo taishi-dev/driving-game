@@ -102,7 +102,8 @@ const MISSION_INFO: Record<string, { title: string, desc: string }> = {
     'left-turn': { title: '左折', desc: '交差点を左折します。速度を十分に落とし、巻き込みに注意して曲がりましょう。' },
     'right-turn': { title: '右折', desc: '交差点を右折します。交差点の中心のすぐ内側を通るように意識しましょう。' },
     's-curve': { title: 'S字カーブ', desc: 'S字型の狭路です。内輪差・外輪差を考慮し、脱輪しないように慎重に進みましょう。' },
-    'crank': { title: 'クランク', desc: '直角に曲がる狭路です。車両感覚を研ぎ澄まし、適切なタイミングでハンドルを切りましょう。' }
+    'crank': { title: 'クランク', desc: '直角に曲がる狭路です。車両感覚を研ぎ澄まし、適切なタイミングでハンドルを切りましょう。' },
+    'traffic-light': { title: '信号通過', desc: '信号機の色を正しく判断し、赤では停止、青で安全に発進しましょう。黄色信号では無理に進まず、状況に応じた判断が求められます。' }
 };
 
 function MissionOverlay() {

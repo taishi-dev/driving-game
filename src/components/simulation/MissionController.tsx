@@ -1,4 +1,4 @@
-import { useDrivingStore } from "@/lib/store";
+import { LessonId, useDrivingStore } from "@/lib/store";
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import { Vector3 } from "three";
@@ -51,6 +51,12 @@ export const MISSION_GOALS: Record<
     size: [10, 5, 5],
     rotation: 0,
   },
+
+  "traffic-light": {
+    position: [0, 0, -100],
+    size: [10, 5, 5],
+    rotation: 0,
+  },
 };
 
 // Checkpoints (Stop Signs, Mirrors)
@@ -61,6 +67,8 @@ export interface Checkpoint {
     type: CheckpointType;
     position: [number, number, number];
     radius: number;
+    visual?: "traffic-light";
+    orientation?: "z" | "x";
     // For stop signs:
     minDuration?: number; // How long to stop
     // For mirrors:
@@ -68,7 +76,7 @@ export interface Checkpoint {
     yawTolerance?: number;
 }
 
-export const MISSION_CHECKPOINTS: Record<string, Checkpoint[]> = {
+export const MISSION_CHECKPOINTS: Partial<Record<LessonId, Checkpoint[]>> = {
     'left-turn': [
         // Stop line before intersection
         { id: 'stop-1', type: 'stop', position: [0, 0, -25], radius: 4, minDuration: 1000 },
@@ -79,6 +87,10 @@ export const MISSION_CHECKPOINTS: Record<string, Checkpoint[]> = {
         { id: 'stop-1', type: 'stop', position: [0, 0, -25], radius: 4 },
         // Mirror on Left Corner. Look Left.
         { id: 'mirror-1', type: 'mirror', position: [0, 0, -28], radius: 6, targetYaw: 0.5, yawTolerance: 0.5 }
+    ],
+    "traffic-light": [
+        // 進入前の信号停止（直進のみ）
+        { id: "signal-1", type: "stop", position: [0, 0, -18], radius: 4, minDuration: 1200, visual: "traffic-light", orientation: "z" },
     ],
 };
 

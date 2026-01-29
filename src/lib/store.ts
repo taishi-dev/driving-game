@@ -34,7 +34,8 @@ export type LessonId =
   | "s-curve"
   | "crank"
   | "left-turn"
-  | "right-turn";
+  | "right-turn"
+  | "traffic-light";
 
 export type ScreenId = "home" | "driving" | "feedback" | "auth" | "history" | "tutorial";
 export type MissionState = "idle" | "briefing" | "active" | "success" | "failed";
