@@ -4,8 +4,9 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useRef, useEffect, useMemo } from "react";
 import { Vector3, Group } from "three";
 import { useDrivingStore, ReplayFrame } from "@/lib/store";
-import { checkMissionGoal, MISSION_CHECKPOINTS } from "@/components/simulation/MissionController";
+import { checkMissionGoal } from "@/components/simulation/MissionController";
 import { getCoursePath } from "@/lib/course";
+import { useGLTF } from "@react-three/drei";
 
 export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "ghost" }) {
   const groupRef = useRef<Group>(null);
@@ -25,6 +26,12 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     currentLesson,
     setMissionState,
     setScreen,
+    // ✅ 追加: Storeから動的リストを取得
+    activeCheckpoints,
+    // ✅ 追加: クリア報告用とリザルト計算用
+    addClearedCheckpoint,
+    resetClearedCheckpoints,
+    calculateMissionResult
   } = useDrivingStore();
 
   const isFreeMode = currentLesson === "free-mode";
@@ -44,9 +51,11 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   const replayIndex = useRef(0);
   const ghostDist = useRef(0);
 
-  // Checkpoint Logic
+  // Checkpoint Logic (Local Ref)
   const clearedCheckpoints = useRef<Set<string>>(new Set());
-  const dataCheckpoints = useRef(MISSION_CHECKPOINTS[currentLesson] || []);
+  
+  // ✅ 追加: 左右確認の状態保持用
+  const safetyCheckState = useRef({ lookedLeft: false, lookedRight: false });
 
   // Get Course Path for Ghost Car
   const coursePath = useMemo(() => getCoursePath(currentLesson as any), [currentLesson]);
@@ -55,12 +64,16 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     return Number.isFinite(len) && len > 0.0001 ? len : 0;
   }, [coursePath]);
 
-  // Reset on lesson change + free-mode spawn
+  // Car Model
+  const { scene } = useGLTF("/models/car.gltf");
+  const carScene = useMemo(() => scene.clone(), [scene]);
+
+  // Reset on lesson change
   useEffect(() => {
     clearedCheckpoints.current.clear();
-    dataCheckpoints.current = MISSION_CHECKPOINTS[currentLesson] || [];
+    resetClearedCheckpoints(); // ✅ Store側のクリアリストもリセット
+    safetyCheckState.current = { lookedLeft: false, lookedRight: false };
 
-    // 走行状態をリセット（混ざるの防止）
     speed.current = 0;
     replayIndex.current = 0;
     ghostDist.current = 0;
@@ -68,7 +81,6 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
 
     if (groupRef.current) {
       if (currentLesson === "free-mode") {
-        // 街（position={[5,0,-100]}）の近くに出す
         groupRef.current.position.set(5, 0, -95);
         groupRef.current.rotation.set(0, Math.PI, 0);
       } else {
@@ -85,68 +97,54 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     // --- REPLAY MODE ---
     if (isReplaying) {
       if (replayData.length === 0) return;
-
       if (replayIndex.current < replayData.length) {
-        const frame = replayData[replayIndex.current];
-
-        // Update Player Car
-        groupRef.current.position.set(frame.position[0], frame.position[1], frame.position[2]);
-        groupRef.current.rotation.set(frame.rotation[0], frame.rotation[1], frame.rotation[2]);
-
-        // Update Ghost Car (Ideal Path) - free-mode では無効
-        if (!isFreeMode && ghostRef.current && courseLength > 0) {
-          let targetSpeed = 0.25;
-
-          if (currentLesson === "left-turn" || currentLesson === "right-turn") {
-            if (ghostDist.current > 45 && ghostDist.current < 70) targetSpeed = 0.1;
-          } else if (currentLesson === "s-curve" || currentLesson === "crank") {
-            targetSpeed = 0.08;
-          }
-
-          ghostDist.current += targetSpeed;
-          const t = Math.min(ghostDist.current / courseLength, 1);
-
-          const point = coursePath.getPointAt(t);
-          const tangent = coursePath.getTangentAt(t);
-          ghostRef.current.position.set(point.x, point.y, point.z);
-          ghostRef.current.rotation.set(0, Math.atan2(tangent.x, tangent.z) + Math.PI, 0);
-        }
-
-        // Camera Logic (Replay)
-        if (replayViewMode === "driver") {
-          const targetGroup = cameraTarget === "ghost" ? ghostRef.current : groupRef.current;
-
-          if (targetGroup) {
-            const camOffset = new Vector3(0.35, 1.28, 0.4);
-            camOffset.applyEuler(targetGroup.rotation);
-            const camPos = targetGroup.position.clone().add(camOffset);
-
-            camera.position.lerp(camPos, 0.5);
-
-            let baseLookTarget;
-            if (cameraTarget === "ghost") {
-              const forward = new Vector3(0, 0, -1).applyEuler(targetGroup.rotation);
-              baseLookTarget = targetGroup.position.clone().add(forward.multiplyScalar(10));
-            } else {
-              const recordedHead = frame.headRotation || { pitch: 0, yaw: 0, roll: 0 };
-              const forward = new Vector3(0, 0, -1).applyEuler(targetGroup.rotation);
-              baseLookTarget = targetGroup.position.clone().add(forward.multiplyScalar(10));
-
-              const right = new Vector3(1, 0, 0).applyEuler(targetGroup.rotation);
-              baseLookTarget.add(right.multiplyScalar(recordedHead.yaw * 5));
-              baseLookTarget.y += recordedHead.pitch * 5;
+         const frame = replayData[replayIndex.current];
+         groupRef.current.position.set(frame.position[0], frame.position[1], frame.position[2]);
+         groupRef.current.rotation.set(frame.rotation[0], frame.rotation[1], frame.rotation[2]);
+         
+         if (!isFreeMode && ghostRef.current && courseLength > 0) {
+             let targetSpeed = 0.25;
+             if (currentLesson === "left-turn" || currentLesson === "right-turn") {
+               if (ghostDist.current > 45 && ghostDist.current < 70) targetSpeed = 0.1;
+             } else if (currentLesson === "s-curve" || currentLesson === "crank") {
+               targetSpeed = 0.08;
+             }
+             ghostDist.current += targetSpeed;
+             const t = Math.min(ghostDist.current / courseLength, 1);
+             const point = coursePath.getPointAt(t);
+             const tangent = coursePath.getTangentAt(t);
+             ghostRef.current.position.set(point.x, point.y, point.z);
+             ghostRef.current.rotation.set(0, Math.atan2(tangent.x, tangent.z) + Math.PI, 0);
+         }
+         
+         if (replayViewMode === "driver") {
+            const targetGroup = cameraTarget === "ghost" ? ghostRef.current : groupRef.current;
+            if (targetGroup) {
+                const camOffset = new Vector3(0.35, 1.28, 0.4);
+                camOffset.applyEuler(targetGroup.rotation);
+                const camPos = targetGroup.position.clone().add(camOffset);
+                camera.position.lerp(camPos, 0.5);
+                let baseLookTarget;
+                if (cameraTarget === "ghost") {
+                    const forward = new Vector3(0, 0, -1).applyEuler(targetGroup.rotation);
+                    baseLookTarget = targetGroup.position.clone().add(forward.multiplyScalar(10));
+                } else {
+                    const recordedHead = frame.headRotation || { pitch: 0, yaw: 0, roll: 0 };
+                    const forward = new Vector3(0, 0, -1).applyEuler(targetGroup.rotation);
+                    baseLookTarget = targetGroup.position.clone().add(forward.multiplyScalar(10));
+                    const right = new Vector3(1, 0, 0).applyEuler(targetGroup.rotation);
+                    baseLookTarget.add(right.multiplyScalar(recordedHead.yaw * 5));
+                    baseLookTarget.y += recordedHead.pitch * 5;
+                }
+                camera.lookAt(baseLookTarget);
             }
-
-            camera.lookAt(baseLookTarget);
-          }
-        } else {
-          const targetGroup = groupRef.current;
-          const camPos = targetGroup.position.clone().add(new Vector3(0, 4, 8).applyEuler(targetGroup.rotation));
-          camera.position.lerp(camPos, 0.1);
-          camera.lookAt(targetGroup.position);
-        }
-
-        replayIndex.current++;
+         } else {
+            const targetGroup = groupRef.current;
+            const camPos = targetGroup.position.clone().add(new Vector3(0, 4, 8).applyEuler(targetGroup.rotation));
+            camera.position.lerp(camPos, 0.1);
+            camera.lookAt(targetGroup.position);
+         }
+         replayIndex.current++;
       } else {
         replayIndex.current = 0;
         ghostDist.current = 0;
@@ -155,8 +153,6 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     }
 
     // --- DRIVING MODE ---
-
-    // 1. Calculate Speed
     if (throttleInput > 0) {
       speed.current += (maxSpeed * throttleInput - speed.current) * acceleration;
     } else if (brakeInput > 0) {
@@ -170,10 +166,8 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
         if (speed.current < creepSpeed) speed.current = creepSpeed;
       }
     }
-
     setSpeed(Math.abs(speed.current) * 100);
 
-    // 2. Steering
     if (Math.abs(speed.current) > 0.001) {
       const curvePower = 1.8;
       const curvedInput = Math.sign(steeringInput) * Math.pow(Math.abs(steeringInput), curvePower);
@@ -181,56 +175,82 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
       groupRef.current.rotation.y -= boostedSteering * turnSpeed * (speed.current / maxSpeed) * 3.0;
     }
 
-    // 3. Move
     const forward = new Vector3(0, 0, -1);
     forward.applyEuler(groupRef.current.rotation);
     groupRef.current.position.add(forward.multiplyScalar(speed.current));
 
-    // free-mode ではミッション判定を一切しない
     if (!isFreeMode) {
-      // CHECK GOAL
       if (checkMissionGoal(currentLesson, groupRef.current.position)) {
         const frames = recordedFrames.current;
         useDrivingStore.setState({ replayData: frames });
+
+        // ✅ 追加: ゴール判定時にここで採点を実行（未クリアのチェックポイントがログに残る）
+        calculateMissionResult(coursePath);
 
         setMissionState("success");
         setScreen("feedback");
         return;
       }
 
-      // CHECK INTERMEDIATE CHECKPOINTS
-      const checkpoints = dataCheckpoints.current;
-      checkpoints.forEach((cp) => {
+      // ✅ 修正: activeCheckpoints (動的リスト) を使用して判定
+      activeCheckpoints.forEach((cp) => {
         if (clearedCheckpoints.current.has(cp.id)) return;
 
         const dx = groupRef.current!.position.x - cp.position[0];
         const dz = groupRef.current!.position.z - cp.position[2];
         const dist = Math.sqrt(dx * dx + dz * dz);
 
+        // 範囲内に入ったら
         if (dist < cp.radius) {
+          
+          // [A] 一時停止
           if (cp.type === "stop") {
-            if (Math.abs(speed.current) < 0.05) {
+            if (Math.abs(speed.current) < 0.02) { // 速度判定
               clearedCheckpoints.current.add(cp.id);
-              useDrivingStore.getState().setDrivingFeedback("🛑 一時停止 OK!");
+              addClearedCheckpoint(cp.id); // ✅ Storeに報告
+              useDrivingStore.getState().setDrivingFeedback(`🛑 ${cp.label || '一時停止'} OK!`);
               setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000);
             }
-          } else if (cp.type === "mirror") {
-            const needed = cp.targetYaw || 0;
-            const tolerance = cp.yawTolerance || 0.5;
-            const currentYaw = headRotation.yaw;
+          } 
+          
+          // [B] ミラー確認 / 左右確認 (safety-check)
+          else if (cp.type === "mirror" || cp.type === "safety-check") {
+            if (cp.type === "safety-check") {
+               const yaw = headRotation.yaw; 
+               // 0.3ラジアン(約17度)以上で見たとみなす
+               if (yaw > 0.3) safetyCheckState.current.lookedLeft = true;
+               if (yaw < -0.3) safetyCheckState.current.lookedRight = true;
 
-            if (Math.abs(currentYaw - needed) < tolerance) {
-              clearedCheckpoints.current.add(cp.id);
-              const label = needed > 0 ? "左確認" : "右確認";
-              useDrivingStore.getState().setDrivingFeedback(`👀 ${label} OK!`);
-              setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000);
+               if (safetyCheckState.current.lookedLeft && safetyCheckState.current.lookedRight) {
+                  clearedCheckpoints.current.add(cp.id);
+                  addClearedCheckpoint(cp.id); // ✅ Storeに報告
+                  useDrivingStore.getState().setDrivingFeedback(`👀 ${cp.label || '左右確認'} OK!`);
+                  safetyCheckState.current = { lookedLeft: false, lookedRight: false };
+                  setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000);
+               }
+            } else {
+               // 従来のmirrorロジック
+               const needed = cp.targetYaw || 0;
+               const tolerance = 0.5;
+               const currentYaw = headRotation.yaw;
+               if (Math.abs(currentYaw - needed) < tolerance) {
+                 clearedCheckpoints.current.add(cp.id);
+                 addClearedCheckpoint(cp.id); // ✅ Storeに報告
+                 useDrivingStore.getState().setDrivingFeedback(`👀 確認 OK!`);
+                 setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000);
+               }
             }
           }
+        } else {
+            // エリアを通り過ぎたらリセット (safety-checkのみ)
+            if (cp.type === 'safety-check' && dist > cp.radius + 2) {
+                 safetyCheckState.current = { lookedLeft: false, lookedRight: false };
+            }
         }
       });
     }
 
-    // 4. Record Frame（free-modeでも録画してOK）
+    // 4. Record Frame
     recordedFrames.current.push({
       timestamp: Date.now(),
       position: groupRef.current.position.toArray() as [number, number, number],
@@ -247,7 +267,6 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
 
     camera.position.lerp(camPos, 0.5);
 
-    // Head Rotation
     const lookAtDist = 10;
     const baseLookTarget = groupRef.current.position.clone().add(forward.normalize().multiplyScalar(lookAtDist));
     const right = new Vector3(1, 0, 0).applyEuler(groupRef.current.rotation);
@@ -258,7 +277,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   });
 
   const showDriverView = !isReplaying || (isReplaying && replayViewMode === "driver");
-
+  
   return (
     <>
       {/* Player Car */}
@@ -272,11 +291,10 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
             <ExternalCarVisuals />
           </group>
         )}
-
         {showDriverView && <CarVisuals steeringInput={steeringInput} />}
       </group>
 
-      {/* Ghost Car (Only in Replay) - free-mode では表示しない */}
+      {/* Ghost Car */}
       {isReplaying && !isFreeMode && (
         <group ref={ghostRef} position={[0, 0, 0]}>
           <group rotation={[0, Math.PI, 0]}>

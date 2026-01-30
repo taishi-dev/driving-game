@@ -43,7 +43,7 @@ export const MISSION_GOALS: Record<
     position: [0, 0, -100],
     size: [10, 5, 5],
     rotation: 0,
-    },
+  },
 
   crank: {
     // getCoursePath(): 最後は xL=-8 の直進で ( -8,0,-100 ) が終点
@@ -57,10 +57,23 @@ export const MISSION_GOALS: Record<
     size: [10, 5, 5],
     rotation: 0,
   },
+
+  // ✅ 追加: 横断歩道レベルのゴール
+  "crosswalk": {
+    position: [0, 0, -80],
+    size: [10, 5, 5],
+    rotation: 0,
+  },
+  // ✅ 追加: レベル8 ゴール
+  "railroad-crossing": {
+    position: [0, 0, -100], 
+    size: [10, 5, 5],
+    rotation: 0,
+  },
 };
 
 // Checkpoints (Stop Signs, Mirrors)
-export type CheckpointType = 'stop' | 'mirror';
+export type CheckpointType = 'stop' | 'mirror' | 'speed-limit' | 'safety-check';
 
 export interface Checkpoint {
     id: string;
@@ -74,24 +87,36 @@ export interface Checkpoint {
     // For mirrors:
     targetYaw?: number; // Expected look direction (radians)
     yawTolerance?: number;
+    // ✅ 追加: フィードバック表示用のラベル
+    label?: string;
 }
 
 export const MISSION_CHECKPOINTS: Partial<Record<LessonId, Checkpoint[]>> = {
     'left-turn': [
         // Stop line before intersection
-        { id: 'stop-1', type: 'stop', position: [0, 0, -25], radius: 4, minDuration: 1000 },
+        { id: 'stop-1', type: 'stop', position: [0, 0, -25], radius: 4, minDuration: 1000, label: '一時停止' },
         // Curve Mirror check (Look Right/Forward-Right to check traffic)
-        { id: 'mirror-1', type: 'mirror', position: [0, 0, -28], radius: 6, targetYaw: -0.5, yawTolerance: 0.5 }
+        { id: 'mirror-1', type: 'mirror', position: [0, 0, -28], radius: 6, targetYaw: -0.5, yawTolerance: 0.5, label: '安全確認' }
     ],
     'right-turn': [
-        { id: 'stop-1', type: 'stop', position: [0, 0, -25], radius: 4 },
+        { id: 'stop-1', type: 'stop', position: [0, 0, -25], radius: 4, label: '一時停止' },
         // Mirror on Left Corner. Look Left.
-        { id: 'mirror-1', type: 'mirror', position: [0, 0, -28], radius: 6, targetYaw: 0.5, yawTolerance: 0.5 }
+        { id: 'mirror-1', type: 'mirror', position: [0, 0, -28], radius: 6, targetYaw: 0.5, yawTolerance: 0.5, label: '安全確認' }
     ],
     "traffic-light": [
         // 進入前の信号停止（直進のみ）
-        { id: "signal-1", type: "stop", position: [0, 0, -18], radius: 4, minDuration: 1200, visual: "traffic-light", orientation: "z" },
+        { id: "signal-1", type: "stop", position: [0, 0, -18], radius: 4, minDuration: 1200, visual: "traffic-light", orientation: "z", label: '赤信号停止' },
     ],
+    // ✅ 追加: 横断歩道レベルのチェックポイント
+    "crosswalk": [
+        // 横断歩道の手前で一時停止
+        { id: 'cw-stop-1', type: 'stop', position: [0, 0, -25], radius: 5, minDuration: 1000, label: '横断歩道前停止' }
+    ],
+    // ✅ 追加: レベル8 チェックポイント
+    "railroad-crossing": [
+        // 踏切の手前で一時停止
+        { id: 'rr-stop-1', type: 'stop', position: [0, 0, -50], radius: 5, minDuration: 2000, label: '踏切前一時停止' }
+    ]
 };
 
 export function checkMissionGoal(lesson: string, position: Vector3) {
