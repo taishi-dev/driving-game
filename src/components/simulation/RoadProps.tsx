@@ -30,6 +30,7 @@ export function RoadProps() {
                         return (
                             <TrafficLight
                                 key={cp.id}
+                                id={cp.id}
                                 position={cp.position}
                                 orientation={cp.orientation || "z"}
                             />
@@ -94,9 +95,11 @@ function StopSign({ position, orientation = "z" }: { position: [number, number, 
 }
 
 function TrafficLight({
+    id,
     position,
     orientation = "z",
 }: {
+    id: string;
     position: [number, number, number];
     orientation?: "z" | "x";
 }) {
@@ -107,13 +110,21 @@ function TrafficLight({
     const [signalIndex, setSignalIndex] = useState(0);
 
     useEffect(() => {
+        const currentState = SIGNAL_CYCLE[signalIndex].state;
+        // Log current signal state to the store so post-run analysis can reconstruct what drivers saw
+        try {
+            useDrivingStore.getState().addSignalStateLog({ time: Date.now(), checkpointId: id, state: currentState });
+        } catch (e) {
+            // noop
+        }
+
         const { durationMs } = SIGNAL_CYCLE[signalIndex];
         const timer = setTimeout(() => {
             setSignalIndex((prev) => (prev + 1) % SIGNAL_CYCLE.length);
         }, durationMs);
 
         return () => clearTimeout(timer);
-    }, [signalIndex]);
+    }, [signalIndex, id]);
 
     const currentState = SIGNAL_CYCLE[signalIndex].state;
 
