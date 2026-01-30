@@ -1,7 +1,22 @@
 import { useDrivingStore } from "@/lib/store";
 import { MISSION_CHECKPOINTS } from "./MissionController";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+type SignalState = "green" | "yellow" | "red";
+
+const SIGNAL_CYCLE: { state: SignalState; durationMs: number }[] = [
+    { state: "green", durationMs: 7000 },
+    { state: "yellow", durationMs: 2000 },
+    { state: "red", durationMs: 6000 },
+];
+
+const MODEL_BY_STATE: Record<SignalState, string> = {
+    green: "/models/traffic_light_green.glb",
+    yellow: "/models/traffic_light_yellow.glb",
+    red: "/models/traffic_light_red.glb",
+};
 import { Text } from "@react-three/drei";
+import { ThreeModelLoader } from "./ThreeModelLoader";
 
 export function RoadProps() {
     const currentLesson = useDrivingStore(state => state.currentLesson);
@@ -11,14 +26,23 @@ export function RoadProps() {
         <group>
             {checkpoints.map((cp) => {
                 if (cp.type === 'stop') {
-                    // Render Stop Line on road + Sign on side
-                    return <StopSign key={cp.id} position={cp.position} />;
+                    if (cp.visual === "traffic-light") {
+                        return (
+                            <TrafficLight
+                                key={cp.id}
+                                id={cp.id}
+                                position={cp.position}
+                                orientation={cp.orientation || "z"}
+                            />
+                        );
+                    }
+                    return <StopSign key={cp.id} position={cp.position} orientation={cp.orientation || "z"} />;
                 } else if (cp.type === 'mirror') {
                     // Render Mirror
                     // Position is usually "check area", but let's assume prop is placed relative to it?
                     // Or we should add `propPosition` to Checkpoint definition?
                     // For now, place it slightly offset from the check zone center.
-                    return <CurveMirror key={cp.id} position={[cp.position[0] - 5, 0, cp.position[2] - 5]} />; 
+                    return <CurveMirror key={cp.id} position={[cp.position[0] - 5, 0, cp.position[2] - 5]} />;
                     // Warning: offsets are hardcoded. ideally strictly defined.
                 }
                 return null;
@@ -27,15 +51,17 @@ export function RoadProps() {
     );
 }
 
-function StopSign({ position }: { position: [number, number, number] }) {
+function StopSign({ position, orientation = "z" }: { position: [number, number, number]; orientation?: "z" | "x" }) {
+    const isXAxis = orientation === "x";
+    const lineRotation: [number, number, number] = isXAxis ? [-Math.PI / 2, Math.PI / 2, 0] : [-Math.PI / 2, 0, 0];
+    const signPos: [number, number, number] = isXAxis ? [position[0], 0, position[2] + 4] : [-4, 0, position[2]];
+
     // Stop Line on Road
     // Sign Post on Left (assuming left-hand traffic? Japan is Left.)
-    const signPos: [number, number, number] = [-4, 0, position[2]]; // Left side of road
-
     return (
         <group>
             {/* White Stop Line on Road */}
-            <mesh position={[0, 0.02, position[2]]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[position[0], 0.02, position[2]]} rotation={lineRotation}>
                 <planeGeometry args={[8, 0.5]} />
                 <meshStandardMaterial color="white" />
             </mesh>
@@ -64,6 +90,59 @@ function StopSign({ position }: { position: [number, number, number] }) {
                     </Text>
                 </group>
             </group>
+        </group>
+    );
+}
+
+function TrafficLight({
+    id,
+    position,
+    orientation = "z",
+}: {
+    id: string;
+    position: [number, number, number];
+    orientation?: "z" | "x";
+}) {
+    const isXAxis = orientation === "x";
+    const lineRotation: [number, number, number] = isXAxis ? [-Math.PI / 2, Math.PI / 2, 0] : [-Math.PI / 2, 0, 0];
+    const polePos: [number, number, number] = isXAxis ? [position[0], 0, position[2] + 4] : [-4, 0, position[2]];
+    const headRotation: [number, number, number] = isXAxis ? [0, Math.PI / 2, 0] : [0, 0, 0];
+    const [signalIndex, setSignalIndex] = useState(0);
+
+    useEffect(() => {
+        const currentState = SIGNAL_CYCLE[signalIndex].state;
+        // Log current signal state to the store so post-run analysis can reconstruct what drivers saw
+        try {
+            useDrivingStore.getState().addSignalStateLog({ time: Date.now(), checkpointId: id, state: currentState });
+        } catch (e) {
+            // noop
+        }
+
+        const { durationMs } = SIGNAL_CYCLE[signalIndex];
+        const timer = setTimeout(() => {
+            setSignalIndex((prev) => (prev + 1) % SIGNAL_CYCLE.length);
+        }, durationMs);
+
+        return () => clearTimeout(timer);
+    }, [signalIndex, id]);
+
+    const currentState = SIGNAL_CYCLE[signalIndex].state;
+
+    return (
+        <group>
+            {/* Stop line for the signal */}
+            <mesh position={[position[0], 0.02, position[2]]} rotation={lineRotation}>
+                <planeGeometry args={[8, 0.5]} />
+                <meshStandardMaterial color="white" />
+            </mesh>
+
+            {/* 3D traffic light model */}
+            <ThreeModelLoader
+                url={MODEL_BY_STATE[currentState]}
+                position={polePos}
+                rotation={headRotation}
+                scale={1}
+            />
         </group>
     );
 }

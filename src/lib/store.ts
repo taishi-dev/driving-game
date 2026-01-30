@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { FootCalibration, PedalState } from "./footPedalRecognition";
 import * as THREE from "three";
 import { User } from "firebase/auth";
+import { MISSION_CHECKPOINTS } from "@/components/simulation/MissionController";
 
 export interface ReplayFrame {
   timestamp: number;
@@ -25,6 +26,16 @@ export interface FeedbackEvent {
   time: number;
   type: "KAIZEN" | "GOOD";
   message: string;
+  meta?: Record<string, any>;
+}
+
+/** Signal / Traffic Light state logs */
+export type SignalState = "green" | "yellow" | "red";
+
+export interface SignalStateLog {
+  time: number;
+  checkpointId: string;
+  state: SignalState;
 }
 
 /** ✅ ここが追加：free-mode を含めた Lesson 型 */
@@ -34,7 +45,8 @@ export type LessonId =
   | "s-curve"
   | "crank"
   | "left-turn"
-  | "right-turn";
+  | "right-turn"
+  | "traffic-light";
 
 export type ScreenId = "home" | "driving" | "feedback" | "auth" | "history" | "tutorial";
 export type MissionState = "idle" | "briefing" | "active" | "success" | "failed";
@@ -115,9 +127,12 @@ export interface DrivingState {
   gaze: { x: number; y: number };
   feedbackLogs: FeedbackEvent[];
   recordedVideo: string | null;
+  signalStateLogs: SignalStateLog[];
   setGaze: (gaze: { x: number; y: number }) => void;
   addFeedbackLog: (log: FeedbackEvent) => void;
+  addSignalStateLog: (log: SignalStateLog) => void;
   clearFeedbackLogs: () => void;
+  clearSignalStateLogs: () => void;
   setRecordedVideo: (url: string | null) => void;
 }
 
@@ -247,6 +262,50 @@ export const useDrivingStore = create<DrivingState>((set) => ({
       }
     });
 
+    // --- Traffic signal stop-check before/at stop line ---
+    let signalViolations = 0;
+    try {
+      const checkpoints = MISSION_CHECKPOINTS[currentLesson] || [];
+      const STOP_SPEED_THRESHOLD = 5; // km/h
+
+      for (const cp of checkpoints) {
+        if (cp.type !== 'stop' || cp.visual !== 'traffic-light') continue;
+
+        const crossingIndex = frames.findIndex((frame) => {
+          const pos = new THREE.Vector3(frame.position[0], frame.position[1], frame.position[2]);
+          const cpPos = new THREE.Vector3(cp.position[0], cp.position[1], cp.position[2]);
+          return pos.distanceTo(cpPos) < cp.radius;
+        });
+
+        if (crossingIndex === -1) continue;
+
+        const hitTime = frames[crossingIndex].timestamp;
+        const logsForCp = st.signalStateLogs.filter((l) => l.checkpointId === cp.id && l.time <= hitTime);
+        const stateAtHit = logsForCp.length ? logsForCp[logsForCp.length - 1].state : 'green';
+
+        // Check whether the vehicle stopped for required duration before crossing
+        const minDur = cp.minDuration ?? 1000;
+        let stoppedDuration = 0;
+        let j = crossingIndex;
+        while (j > 0) {
+          const dt = frames[j].timestamp - frames[j - 1].timestamp;
+          if ((frames[j].speed || 0) <= STOP_SPEED_THRESHOLD) {
+            stoppedDuration += dt;
+            j--;
+          } else {
+            break;
+          }
+        }
+
+        if (stateAtHit === 'red' && stoppedDuration < minDur) {
+          signalViolations++;
+        }
+      }
+    } catch (e) {
+      // Be defensive - do not break scoring if anything goes wrong
+      console.error('Signal violation check failed', e);
+    }
+
     set((s) => {
       const newLogs = [...s.feedbackLogs];
       if (speedViolations > 30) {
@@ -256,6 +315,16 @@ export const useDrivingStore = create<DrivingState>((set) => ({
           message: `速度超過がありました (最大制限: ${SPEED_LIMIT}km/h)`,
         });
       }
+
+      if (typeof signalViolations !== 'undefined' && signalViolations > 0) {
+        newLogs.push({
+          time: Date.now(),
+          type: "KAIZEN",
+          message: `赤信号で停止しなかったチェックが ${signalViolations} 回ありました`,
+          meta: { penalty: 10 * signalViolations, signalViolations },
+        });
+      }
+
       return {
         deviationPenalty: s.deviationPenalty + deviationPenalty,
         feedbackLogs: newLogs,
@@ -287,8 +356,11 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   gaze: { x: 0, y: 0 },
   feedbackLogs: [],
   recordedVideo: null,
+  signalStateLogs: [],
   setGaze: (gaze) => set({ gaze }),
   addFeedbackLog: (log) => set((state) => ({ feedbackLogs: [...state.feedbackLogs, log] })),
+  addSignalStateLog: (log) => set((state) => ({ signalStateLogs: [...state.signalStateLogs, log] })),
   clearFeedbackLogs: () => set({ feedbackLogs: [] }),
+  clearSignalStateLogs: () => set({ signalStateLogs: [] }),
   setRecordedVideo: (url) => set({ recordedVideo: url }),
 }));

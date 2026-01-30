@@ -87,7 +87,8 @@ export function HistoryScreen() {
       'left-turn': '左折',
       'right-turn': '右折',
       's-curve': 'S字カーブ',
-      'crank': 'クランク'
+      'crank': 'クランク',
+      'traffic-light': '信号交差点'
     };
     return names[lesson] || lesson;
   };
