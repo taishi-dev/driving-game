@@ -24,7 +24,7 @@ export function FeedbackScreen() {
   // Auto-start replay mode when entering this screen
   useEffect(() => {
     setIsReplaying(true);
-    
+
     // Run Analysis once
     if (!analyzedRef.current) {
         analyzedRef.current = true;
@@ -46,10 +46,10 @@ export function FeedbackScreen() {
   const saveResultToFirestore = async ( state: any) => {
     try {
         const kaizenLogs = state.feedbackLogs.filter((l: any) => l.type === 'KAIZEN');
-        const kaizenPenalty = kaizenLogs.length * 5;
+        const kaizenPenalty = kaizenLogs.reduce((acc: number, l: any) => acc + (l.meta?.penalty ?? 5), 0);
         const totalPenalty = kaizenPenalty + Math.floor(state.deviationPenalty || 0);
         const score = Math.max(0, 100 - totalPenalty);
-        
+
         // Clear Time Calculation
         const diff = state.missionEndTime - state.missionStartTime;
         const min = Math.floor(diff / 60000);
@@ -67,10 +67,10 @@ export function FeedbackScreen() {
 
         // Firestoreへの保存
         const docRef = await addDoc(collection(db, "mission_logs"), logData);
-        
+
         // StoreのHistoryも更新（再フェッチを防ぐため）
         addHistoryItem({ id: docRef.id, ...logData });
-        
+
     } catch (e) {
         console.error("Failed to save record", e);
     }
@@ -90,7 +90,7 @@ export function FeedbackScreen() {
     setScreen('home');
   };
 
-  // Filter Unique messages to avoid spamming same thing? 
+  // Filter Unique messages to avoid spamming same thing?
   // For now show all unique logs or timestamped
   const kaizenLogs = feedbackLogs.filter(l => l.type === 'KAIZEN');
 
@@ -98,7 +98,7 @@ export function FeedbackScreen() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const recordedVideo = useDrivingStore(state => state.recordedVideo);
   // We need current replay time to sync video.
-  // Ideally Scene invokes a callback on frame update, or we poll. 
+  // Ideally Scene invokes a callback on frame update, or we poll.
   // For this MVP, let's assume video.play() starts same time as replay.
   // TO DO: Better Sync.
 
@@ -128,13 +128,13 @@ export function FeedbackScreen() {
                      </div>
                      {/* Camera Toggle */}
                      <div className="flex bg-slate-800 rounded p-1 border border-slate-600">
-                         <button 
+                         <button
                             onClick={() => setReplayViewMode('chase')}
                             className={`px-3 py-1 rounded text-xs font-bold transition-colors ${replayViewMode === 'chase' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
                          >
                             CHASE
                          </button>
-                         <button 
+                         <button
                             onClick={() => setReplayViewMode('driver')}
                             className={`px-3 py-1 rounded text-xs font-bold transition-colors ${replayViewMode === 'driver' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
                          >
@@ -142,7 +142,7 @@ export function FeedbackScreen() {
                          </button>
                      </div>
                  </div>
-                 
+
                  {/* 3D Scene */}
                  <div className="w-full h-full relative">
                      {replayViewMode === 'driver' ? (
@@ -158,7 +158,7 @@ export function FeedbackScreen() {
                          </div>
                      ) : (
                          <Suspense fallback={<div className="flex justify-center items-center h-full">Loading Replay...</div>}>
-                            <Scene cameraTarget="player" /> 
+                            <Scene cameraTarget="player" />
                          </Suspense>
                      )}
                  </div>
@@ -171,7 +171,7 @@ export function FeedbackScreen() {
                          DRIVER FACE
                      </div>
                      <video ref={videoRef} src={recordedVideo} className="w-full h-full object-cover scale-x-[-1]" loop muted playsInline />
-                     
+
                      {/* Gaze Overlay (Visualizing comparison) */}
                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                          {/* CORRECT Gaze (Green) */}
@@ -180,13 +180,13 @@ export function FeedbackScreen() {
                             <div className="absolute top-1/2 left-1/2 w-4 h-4 bg-green-500 rounded-full -translate-x-1/2 -translate-y-1/2 shadow-[0_0_10px_#00ff00]"></div>
                             <div className="absolute top-1/2 left-1/2 text-green-400 text-xs font-bold -translate-y-8 -translate-x-1/2">CORRECT</div>
                          </div>
-                         
-                         {/* ACTUAL Gaze (Blue or Red) - Animated via CSS or JS later? 
-                             For MVP, let's put a "X" if kaizenLogs exist at nearly same time? 
+
+                         {/* ACTUAL Gaze (Blue or Red) - Animated via CSS or JS later?
+                             For MVP, let's put a "X" if kaizenLogs exist at nearly same time?
                              Or just static for concept as requested.
                          */}
                      </div>
-                     
+
                      {/* Comparison Result Badge */}
                      <div className="absolute top-0 right-0 h-full w-1/3 flex flex-col items-center justify-center bg-gradient-to-l from-black/80 to-transparent">
                           {kaizenLogs.length > 0 ? (
@@ -231,7 +231,7 @@ export function FeedbackScreen() {
                     <div className="text-xs text-slate-500 mb-1">Score</div>
                     <div className="text-3xl font-bold text-blue-400">
                         {(() => {
-                            const kaizenPenalty = kaizenLogs.length * 5;
+                            const kaizenPenalty = kaizenLogs.reduce((acc, l) => acc + (l.meta?.penalty ?? 5), 0);
                             const deviationPenalty = useDrivingStore.getState().deviationPenalty || 0;
                             const totalPenalty = kaizenPenalty + Math.floor(deviationPenalty);
                             return Math.max(0, 100 - totalPenalty);
@@ -259,13 +259,13 @@ export function FeedbackScreen() {
             </div>
 
             <div className="flex gap-4 mt-auto">
-                <button 
+                <button
                     onClick={handleRetry}
                     className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors shadow-lg shadow-blue-900/20"
                 >
                     もう一度挑戦
                 </button>
-                <button 
+                <button
                     onClick={handleHome}
                     className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition-colors border border-slate-600"
                 >

@@ -16,10 +16,6 @@ import { TutorialScreen } from '@/components/ui/TutorialScreen';
 const VisionController = dynamic(() => import('@/components/vision/VisionController'), { ssr: false });
 const Scene = dynamic(() => import('@/components/simulation/Scene').then(mod => mod.Scene), { ssr: false });
 
-// ... (existing imports)
-
-
-
 function UserProfileHeader() {
     const user = useDrivingStore(state => state.user);
     const setScreen = useDrivingStore(state => state.setScreen);
@@ -102,7 +98,11 @@ const MISSION_INFO: Record<string, { title: string, desc: string }> = {
     'left-turn': { title: '左折', desc: '交差点を左折します。速度を十分に落とし、巻き込みに注意して曲がりましょう。' },
     'right-turn': { title: '右折', desc: '交差点を右折します。交差点の中心のすぐ内側を通るように意識しましょう。' },
     's-curve': { title: 'S字カーブ', desc: 'S字型の狭路です。内輪差・外輪差を考慮し、脱輪しないように慎重に進みましょう。' },
-    'crank': { title: 'クランク', desc: '直角に曲がる狭路です。車両感覚を研ぎ澄まし、適切なタイミングでハンドルを切りましょう。' }
+    'crank': { title: 'クランク', desc: '直角に曲がる狭路です。車両感覚を研ぎ澄まし、適切なタイミングでハンドルを切りましょう。' },
+    'traffic-light': { title: '信号機', desc: '信号のある交差点です。赤信号で停止し、青になったら発進しましょう。' },
+    // ✅ 追加: レベル7
+    'crosswalk': { title: '横断歩道', desc: '横断歩道があります。歩行者が渡ろうとしている時は、必ず停止線の手前で一時停止しましょう。' },
+    'railroad-crossing': { title: '踏切', desc: '前方に踏切があります。必ず一時停止し、左右の安全を確認してから通過してください。警報機が鳴っている場合は進入してはいけません。' }
 };
 
 function MissionOverlay() {

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { FootCalibration, PedalState } from "./footPedalRecognition";
 import * as THREE from "three";
 import { User } from "firebase/auth";
+import { MISSION_CHECKPOINTS } from "@/components/simulation/MissionController";
 
 export interface ReplayFrame {
   timestamp: number;
@@ -25,20 +26,19 @@ export interface FeedbackEvent {
   time: number;
   type: "KAIZEN" | "GOOD";
   message: string;
+  meta?: Record<string, any>;
 }
 
-export type LessonId =
-  | "free-mode"
-  | "straight"
-  | "s-curve"
-  | "crank"
-  | "left-turn"
-  | "right-turn";
+/** Signal / Traffic Light state logs */
+export type SignalState = "green" | "yellow" | "red";
 
-export type ScreenId = "home" | "driving" | "feedback" | "auth" | "history" | "tutorial";
-export type MissionState = "idle" | "briefing" | "active" | "success" | "failed";
+export interface SignalStateLog {
+  time: number;
+  checkpointId: string;
+  state: SignalState;
+}
 
-// ✅ 追加: チェックポイントの型定義
+// ✅ 追加: チェックポイントの型定義 (他のファイルから参照されるため復元)
 export type MissionCheckpoint = {
   id: string;
   position: [number, number, number];
@@ -46,7 +46,23 @@ export type MissionCheckpoint = {
   type: 'stop' | 'speed-limit' | 'mirror' | 'safety-check';
   label?: string;
   targetYaw?: number; 
+  visual?: string; // traffic-light判定用
+  minDuration?: number; // 停止時間判定用
 };
+
+export type LessonId =
+  | "free-mode"
+  | "straight"
+  | "s-curve"
+  | "crank"
+  | "left-turn"
+  | "right-turn"
+  | "traffic-light"
+  | "crosswalk"
+  | "railroad-crossing";
+
+export type ScreenId = "home" | "driving" | "feedback" | "auth" | "history" | "tutorial";
+export type MissionState = "idle" | "briefing" | "active" | "success" | "failed";
 
 export interface DrivingState {
   // Screen Management
@@ -122,12 +138,15 @@ export interface DrivingState {
   gaze: { x: number; y: number };
   feedbackLogs: FeedbackEvent[];
   recordedVideo: string | null;
+  signalStateLogs: SignalStateLog[];
   setGaze: (gaze: { x: number; y: number }) => void;
   addFeedbackLog: (log: FeedbackEvent) => void;
+  addSignalStateLog: (log: SignalStateLog) => void;
   clearFeedbackLogs: () => void;
+  clearSignalStateLogs: () => void;
   setRecordedVideo: (url: string | null) => void;
 
-  // ✅ 追加: チェックポイント管理用のアクション
+  // ✅ 追加: チェックポイント管理用の型定義
   activeCheckpoints: MissionCheckpoint[];
   registerCheckpoint: (cp: MissionCheckpoint) => void;
   unregisterCheckpoint: (id: string) => void;
@@ -221,6 +240,7 @@ export const useDrivingStore = create<DrivingState>((set) => ({
     set((s) => ({ deviationPenalty: s.deviationPenalty + amount })),
 
   calculateMissionResult: (coursePath) => {
+    // free-mode は採点しない
     const st = useDrivingStore.getState();
     if (st.currentLesson === "free-mode") return;
 
@@ -257,31 +277,59 @@ export const useDrivingStore = create<DrivingState>((set) => ({
       }
     });
 
-    // ▼▼▼ 追加: 未クリアのチェックポイント判定 ▼▼▼
-    const newLogs = [...st.feedbackLogs];
-    
-    // 未クリア（activeにはあるが、clearedにはないID）を抽出
-    const missedCheckpoints = st.activeCheckpoints.filter(
-      cp => !st.clearedCheckpointIds.includes(cp.id)
-    );
+    // --- Traffic signal stop-check before/at stop line ---
+    let signalViolations = 0;
+    try {
+      const checkpoints = MISSION_CHECKPOINTS[currentLesson] || [];
+      const STOP_SPEED_THRESHOLD = 5; // km/h
 
-    missedCheckpoints.forEach(cp => {
-      let msg = "";
-      if (cp.type === 'stop') msg = `${cp.label || '一時停止'}を無視しました`;
-      else if (cp.type === 'safety-check') msg = `${cp.label || '安全確認'}を行いませんでした`;
-      
-      if (msg) {
-        newLogs.push({
-          time: Date.now(),
-          type: "KAIZEN",
-          message: msg
+      for (const cp of checkpoints) {
+        if (cp.type !== 'stop' || cp.visual !== 'traffic-light') continue;
+
+        const crossingIndex = frames.findIndex((frame) => {
+          const pos = new THREE.Vector3(frame.position[0], frame.position[1], frame.position[2]);
+          const cpPos = new THREE.Vector3(cp.position[0], cp.position[1], cp.position[2]);
+          return pos.distanceTo(cpPos) < cp.radius;
         });
+
+        if (crossingIndex === -1) continue;
+
+        const hitTime = frames[crossingIndex].timestamp;
+        const logsForCp = st.signalStateLogs.filter((l) => l.checkpointId === cp.id && l.time <= hitTime);
+        const stateAtHit = logsForCp.length ? logsForCp[logsForCp.length - 1].state : 'green';
+
+        // Check whether the vehicle stopped for required duration before crossing
+        const minDur = cp.minDuration ?? 1000;
+        let stoppedDuration = 0;
+        let j = crossingIndex;
+        while (j > 0) {
+          const dt = frames[j].timestamp - frames[j - 1].timestamp;
+          if ((frames[j].speed || 0) <= STOP_SPEED_THRESHOLD) {
+            stoppedDuration += dt;
+            j--;
+          } else {
+            break;
+          }
+        }
+
+        if (stateAtHit === 'red' && stoppedDuration < minDur) {
+          signalViolations++;
+        }
       }
-    });
+    } catch (e) {
+      // Be defensive - do not break scoring if anything goes wrong
+      console.error('Signal violation check failed', e);
+    }
+
+    // ▼▼▼ 追加: 未クリアのチェックポイント判定 (動的登録されたもの) ▼▼▼
+    // activeCheckpoints にあるのに clearedCheckpointIds にないものを探す
+    const missedCheckpoints = st.activeCheckpoints.filter(
+        cp => !st.clearedCheckpointIds.includes(cp.id)
+    );
     // ▲▲▲ 追加終わり ▲▲▲
 
     set((s) => {
-      // 既存の速度違反ログ
+      const newLogs = [...s.feedbackLogs];
       if (speedViolations > 30) {
         newLogs.push({
           time: Date.now(),
@@ -289,6 +337,31 @@ export const useDrivingStore = create<DrivingState>((set) => ({
           message: `速度超過がありました (最大制限: ${SPEED_LIMIT}km/h)`,
         });
       }
+
+      if (typeof signalViolations !== 'undefined' && signalViolations > 0) {
+        newLogs.push({
+          time: Date.now(),
+          type: "KAIZEN",
+          message: `赤信号で停止しなかったチェックが ${signalViolations} 回ありました`,
+          meta: { penalty: 10 * signalViolations, signalViolations },
+        });
+      }
+
+      // ▼▼▼ 追加: チェックポイント無視のログ追加 ▼▼▼
+      missedCheckpoints.forEach(cp => {
+        let msg = "";
+        if (cp.type === 'stop') msg = `${cp.label || '一時停止'}を無視しました`;
+        else if (cp.type === 'safety-check') msg = `${cp.label || '安全確認'}を行いませんでした`;
+        
+        if (msg) {
+            newLogs.push({
+            time: Date.now(),
+            type: "KAIZEN",
+            message: msg
+            });
+        }
+      });
+      // ▲▲▲ 追加終わり ▲▲▲
 
       // 未クリア数に応じたペナルティ加算 (例: 1つにつき20点)
       const missedPenalty = missedCheckpoints.length * 20;
@@ -324,12 +397,15 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   gaze: { x: 0, y: 0 },
   feedbackLogs: [],
   recordedVideo: null,
+  signalStateLogs: [],
   setGaze: (gaze) => set({ gaze }),
   addFeedbackLog: (log) => set((state) => ({ feedbackLogs: [...state.feedbackLogs, log] })),
+  addSignalStateLog: (log) => set((state) => ({ signalStateLogs: [...state.signalStateLogs, log] })),
   clearFeedbackLogs: () => set({ feedbackLogs: [] }),
+  clearSignalStateLogs: () => set({ signalStateLogs: [] }),
   setRecordedVideo: (url) => set({ recordedVideo: url }),
 
-  // ✅ 追加: チェックポイント管理の実装
+  // ✅ 追加: チェックポイント管理の実装 (ここが抜けていました)
   activeCheckpoints: [],
   registerCheckpoint: (cp) => set((state) => ({ 
     activeCheckpoints: [...state.activeCheckpoints, cp] 

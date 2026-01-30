@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 export function getCoursePath(
-  lesson: "straight" | "s-curve" | "crank" | "left-turn" | "right-turn" | "free-mode"
+  lesson: "straight" | "s-curve" | "crank" | "left-turn" | "right-turn" | "traffic-light" | "free-mode"
 ): THREE.CurvePath<THREE.Vector3> {
   const path = new THREE.CurvePath<THREE.Vector3>();
 
@@ -39,6 +39,9 @@ export function getCoursePath(
 
     // Straight exit
     path.add(new THREE.LineCurve3(new THREE.Vector3(8, 0, -38), new THREE.Vector3(60, 0, -38)));
+  } else if (lesson === "traffic-light") {
+    // 直進のみの信号コース（短め）
+    path.add(new THREE.LineCurve3(new THREE.Vector3(0, 0, 20), new THREE.Vector3(0, 0, -120)));
   } else if (lesson === "s-curve") {
     const curve = new THREE.CatmullRomCurve3(
       [
