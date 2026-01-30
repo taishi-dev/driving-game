@@ -1,6 +1,20 @@
 import { useDrivingStore } from "@/lib/store";
 import { MISSION_CHECKPOINTS } from "./MissionController";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+type SignalState = "green" | "yellow" | "red";
+
+const SIGNAL_CYCLE: { state: SignalState; durationMs: number }[] = [
+    { state: "green", durationMs: 7000 },
+    { state: "yellow", durationMs: 2000 },
+    { state: "red", durationMs: 6000 },
+];
+
+const MODEL_BY_STATE: Record<SignalState, string> = {
+    green: "/models/traffic_light_green.glb",
+    yellow: "/models/traffic_light_yellow.glb",
+    red: "/models/traffic_light_red.glb",
+};
 import { Text } from "@react-three/drei";
 import { ThreeModelLoader } from "./ThreeModelLoader";
 
@@ -88,8 +102,20 @@ function TrafficLight({
 }) {
     const isXAxis = orientation === "x";
     const lineRotation: [number, number, number] = isXAxis ? [-Math.PI / 2, Math.PI / 2, 0] : [-Math.PI / 2, 0, 0];
-    const polePos: [number, number, number] = isXAxis ? [position[0], 0, position[2] + 4] : [-4, 5, position[2]];
+    const polePos: [number, number, number] = isXAxis ? [position[0], 0, position[2] + 4] : [-4, 0, position[2]];
     const headRotation: [number, number, number] = isXAxis ? [0, Math.PI / 2, 0] : [0, 0, 0];
+    const [signalIndex, setSignalIndex] = useState(0);
+
+    useEffect(() => {
+        const { durationMs } = SIGNAL_CYCLE[signalIndex];
+        const timer = setTimeout(() => {
+            setSignalIndex((prev) => (prev + 1) % SIGNAL_CYCLE.length);
+        }, durationMs);
+
+        return () => clearTimeout(timer);
+    }, [signalIndex]);
+
+    const currentState = SIGNAL_CYCLE[signalIndex].state;
 
     return (
         <group>
@@ -101,10 +127,10 @@ function TrafficLight({
 
             {/* 3D traffic light model */}
             <ThreeModelLoader
-                url="/models/traffic_light.glb"
+                url={MODEL_BY_STATE[currentState]}
                 position={polePos}
                 rotation={headRotation}
-                scale={10}
+                scale={1}
             />
         </group>
     );
