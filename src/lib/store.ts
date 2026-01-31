@@ -134,6 +134,7 @@ export interface DrivingState {
   clearFeedbackLogs: () => void;
   clearSignalStateLogs: () => void;
   setRecordedVideo: (url: string | null) => void;
+  setGear: (gear: "P" | "D" | "R") => void;
 }
 
 export const useDrivingStore = create<DrivingState>((set) => ({
@@ -363,4 +364,5 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   clearFeedbackLogs: () => set({ feedbackLogs: [] }),
   clearSignalStateLogs: () => set({ signalStateLogs: [] }),
   setRecordedVideo: (url) => set({ recordedVideo: url }),
+  setGear: (gear) => set({ gear }),
 }));

@@ -25,6 +25,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     currentLesson,
     setMissionState,
     setScreen,
+    gear,
   } = useDrivingStore();
 
   const isFreeMode = currentLesson === "free-mode";
@@ -81,6 +82,9 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   useFrame((state, delta) => {
     if (!groupRef.current) return;
     if (isPaused) return;
+
+    // Ensure camera is upright
+    camera.up.set(0, 1, 0);
 
     // --- REPLAY MODE ---
     if (isReplaying) {
@@ -173,18 +177,71 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
 
     setSpeed(Math.abs(speed.current) * 100);
 
+    // Gear Direction Logic
+    const direction = gear === "R" ? -1 : 1;
+
     // 2. Steering
     if (Math.abs(speed.current) > 0.001) {
       const curvePower = 1.8;
       const curvedInput = Math.sign(steeringInput) * Math.pow(Math.abs(steeringInput), curvePower);
       const boostedSteering = curvedInput * 8.0;
-      groupRef.current.rotation.y -= boostedSteering * turnSpeed * (speed.current / maxSpeed) * 3.0;
+      // In reverse, steering feel is often inverted (or just feels different), 
+      // but physically if you turn wheels right, car goes 'back-right', which rotates body 'left' relative to forward.
+      // Standard car physics: Yaw change ~ Speed * curvature * direction.
+      // If speed is positive magnitude, and we move backwards, the yaw change reverses sign?
+      // Let's stick to simple physics: Rotate body by steering * speed.
+      // If moving backward (direction = -1), steering effects are reversed?
+      // Actually usually steering angle defines circle. 
+      // Let's invert turn direction if reversing for natural feel (or keep it and rely on users brain).
+      // Usually: Backing up + Steering Left -> Rear goes Left -> Car rotates CCW (same as forward left).
+      // Wait. Forward + Left -> Front goes Left -> CCW.
+      // Backward + Left -> Rear goes Left -> CW?  
+      // Let's try reversing rotation sign when reversing.
+      
+      // Standard car physics: Yaw change ~ Speed * curvature * direction.
+      // Actually, regardless of gear, if you turn wheels LEFT, the car rotates LEFT (CCW).
+      // (Forward -> Left Turn, Backward -> Tail swings Left -> Car rotates Left/CCW).
+      // So we do NOT invert rotation based on gear.
+      
+      const turnDir = direction; // Use direction again to invert rotation when reversing for natural feel (steering left backs you into left spot)
+                                 // Wait, if I back up and turn Wheel Left:
+                                 // Front wheels point Left.
+                                 // Car describes a circle to its Left.
+                                 // The Rear moves Left? No, the Front swings Right? 
+                                 // If I turn Wheel Left (CCW), and move Forward: Car turns Left (CCW).
+                                 // If I turn Wheel Left (CCW), and move Backward: 
+                                 //  The car follows the same circle radius?
+                                 //  Yes. The arc is the same.
+                                 //  Moving Forward along arc -> Yaw changes +CCW.
+                                 //  Moving Backward along arc -> Yaw changes -CCW (CW)?
+                                 //  Let's simulate:
+                                 //  Car at (0,0), rot=0. Wheel Left.
+                                 //  Forward step: Pos becomes (-d, d), Rot becomes +delta.
+                                 //  Backward step: Pos becomes (+d, -d)? No.
+                                 //  Geometrically, backing up with Left Wheel means the Rear goes to the Left of the driver?
+                                 //  No, "Backing to the Left" usually means "Backing into a spot on the left".
+                                 //  To do that, you turn wheel... Left?
+                                 //  If I want the tail to go Left:
+                                 //  Steering Left -> Front wheels point Left.
+                                 //  Back up -> Front swings Right? Tail swings Left?
+                                 //  Actually, Steering Left means Center of Curvature is on the Left.
+                                 //  Backing up simply moves you along the circle CW?
+                                 //  Moving Forward CCW. Moving Backward CW.
+                                 //  So yes, Yaw Rotation direction IS inverted relative to Wheel angle.
+                                 //  Wheel + (Left): Speed + -> Rot +.
+                                 //  Wheel + (Left): Speed - (Back) -> Rot -.
+      
+      groupRef.current.rotation.y -= boostedSteering * turnSpeed * (speed.current / maxSpeed) * 3.0 * direction;
     }
 
     // 3. Move
     const forward = new Vector3(0, 0, -1);
     forward.applyEuler(groupRef.current.rotation);
-    groupRef.current.position.add(forward.multiplyScalar(speed.current));
+    // Apply direction here
+    // FIX: Do NOT modify 'forward' in place, as it is used later for camera lookAt!
+    // clone() is not needed if we just multiply a clone or create a new movement vector.
+    const movement = forward.clone().multiplyScalar(speed.current * direction);
+    groupRef.current.position.add(movement);
 
     // free-mode ではミッション判定を一切しない
     if (!isFreeMode) {
@@ -249,7 +306,11 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
 
     // Head Rotation
     const lookAtDist = 10;
+    // Base Look Target: Always 10 units in FRONT of the car (local -Z)
+    // Even when reversing, we look "Forward" relative to the driver's seat.
     const baseLookTarget = groupRef.current.position.clone().add(forward.normalize().multiplyScalar(lookAtDist));
+    
+    // Add Head Rotation (Yaw/Pitch)
     const right = new Vector3(1, 0, 0).applyEuler(groupRef.current.rotation);
     baseLookTarget.add(right.multiplyScalar(headRotation.yaw * 5));
     baseLookTarget.y += headRotation.pitch * 5;
@@ -274,6 +335,9 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
         )}
 
         {showDriverView && <CarVisuals steeringInput={steeringInput} />}
+        
+        
+        {/* Rearview Mirror Removed as per user request */}
       </group>
 
       {/* Ghost Car (Only in Replay) - free-mode では表示しない */}

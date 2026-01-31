@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
-import { FilesetResolver, FaceLandmarker, HandLandmarker, DrawingUtils, HandLandmarkerResult, PoseLandmarker, PoseLandmarkerResult } from "@mediapipe/tasks-vision";
+import { FilesetResolver, FaceLandmarker, HandLandmarker, DrawingUtils, HandLandmarkerResult, PoseLandmarker, PoseLandmarkerResult, ObjectDetector, ObjectDetectorResult } from "@mediapipe/tasks-vision";
 import { useDrivingStore } from "@/lib/store";
 import { processPedalRecognition, checkFootStability } from "@/lib/footPedalRecognition";
 import { PoseLandmarkFilterManager } from "@/lib/oneEuroFilter";
@@ -21,12 +21,15 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
   const setCalibrationStage = useDrivingStore((state) => state.setCalibrationStage);
   const setScreen = useDrivingStore((state) => state.setScreen);
   const setGaze = useDrivingStore((state) => state.setGaze); // Gaze action
+  const gear = useDrivingStore((state) => state.gear);
+  const setGear = useDrivingStore((state) => state.setGear);
 
 
   // References
   const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
   const handLandmarkerRef = useRef<HandLandmarker | null>(null);
   const poseLandmarkerRef = useRef<PoseLandmarker | null>(null);
+  const objectDetectorRef = useRef<ObjectDetector | null>(null);
   const lastVideoTimeRef = useRef<number>(-1);
   const requestRef = useRef<number>(0);
   const lastFrameTimeRef = useRef<number>(0);
@@ -153,6 +156,15 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
           minTrackingConfidence: 0.5
         });
 
+        objectDetectorRef.current = await ObjectDetector.createFromOptions(filesetResolver, {
+          baseOptions: {
+            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite`,
+            delegate: "GPU"
+          },
+          scoreThreshold: 0.3,
+          runningMode: "VIDEO"
+        });
+
         setDebugInfo("Models loaded. Starting Camera...");
         setVisionReady(true);
 
@@ -269,6 +281,11 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
                 }
             }
 
+            // Object Detection
+            const objectResult = objectDetectorRef.current
+                ? objectDetectorRef.current.detectForVideo(video, startTimeMs)
+                : null;
+
             // Hand Detection
             const handResult = handLandmarkerRef.current.detectForVideo(video, startTimeMs);
             if (handResult.landmarks && drawingUtils) {
@@ -277,7 +294,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
                     drawingUtils.drawLandmarks(landmarks, {color: "#FF0000", lineWidth: 2});
                 }
             }
-            const handInfo = processHandGestures(handResult, setSteering);
+            const handInfo = processSteeringAndGear(handResult, objectResult);
 
             // Run Pose Detection for Foot Pedal Recognition
             const poseResult = poseLandmarkerRef.current 
@@ -296,80 +313,115 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
   };
 
 
-  const processHandGestures = (result: HandLandmarkerResult, setSteering: any) => {
-      const hands = result.landmarks.length;
+  const processSteeringAndGear = (handResult: HandLandmarkerResult, objectResult: ObjectDetectorResult | null) => {
+      const hands = handResult.landmarks.length;
       let info = `Hands: ${hands}`;
-
-      if (hands === 2 && result.handedness.length === 2) {
-          let leftHandLandmarks = result.landmarks[0];
-          let rightHandLandmarks = result.landmarks[1];
-          const label0 = result.handedness[0]?.[0]?.categoryName ?? 'Left';
-          const label1 = result.handedness[1]?.[0]?.categoryName ?? 'Right';
-
-          if (label0 !== label1) {
-              if (label0 === 'Left') {
-                  leftHandLandmarks = result.landmarks[0];
-                  rightHandLandmarks = result.landmarks[1];
-              } else {
-                  leftHandLandmarks = result.landmarks[1];
-                  rightHandLandmarks = result.landmarks[0];
-              }
-          } else {
-              const h1 = result.landmarks[0][9];
-              const h2 = result.landmarks[1][9];
-              if (h1.x < h2.x) {
-                  leftHandLandmarks = result.landmarks[0];
-                  rightHandLandmarks = result.landmarks[1];
-              } else {
-                  leftHandLandmarks = result.landmarks[1];
-                  rightHandLandmarks = result.landmarks[0];
-              }
+      
+      // --- Gear Logic ---
+      // Define Gear Zone: Right side of the screen, lower half.
+      // x: 0.8 ~ 1.0, y: 0.5 ~ 1.0
+      // If a hand is in this zone, we shift to REVERSE.
+      // Otherwise, we shift to DRIVE (default).
+      
+      let newGear: "D" | "R" = "D";
+      let gearHandIndex = -1;
+      
+      for (let i = 0; i < hands; i++) {
+          const landmarks = handResult.landmarks[i];
+          const wrist = landmarks[0];
+          
+          if (wrist.x > 0.8 && wrist.y > 0.5) {
+              newGear = "R";
+              gearHandIndex = i;
+              break; // Found a gear hand
           }
-
-          const left = leftHandLandmarks[9]; 
-          const right = rightHandLandmarks[9];
+      }
+      
+      // Update Gear Store (avoid frequent updates if same)
+      const currentGear = useDrivingStore.getState().gear;
+      if (currentGear !== newGear) {
+          setGear(newGear);
+      }
+      info += ` | Gear: ${newGear}`;
+      
+      // --- Steering Logic ---
+      // Use hands that are NOT the gear hand.
+      let steeringHands = [];
+      for (let i = 0; i < hands; i++) {
+          if (i !== gearHandIndex) {
+              steeringHands.push(handResult.landmarks[i]);
+          }
+      }
+      
+      let steering = 0;
+      let angle = 0;
+      
+      if (steeringHands.length >= 2) {
+          // Two-Hand Steering (Standard)
+          // Sort by x coordinate to distinguish left/right
+          const h1 = steeringHands[0][9]; // Middle finger MCP
+          const h2 = steeringHands[1][9];
+          
+          let left, right;
+          if (h1.x < h2.x) { left = steeringHands[0][9]; right = steeringHands[1][9]; }
+          else { left = steeringHands[1][9]; right = steeringHands[0][9]; }
           
           const dy = right.y - left.y;
           const dx = right.x - left.x;
+          angle = Math.atan2(dy, dx);
           
-          const angle = Math.atan2(dy, dx);
+          // Sensitivity adjustments
+          const sensitivity = 0.8;
+          steering = -angle * sensitivity;
           
-          // Analog Steering Logic
-          // Angle is in radians. 
-          // 0 is Center.
-          // Left Turn (CCW) -> Negative Angle.
-          // Right Turn (CW) -> Positive Angle.
+      } else if (steeringHands.length === 1) {
+          // Single-Hand Steering (One Hand Detected or One Hand Shifting)
+          // Calculate tilt of the single hand.
+          // Using Wrist (0) and Middle Finger MCP (9)
+          const wrist = steeringHands[0][0];
+          const middle = steeringHands[0][9];
           
-          // Sensitivity Factor: 
-          // 90 degrees (PI/2 = 1.57) should be full lock? 
-          // Or 45 degrees (0.78)?
-          // Let's try aiming for ~60 degrees for full lock.
-          // 1.0 / (PI/3) ~= 1.0.
-          // Let's try multiplier 1.5. 
-          // If angle is -0.7 (40 deg), steering = 1.05 (Full).
+          const dy = middle.y - wrist.y;
+          const dx = middle.x - wrist.x;
           
-          // Based on previous code `steering = -Math.sign(angle)`, 
-          // we maintain the negative sign relationship.
+          // Upright (Straight) is -90 degrees (-PI/2).
+          // We want deviation from -PI/2.
+          const handAngle = Math.atan2(dy, dx);
+          const neutralAngle = -Math.PI / 2;
           
-          const sensitivity = 0.8; // Lower sensitivity for smoother analog feel (Full lock at ~70 deg)
-          const deadzone = 0.05;
-          let steering = 0;
+          let diff = handAngle - neutralAngle;
           
-          if (Math.abs(angle) > deadzone) {
-              steering = -angle * sensitivity;
-          }
+          // Normalize to -PI to PI
+          if (diff > Math.PI) diff -= 2 * Math.PI;
+          if (diff < -Math.PI) diff += 2 * Math.PI;
           
-          // Clamp to -1 to 1
-          steering = Math.max(-1, Math.min(1, steering));
+          // Sensitivity for single hand
+          const oneHandSensitivity = 1.5;
+          steering = diff * oneHandSensitivity;
+          angle = diff; 
           
-          setSteering(steering);
-          
-          info += ` | Ang: ${angle.toFixed(2)} | Str: ${steering.toFixed(2)}`;
       } else {
-          setSteering(0);
-          info += " | Need 2 hands";
+          // No hands for steering
+          steering = 0;
       }
-
+      
+      // Clamp
+      const deadzone = 0.05;
+      if (Math.abs(steering) < deadzone) steering = 0;
+      steering = Math.max(-1, Math.min(1, steering));
+      
+      // Update Steering Store
+      setSteering(steering);
+      
+      info += ` | Str: ${steering.toFixed(2)}`;
+      
+      // Object Detection Info (Optional Display)
+      if (objectResult && objectResult.detections.length > 0) {
+          const det = objectResult.detections[0];
+          const cat = det.categories[0];
+          if (cat) info += ` | Obj: ${cat.categoryName}`;
+      }
+      
       return info;
   };
 
