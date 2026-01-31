@@ -28,8 +28,9 @@ export function FeedbackScreen() {
     // Run Analysis once
     if (!analyzedRef.current) {
         analyzedRef.current = true;
-        const path = getCoursePath(currentLesson);
-        calculateMissionResult(path);
+        // ✅ 修正: Car.tsxで実行済みのため、ここでは削除（コメントアウト）
+        // const path = getCoursePath(currentLesson);
+        // calculateMissionResult(path);
 
         const state = useDrivingStore.getState();
         if (state.user){

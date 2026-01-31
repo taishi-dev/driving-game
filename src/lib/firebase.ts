@@ -1,9 +1,7 @@
-// lib/firebase.ts
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// Firebaseコンソールで取得した設定値を環境変数などで管理します
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -13,7 +11,11 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// シングルトンパターン：アプリが初期化済みなら既存のものを使い、なければ初期化
+// アプリの二重初期化を防ぐ
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+// AuthとFirestoreのインスタンスをエクスポート
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+export { auth, db };

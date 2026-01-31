@@ -1,6 +1,7 @@
 import { useDrivingStore } from "@/lib/store";
 import { GarageScene } from "../simulation/GarageScene";
 
+// ✅ 修正: レベル7を追加しました
 const LESSONS = [
   { id: "tutorial", label: "チュートリアル", sub: "BASIC", desc: "LEARN CONTROLS", icon: "TUTORIAL" },
   { id: "straight", label: "直線走行", sub: "LEVEL 01", desc: "BASIC CONTROL", icon: "START" },
@@ -9,7 +10,8 @@ const LESSONS = [
   { id: "s-curve", label: "S字カーブ", sub: "LEVEL 04", desc: "S-CURVE", icon: "S" },
   { id: "crank", label: "クランク", sub: "LEVEL 05", desc: "CRANK", icon: "C" },
   { id: "traffic-light", label: "信号", sub: "LEVEL 06", desc: "TRAFFIC LIGHT PRACTICE", icon: "TL" },
-
+  { id: "crosswalk", label: "横断歩道", sub: "LEVEL 07", desc: "STOP FOR PEDESTRIANS", icon: "CW" },
+  { id: "railroad-crossing", label: "踏切", sub: "LEVEL 08", desc: "RAILROAD CROSSING", icon: "RC" },
   { id: "free-mode", label: "フリーモード", sub: "FREE", desc: "EXPLORE THE CITY", icon: "FREE" },
 ] as const;
 
@@ -64,7 +66,7 @@ export function HomeScreen() {
             <span className="text-sm text-blue-400 font-mono mb-1 animate-pulse">/ ALL SYSTEMS READY</span>
           </div>
 
-          <div className="flex items-end gap-6 overflow-x-auto pb-4 pt-2 snap-x">
+          <div className="flex items-end gap-6 overflow-x-auto pb-4 pt-2 snap-x scrollbar-hide">
             {LESSONS.map((lesson, index) => (
               <button
                 key={lesson.id}
