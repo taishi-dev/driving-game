@@ -12,8 +12,9 @@ import { RailroadCrossing } from "./objects/RailroadCrossing";
 export function TrafficSystem() {
   const currentLesson = useDrivingStore(state => state.currentLesson);
 
-  // ▼▼▼ ここで表示するかどうかの判定を作る ▼▼▼
-  
+  // 信号機を表示する条件: レベル6(traffic-light) または フリーモード
+  const showTrafficLight = currentLesson === "traffic-light" || currentLesson === "free-mode";
+
   // 横断歩道を表示する条件: レベル7(crosswalk) または フリーモード
   const showCrosswalk = currentLesson === "crosswalk" || currentLesson === "free-mode";
 
@@ -22,25 +23,21 @@ export function TrafficSystem() {
 
   return (
     <group>
-      {/* === 交差点エリア === */}
-      {/* 信号機はとりあえず常時表示（必要ならここも条件分岐できます） */}
-      <TrafficLight position={[-6, 0, -30]} rotation={[0, Math.PI, 0]} />
-      <TrafficLight position={[6, 0, -30]} rotation={[0, 0, 0]} />
       
-      {/* ▼▼▼ 条件付きで表示 (showCrosswalkが true の時だけ表示) ▼▼▼ */}
-      {showCrosswalk && (
+      {showTrafficLight && (
+        <>
+          <TrafficLight position={[-6, 0, -30]} rotation={[0, Math.PI, 0]} />
+          <TrafficLight position={[6, 0, -30]} rotation={[0, 0, 0]} />
+        </>
+      )}
+            {showCrosswalk && (
         <>
           <Crosswalk position={[0, 0, -30]} width={12} length={3} />
           <Pedestrian startPos={[-8, 0, -30]} endPos={[8, 0, -30]} scale={2.5} speed={0.02} />
+          <Bicycle position={[-7, 1, -30]} rotation={[0, 0.5, 0]} scale={2.0} color="#ef4444" />
         </>
       )}
-
-      {/* === 路上のオブジェクト === */}
-      {/* 自転車（これは常時表示でOKならそのまま） */}
-      <Bicycle position={[-5, 0, -15]} rotation={[0, 0.5, 0]} scale={0.4} color="#ef4444" />
-
-      {/* ▼▼▼ 条件付きで表示 (showRailroadが true の時だけ表示) ▼▼▼ */}
-      {showRailroad && (
+            {showRailroad && (
         <RailroadCrossing position={[-7, 2, -60]} rotation={[0, 0.5, 0]} scale={6.0} />
       )}
     </group>
