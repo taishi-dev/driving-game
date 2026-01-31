@@ -42,7 +42,7 @@ export function Pedestrian({
   });
 
   const Model = () => {
-    const { scene } = useGLTF("/models/person.glb");
+    const { scene } = useGLTF("/models/women.glb");
     const clonedScene = useMemo(() => scene.clone(), [scene]);
     // ここでモデル自体の倍率調整も可能ですが、今回は親グループで制御します
     return <primitive object={clonedScene} scale={0.5} />; 
