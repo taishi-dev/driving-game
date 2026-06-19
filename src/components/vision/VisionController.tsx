@@ -1,15 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { FilesetResolver, FaceLandmarker, HandLandmarker, DrawingUtils, HandLandmarkerResult, PoseLandmarker, PoseLandmarkerResult, ObjectDetector, ObjectDetectorResult } from "@mediapipe/tasks-vision";
 import { useDrivingStore } from "@/lib/store";
 import { processPedalRecognition, checkFootStability } from "@/lib/footPedalRecognition";
 import { PoseLandmarkFilterManager } from "@/lib/oneEuroFilter";
 
+// How often (ms) the per-frame status string is allowed to be written to the
+// store. The detection loop runs at display rate; the human-readable panel only
+// needs to refresh a few times per second.
+const DEBUG_THROTTLE_MS = 150;
+
 export default function VisionController({ isPaused }: { isPaused: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  
+
+  // User-facing camera error (denied / unavailable / unsupported). When set, an
+  // overlay explains the problem and offers a retry + keyboard-control fallback.
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
   // Store actions
   const setHeadRotation = useDrivingStore((state) => state.setHeadRotation);
   const setSteering = useDrivingStore((state) => state.setSteering);
@@ -19,7 +28,6 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
   const setFootCalibration = useDrivingStore((state) => state.setFootCalibration);
   const updatePedalState = useDrivingStore((state) => state.updatePedalState);
   const setCalibrationStage = useDrivingStore((state) => state.setCalibrationStage);
-  const setScreen = useDrivingStore((state) => state.setScreen);
   const setGaze = useDrivingStore((state) => state.setGaze); // Gaze action
   const gear = useDrivingStore((state) => state.gear);
   const setGear = useDrivingStore((state) => state.setGear);
@@ -33,6 +41,12 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
   const lastVideoTimeRef = useRef<number>(-1);
   const requestRef = useRef<number>(0);
   const lastFrameTimeRef = useRef<number>(0);
+
+  // Reused DrawingUtils instance (created once) instead of allocating a new one
+  // every frame. Tied to the canvas 2D context, which is stable.
+  const drawingUtilsRef = useRef<DrawingUtils | null>(null);
+  // Throttle for per-frame status (debug) string writes to the store.
+  const lastDebugTimeRef = useRef<number>(0);
 
   // 最後の描画時間lastProcessingTimeRefを使用して、経過時間がTHROTTLE_MSいないなら、
   // MediaPipeに寄る座標の取得や描画を行わない実装であると、秒数当たりに取得できるデータ点が少なく、動きがスムーズにならないため一時的に廃止
@@ -56,6 +70,15 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
       setDebugInfo("Paused");
     }
   }, [isPaused, setSteering, setSpeed, setDebugInfo]);
+
+  // Per-frame status updates go through this so the React panel re-renders a few
+  // times per second instead of on every detection frame.
+  const setDebugInfoThrottled = useCallback((info: string) => {
+    const now = performance.now();
+    if (now - lastDebugTimeRef.current < DEBUG_THROTTLE_MS) return;
+    lastDebugTimeRef.current = now;
+    setDebugInfo(info);
+  }, [setDebugInfo]);
 
   // ■ カメラを停止する関数（物理的に切断）
   const stopCamera = useCallback(() => {
@@ -94,23 +117,42 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
             return;
         }
 
+        // Browser without camera API support (e.g. insecure context / old browser).
+        if (!navigator.mediaDevices?.getUserMedia) {
+            setCameraError("このブラウザではカメラを利用できません。キーボードで運転できます（←→で操作）。");
+            setDebugInfo("Camera not supported");
+            return;
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
         streamRef.current = stream;
+        setCameraError(null);
 
         if (videoRef.current) {
             videoRef.current.srcObject = stream;
-            videoRef.current.addEventListener("loadeddata", predictWebcam);
+            // Use a single onloadeddata handler. (Previously the loop was also
+            // registered via addEventListener, which started a second
+            // requestAnimationFrame loop and doubled the per-frame work.)
             videoRef.current.onloadeddata = () => {
                 videoRef.current?.play();
+                // Cancel any in-flight loop before starting a fresh one so loops
+                // never stack across start/stop cycles.
+                if (requestRef.current) cancelAnimationFrame(requestRef.current);
                 predictWebcam();
             };
         }
         setDebugInfo("Camera Started");
     } catch (e) {
         console.error("Camera Error:", e);
+        const denied = e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "PermissionDeniedError");
+        setCameraError(
+            denied
+                ? "カメラへのアクセスが拒否されました。ブラウザの設定で許可するか、キーボード（←→で操作）で運転してください。"
+                : "カメラを起動できませんでした。キーボード（←→で操作）でも運転できます。"
+        );
         setDebugInfo("Camera Error: " + String(e));
     }
-  }, [setDebugInfo]); // predictWebcamは依存に入れない（ループするため）
+  }, [setDebugInfo, setCameraError]); // predictWebcamは依存に入れない（ループするため）
 
   // ■ 初期化（MediaPipeのロード）
   useEffect(() => {
@@ -165,19 +207,25 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
           runningMode: "VIDEO"
         });
 
-        setDebugInfo("Models loaded. Starting Camera...");
-        setVisionReady(true);
-
         if (isMounted) {
             faceLandmarkerRef.current = faceLandmarker;
             handLandmarkerRef.current = handLandmarker;
             setVisionReady(true);
             setDebugInfo("Models Ready.");
-            
+
             // 初回ロード完了時に、ポーズしていなければカメラ起動
-            if (!isPaused) {
+            if (!isPausedRef.current) {
                 startCamera();
             }
+        } else {
+            // Unmounted while models were still loading (e.g. React StrictMode's
+            // double mount in development) — release everything we created.
+            faceLandmarker.close();
+            handLandmarker.close();
+            poseLandmarkerRef.current?.close();
+            objectDetectorRef.current?.close();
+            poseLandmarkerRef.current = null;
+            objectDetectorRef.current = null;
         }
       } catch (error) {
         console.error(error);
@@ -188,6 +236,16 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
     return () => {
         isMounted = false;
         stopCamera(); // アンマウント時は確実に停止
+        // Release MediaPipe model resources to avoid leaking GPU/WASM contexts.
+        faceLandmarkerRef.current?.close();
+        handLandmarkerRef.current?.close();
+        poseLandmarkerRef.current?.close();
+        objectDetectorRef.current?.close();
+        faceLandmarkerRef.current = null;
+        handLandmarkerRef.current = null;
+        poseLandmarkerRef.current = null;
+        objectDetectorRef.current = null;
+        drawingUtilsRef.current = null;
     };
   }, []); // 初回のみ実行
 
@@ -244,7 +302,11 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
         lastVideoTimeRef.current = video.currentTime;
 
         try {
-            const drawingUtils = ctx ? new DrawingUtils(ctx) : null;
+            // Reuse a single DrawingUtils instead of allocating one every frame.
+            if (ctx && !drawingUtilsRef.current) {
+                drawingUtilsRef.current = new DrawingUtils(ctx);
+            }
+            const drawingUtils = drawingUtilsRef.current;
 
             // Face Detection
             const faceResult = faceLandmarkerRef.current.detectForVideo(video, startTimeMs);
@@ -552,19 +614,15 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
           if (stabilityCheck.isStable) {
             // 5秒間安定していた場合、キャリブレーション完了
             setCalibrationStage('calibrated');
-            setDebugInfo(`${handInfo} | 足元のキャリブレーション完了！`);
-            console.log('Foot calibration completed after 5 seconds:', stabilityCheck.calibration);
-
-            // 画面が'driving'でない場合は自動的に遷移
-            const screen = useDrivingStore.getState().screen;
-            if (screen !== 'driving') {
-              setScreen('driving');
-              console.log('Auto-starting driving mode');
-            }
+            setDebugInfoThrottled(`${handInfo} | 足元のキャリブレーション完了！`);
+            // NOTE: do NOT auto-navigate to the driving screen here. This callback
+            // also runs during the tutorial (which mounts VisionController), and
+            // forcing setScreen('driving') yanked the user out of the tutorial
+            // mid-step. Screen transitions are owned by the UI, not this loop.
           } else {
             // 安定化中 - 進捗を表示
             const progressPercent = (stabilityCheck.progress * 100).toFixed(0);
-            setDebugInfo(`${handInfo} | 足を固定してください... ${progressPercent}%`);
+            setDebugInfoThrottled(`${handInfo} | 足を固定してください... ${progressPercent}%`);
 
             // 初回の場合、キャリブレーション段階を'waiting_for_brake'に設定
             if (currentCalibrationStage === 'idle') {
@@ -572,10 +630,10 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
             }
           }
         } else {
-          setDebugInfo(`${handInfo} | 足が検出できません。椅子に座ってください`);
+          setDebugInfoThrottled(`${handInfo} | 足が検出できません。椅子に座ってください`);
         }
       } else {
-        setDebugInfo(`${handInfo} | 足が検出できません`);
+        setDebugInfoThrottled(`${handInfo} | 足が検出できません`);
       }
     } else if (currentCalibrationStage === 'calibrated' && currentFootCalibration && currentFootCalibration.isCalibrated) {
       // キャリブレーション完了 - ペダル認識を実行
@@ -598,7 +656,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
 
           // デバッグ情報を更新
           const { throttle, brake, isAccelPressed, isBrakePressed } = recognitionResult.pedalState;
-          setDebugInfo(
+          setDebugInfoThrottled(
             `${handInfo} | Accel: ${isAccelPressed ? 'ON' : 'OFF'} (${(throttle * 100).toFixed(0)}%) | ` +
             `Brake: ${isBrakePressed ? 'ON' : 'OFF'} (${(brake * 100).toFixed(0)}%)`
           );
@@ -612,13 +670,13 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
             brakePressDuration: 0,
             brakePressCount: 0,
           });
-          setDebugInfo(`${handInfo} | キャリブレーション完了`);
+          setDebugInfoThrottled(`${handInfo} | キャリブレーション完了`);
         }
       } else {
-        setDebugInfo(`${handInfo} | 足が検出できません`);
+        setDebugInfoThrottled(`${handInfo} | 足が検出できません`);
       }
     } else {
-      setDebugInfo(handInfo);
+      setDebugInfoThrottled(handInfo);
     }
   };
 
@@ -691,7 +749,40 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
     }}>
         {/* videoタグは非表示で裏で動かす */}
         <video ref={videoRef} style={{ display: 'none' }} autoPlay playsInline muted></video>
-        
+
+        {/* カメラ起動失敗時のユーザー向け案内（再試行 + キーボード操作の代替） */}
+        {cameraError && (
+          <div style={{
+            backgroundColor: 'rgba(127, 29, 29, 0.95)',
+            border: '2px solid #f87171',
+            color: '#fff',
+            padding: '14px 16px',
+            borderRadius: '10px',
+            width: '280px',
+            marginBottom: '8px',
+            boxSizing: 'border-box',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            fontSize: '13px',
+            lineHeight: 1.5,
+          }}>
+            <div style={{ fontWeight: 'bold', marginBottom: '6px', fontSize: '14px' }}>📷 カメラを利用できません</div>
+            <div style={{ marginBottom: '10px' }}>{cameraError}</div>
+            <button
+              onClick={() => { setCameraError(null); startCamera(); }}
+              style={{
+                padding: '6px 14px',
+                fontSize: '13px',
+                fontWeight: 'bold',
+                color: '#7f1d1d',
+                backgroundColor: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+              }}
+            >再試行</button>
+          </div>
+        )}
+
         <div style={{
           position: "relative",
           width: "240px",

@@ -6,35 +6,19 @@ import { Vector3, Group } from "three";
 import { useDrivingStore, ReplayFrame } from "@/lib/store";
 import { checkMissionGoal } from "@/components/simulation/MissionController";
 import { getCoursePath } from "@/lib/course";
-import { useGLTF } from "@react-three/drei";
 
 export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "ghost" }) {
   const groupRef = useRef<Group>(null);
   const ghostRef = useRef<Group>(null);
   const { camera } = useThree();
 
-  const {
-    steeringAngle: steeringInput,
-    throttle: throttleInput,
-    brake: brakeInput,
-    headRotation,
-    setSpeed,
-    isPaused,
-    isReplaying,
-    replayData,
-    replayViewMode,
-    currentLesson,
-    setMissionState,
-    setScreen,
-    gear,
-    setGear,
-    // ✅ 追加: Storeから動的リストを取得
-    activeCheckpoints,
-    // ✅ 追加: クリア報告用とリザルト計算用
-    addClearedCheckpoint,
-    resetClearedCheckpoints,
-    calculateMissionResult
-  } = useDrivingStore();
+  // Reactive subscriptions: ONLY values actually read during render. Everything
+  // else (high-frequency inputs and actions) is read via useDrivingStore.getState()
+  // inside useFrame so that per-frame store writes never re-render this component
+  // (Car is the heaviest subtree in the scene).
+  const currentLesson = useDrivingStore((s) => s.currentLesson);
+  const isReplaying = useDrivingStore((s) => s.isReplaying);
+  const replayViewMode = useDrivingStore((s) => s.replayViewMode);
 
   const isFreeMode = currentLesson === "free-mode";
 
@@ -48,6 +32,10 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
 
   // Recording state
   const recordedFrames = useRef<ReplayFrame[]>([]);
+
+  // Last speed value pushed to the store (rounded km/h). Used to avoid writing
+  // setSpeed on every frame — we only write when the displayed value changes.
+  const lastDisplaySpeed = useRef(-1);
 
   // Replay state
   const replayIndex = useRef(0);
@@ -66,14 +54,10 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     return Number.isFinite(len) && len > 0.0001 ? len : 0;
   }, [coursePath]);
 
-  // Car Model
-  const { scene } = useGLTF("/models/car.gltf");
-  const carScene = useMemo(() => scene.clone(), [scene]);
-
   // Reset on lesson change
   useEffect(() => {
     clearedCheckpoints.current.clear();
-    resetClearedCheckpoints(); // ✅ Store側のクリアリストもリセット
+    useDrivingStore.getState().resetClearedCheckpoints(); // ✅ Store側のクリアリストもリセット
     safetyCheckState.current = { lookedLeft: false, lookedRight: false };
 
     speed.current = 0;
@@ -92,9 +76,30 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     }
   }, [currentLesson]);
 
-  useFrame((state, delta) => {
+  useFrame(() => {
     if (!groupRef.current) return;
-    if (isPaused) return;
+
+    // Read the latest store state directly (no React subscription) so that
+    // per-frame input writes don't re-render Car.
+    const store = useDrivingStore.getState();
+    if (store.isPaused) return;
+
+    const {
+      steeringAngle: steeringInput,
+      throttle: throttleInput,
+      brake: brakeInput,
+      headRotation,
+      isReplaying,
+      replayData,
+      replayViewMode,
+      gear,
+      activeCheckpoints,
+      setSpeed,
+      setMissionState,
+      setScreen,
+      addClearedCheckpoint,
+      calculateMissionResult,
+    } = store;
 
     // Ensure camera is upright
     camera.up.set(0, 1, 0);
@@ -171,7 +176,14 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
         if (speed.current < creepSpeed) speed.current = creepSpeed;
       }
     }
-    setSpeed(Math.abs(speed.current) * 100);
+    // Telemetry: only write to the store when the displayed (rounded) km/h
+    // actually changes, instead of every frame. The speedometer reads a rounded
+    // value anyway, so this avoids waking up speed subscribers on every frame.
+    const displaySpeed = Math.round(Math.abs(speed.current) * 100);
+    if (displaySpeed !== lastDisplaySpeed.current) {
+      lastDisplaySpeed.current = displaySpeed;
+      setSpeed(displaySpeed);
+    }
 
     // Gear Direction Logic
     const direction = gear === "R" ? -1 : 1;
@@ -354,7 +366,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
             <ExternalCarVisuals />
           </group>
         )}
-        {showDriverView && <CarVisuals steeringInput={steeringInput} />}
+        {showDriverView && <CarVisuals />}
         
         
         {/* Rearview Mirror Removed as per user request */}
@@ -372,7 +384,11 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   );
 }
 
-export function CarVisuals({ steeringInput }: { steeringInput: number }) {
+export function CarVisuals() {
+  // Subscribe to steering here (a small leaf component) rather than in Car, so
+  // that high-frequency steering changes only re-render the steering wheel mesh.
+  const steeringInput = useDrivingStore((s) => s.steeringAngle);
+
   return (
     <group rotation={[0, Math.PI, 0]}>
       <mesh position={[0, 1.1, -0.25]} rotation={[0.35, 0, 0]}>
