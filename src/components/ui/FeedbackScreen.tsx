@@ -44,6 +44,7 @@ export function FeedbackScreen() {
   }, []);
 
   const saveResultToFirestore = async ( state: any) => {
+    if (!db) return; // guest-only mode: nothing to persist to
     try {
         const kaizenLogs = state.feedbackLogs.filter((l: any) => l.type === 'KAIZEN');
         const kaizenPenalty = kaizenLogs.reduce((acc: number, l: any) => acc + (l.meta?.penalty ?? 5), 0);
