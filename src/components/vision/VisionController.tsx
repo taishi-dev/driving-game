@@ -58,6 +58,9 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
     new PoseLandmarkFilterManager(1.0, 0.004, 1.5)
   );
   const streamRef = useRef<MediaStream | null>(null); // ストリーム管理用
+  // Ref-indirection so startCamera's useCallback can invoke the loop without
+  // capturing predictWebcam as a dependency (the function is declared below).
+  const predictWebcamRef = useRef<() => void>(() => {});
 
   const isPausedRef = useRef(isPaused);
   useEffect(() => {
@@ -137,7 +140,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
                 // Cancel any in-flight loop before starting a fresh one so loops
                 // never stack across start/stop cycles.
                 if (requestRef.current) cancelAnimationFrame(requestRef.current);
-                predictWebcam();
+                predictWebcamRef.current();
             };
         }
         setDebugInfo("Camera Started");
@@ -372,6 +375,9 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
     // 次のフレームを要求
     requestRef.current = requestAnimationFrame(predictWebcam);
   };
+  // Keep the ref current so startCamera (declared above) can call this without
+  // capturing it as a dependency. Assigning during render is safe for refs.
+  predictWebcamRef.current = predictWebcam;
 
 
   const processSteeringAndGear = (handResult: HandLandmarkerResult, objectResult: ObjectDetectorResult | null) => {
@@ -407,7 +413,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
       
       // --- Steering Logic ---
       // Use hands that are NOT the gear hand.
-      let steeringHands = [];
+      const steeringHands = [];
       for (let i = 0; i < hands; i++) {
           if (i !== gearHandIndex) {
               steeringHands.push(handResult.landmarks[i]);
