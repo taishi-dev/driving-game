@@ -18,33 +18,24 @@ function Confetti() {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   
   // Random initial positions and velocities
-  const [positions, velocities, colors] = useMemo(() => {
+  const [positions, velocities] = useMemo(() => {
     const pos = new Float32Array(count * 3);
     const vel = new Float32Array(count * 3);
-    const col = new Float32Array(count * 3);
-    const colorPalette = [
-        new THREE.Color("#ff0000"),
-        new THREE.Color("#00ff00"),
-        new THREE.Color("#0000ff"),
-        new THREE.Color("#ffff00"),
-        new THREE.Color("#ff00ff"),
-        new THREE.Color("#00ffff"),
-    ];
 
     for (let i = 0; i < count; i++) {
       // Start high up above the car (roughly 0,0,0 as goal is near)
       // Goal position depends on lesson but let's just spawn around player or goal?
       // For simplicity, spawn in a volume around 0,10,0 to 0,20,-100 covering most goals
-      // Better: Spawn "At Goal Marker"? 
+      // Better: Spawn "At Goal Marker"?
       // Let's spawn relative to local view, or just world space if we knew where goal is.
       // Since car stops at goal, let's visual relative to car?
       // But Confetti is world space.
       // Let's just make a "Fountain" effect that plays once.
-      
+
       const x = (Math.random() - 0.5) * 20;
-      const y = 5 + Math.random() * 10; 
+      const y = 5 + Math.random() * 10;
       const z = (Math.random() - 0.5) * 20;
-      
+
       pos[i * 3] = x;
       pos[i * 3 + 1] = y;
       pos[i * 3 + 2] = z;
@@ -52,13 +43,8 @@ function Confetti() {
       vel[i * 3] = (Math.random() - 0.5) * 0.2;
       vel[i * 3 + 1] = -0.05 - Math.random() * 0.1; // Falling
       vel[i * 3 + 2] = (Math.random() - 0.5) * 0.2;
-
-      const color = colorPalette[Math.floor(Math.random() * colorPalette.length)];
-      col[i * 3] = color.r;
-      col[i * 3 + 1] = color.g;
-      col[i * 3 + 2] = color.b;
     }
-    return [pos, vel, col];
+    return [pos, vel];
   }, []);
 
   const dummy = new THREE.Object3D();

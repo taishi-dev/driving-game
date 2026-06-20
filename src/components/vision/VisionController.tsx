@@ -29,7 +29,6 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
   const updatePedalState = useDrivingStore((state) => state.updatePedalState);
   const setCalibrationStage = useDrivingStore((state) => state.setCalibrationStage);
   const setGaze = useDrivingStore((state) => state.setGaze); // Gaze action
-  const gear = useDrivingStore((state) => state.gear);
   const setGear = useDrivingStore((state) => state.setGear);
 
 

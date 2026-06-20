@@ -1,7 +1,6 @@
 import { useDrivingStore } from "@/lib/store";
 import { Scene } from "../simulation/Scene"; // Re-use scene for replay
 import { Suspense, useEffect, useRef } from "react";
-import { getCoursePath } from "@/lib/course";
 import {addDoc, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -16,7 +15,6 @@ export function FeedbackScreen() {
   const setReplayViewMode = useDrivingStore(state => state.setReplayViewMode); // New
   const feedbackLogs = useDrivingStore(state => state.feedbackLogs); // New
 
-  const calculateMissionResult = useDrivingStore(state => state.calculateMissionResult); // Action
   const analyzedRef = useRef(false);
 
   const addHistoryItem = useDrivingStore(state => state.addHistoryItem);

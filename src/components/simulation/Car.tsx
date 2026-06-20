@@ -211,34 +211,6 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
       // (Forward -> Left Turn, Backward -> Tail swings Left -> Car rotates Left/CCW).
       // So we do NOT invert rotation based on gear.
       
-      const turnDir = direction; // Use direction again to invert rotation when reversing for natural feel (steering left backs you into left spot)
-                                 // Wait, if I back up and turn Wheel Left:
-                                 // Front wheels point Left.
-                                 // Car describes a circle to its Left.
-                                 // The Rear moves Left? No, the Front swings Right? 
-                                 // If I turn Wheel Left (CCW), and move Forward: Car turns Left (CCW).
-                                 // If I turn Wheel Left (CCW), and move Backward: 
-                                 //  The car follows the same circle radius?
-                                 //  Yes. The arc is the same.
-                                 //  Moving Forward along arc -> Yaw changes +CCW.
-                                 //  Moving Backward along arc -> Yaw changes -CCW (CW)?
-                                 //  Let's simulate:
-                                 //  Car at (0,0), rot=0. Wheel Left.
-                                 //  Forward step: Pos becomes (-d, d), Rot becomes +delta.
-                                 //  Backward step: Pos becomes (+d, -d)? No.
-                                 //  Geometrically, backing up with Left Wheel means the Rear goes to the Left of the driver?
-                                 //  No, "Backing to the Left" usually means "Backing into a spot on the left".
-                                 //  To do that, you turn wheel... Left?
-                                 //  If I want the tail to go Left:
-                                 //  Steering Left -> Front wheels point Left.
-                                 //  Back up -> Front swings Right? Tail swings Left?
-                                 //  Actually, Steering Left means Center of Curvature is on the Left.
-                                 //  Backing up simply moves you along the circle CW?
-                                 //  Moving Forward CCW. Moving Backward CW.
-                                 //  So yes, Yaw Rotation direction IS inverted relative to Wheel angle.
-                                 //  Wheel + (Left): Speed + -> Rot +.
-                                 //  Wheel + (Left): Speed - (Back) -> Rot -.
-      
       groupRef.current.rotation.y -= boostedSteering * turnSpeed * (speed.current / maxSpeed) * 3.0 * direction;
     }
 

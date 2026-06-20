@@ -6,7 +6,7 @@ import { Dashboard } from '@/components/ui/Dashboard';
 import { HomeScreen } from '@/components/ui/HomeScreen';
 import { FeedbackScreen } from '@/components/ui/FeedbackScreen';
 import dynamic from 'next/dynamic';
-import { Suspense, Component, ReactNode, useState } from 'react';
+import { Suspense, Component, ReactNode } from 'react';
 import { useDrivingFeedback } from '@/hooks/useDrivingFeedback';
 import { AuthScreen } from '@/components/auth/AuthScreen';
 import { HistoryScreen } from '@/components/ui/HistoryScreen';

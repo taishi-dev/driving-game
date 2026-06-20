@@ -1,6 +1,6 @@
 "use client";
 
-import { Sky, Stars } from "@react-three/drei";
+import { Sky } from "@react-three/drei";
 import { useMemo } from "react";
 import * as THREE from "three";
 import { getCoursePath } from "@/lib/course";
