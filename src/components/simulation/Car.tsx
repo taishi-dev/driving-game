@@ -48,7 +48,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   const safetyCheckState = useRef({ lookedLeft: false, lookedRight: false });
 
   // Get Course Path for Ghost Car
-  const coursePath = useMemo(() => getCoursePath(currentLesson as any), [currentLesson]);
+  const coursePath = useMemo(() => getCoursePath(currentLesson), [currentLesson]);
   const courseLength = useMemo(() => {
     const len = coursePath.getLength?.() ?? 0;
     return Number.isFinite(len) && len > 0.0001 ? len : 0;

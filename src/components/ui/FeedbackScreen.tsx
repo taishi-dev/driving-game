@@ -1,4 +1,4 @@
-import { useDrivingStore } from "@/lib/store";
+import { useDrivingStore, DrivingState, FeedbackEvent } from "@/lib/store";
 import { Scene } from "../simulation/Scene"; // Re-use scene for replay
 import { Suspense, useEffect, useRef } from "react";
 import {addDoc, collection } from 'firebase/firestore';
@@ -41,10 +41,10 @@ export function FeedbackScreen() {
     };
   }, []);
 
-  const saveResultToFirestore = async ( state: any) => {
+  const saveResultToFirestore = async (state: DrivingState) => {
     try {
-        const kaizenLogs = state.feedbackLogs.filter((l: any) => l.type === 'KAIZEN');
-        const kaizenPenalty = kaizenLogs.reduce((acc: number, l: any) => acc + (l.meta?.penalty ?? 5), 0);
+        const kaizenLogs = state.feedbackLogs.filter((l: FeedbackEvent) => l.type === 'KAIZEN');
+        const kaizenPenalty = kaizenLogs.reduce((acc: number, l: FeedbackEvent) => acc + ((l.meta?.penalty as number) ?? 5), 0);
         const totalPenalty = kaizenPenalty + Math.floor(state.deviationPenalty || 0);
         const score = Math.max(0, 100 - totalPenalty);
 
@@ -55,7 +55,7 @@ export function FeedbackScreen() {
         const clearTime = `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
 
         const logData = {
-            userId: state.user.uid,
+            userId: state.user!.uid,
             timestamp: Date.now(),
             lesson: state.currentLesson,
             score: score,
@@ -229,7 +229,7 @@ export function FeedbackScreen() {
                     <div className="text-xs text-slate-500 mb-1">Score</div>
                     <div className="text-3xl font-bold text-blue-400">
                         {(() => {
-                            const kaizenPenalty = kaizenLogs.reduce((acc, l) => acc + (l.meta?.penalty ?? 5), 0);
+                            const kaizenPenalty = kaizenLogs.reduce((acc, l) => acc + ((l.meta?.penalty as number) ?? 5), 0);
                             const deviationPenalty = useDrivingStore.getState().deviationPenalty || 0;
                             const totalPenalty = kaizenPenalty + Math.floor(deviationPenalty);
                             return Math.max(0, 100 - totalPenalty);

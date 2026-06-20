@@ -6,7 +6,7 @@ import { Dashboard } from '@/components/ui/Dashboard';
 import { HomeScreen } from '@/components/ui/HomeScreen';
 import { FeedbackScreen } from '@/components/ui/FeedbackScreen';
 import dynamic from 'next/dynamic';
-import { Suspense, Component, ReactNode } from 'react';
+import { Suspense, Component, ReactNode, ErrorInfo } from 'react';
 import { useDrivingFeedback } from '@/hooks/useDrivingFeedback';
 import { AuthScreen } from '@/components/auth/AuthScreen';
 import { HistoryScreen } from '@/components/ui/HistoryScreen';
@@ -70,11 +70,11 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
     this.state = { hasError: false, error: '' };
   }
 
-  static getDerivedStateFromError(error: any) {
+  static getDerivedStateFromError(error: Error) {
     return { hasError: true, error: error.toString() };
   }
 
-  componentDidCatch(error: any, errorInfo: any) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
   }
 

@@ -85,7 +85,7 @@ export default function DebugPage() {
 function Label({ text, position = [0, 4, 0] }: { text: string, position?: [number, number, number] }) {
   return (
     <Text
-      position={position as any}
+      position={position as [number, number, number]}
       fontSize={0.5}
       color="white"
       anchorX="center"

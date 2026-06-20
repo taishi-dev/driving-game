@@ -94,7 +94,7 @@ export function Surroundings() {
 
         {/* Poles (Yellow/Black Tiger Pattern) */}
         {surroundings.map((item, i) => (
-             <group key={i} position={item.position as any}>
+             <group key={i} position={item.position as [number, number, number]}>
                  {/* Pole Base */}
                  <mesh position={[0, 1, 0]}>
                      <cylinderGeometry args={[0.05, 0.05, 2, 8]} />
