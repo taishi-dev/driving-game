@@ -251,7 +251,9 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
             if (Math.abs(speed.current) < 0.02) { // Speed check
               clearedCheckpoints.current.add(cp.id);
               addClearedCheckpoint(cp.id); // Report to the store
-              useDrivingStore.getState().setDrivingFeedback(`🛑 ${cp.label || 'Stop'} OK!`);
+              useDrivingStore.getState().setDrivingFeedback(
+                useDrivingStore.getState().language === 'en' ? '🛑 Stop OK!' : `🛑 ${cp.label || '一時停止'} OK!`
+              );
               setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000);
             }
           } 
@@ -267,7 +269,9 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
                if (safetyCheckState.current.lookedLeft && safetyCheckState.current.lookedRight) {
                   clearedCheckpoints.current.add(cp.id);
                   addClearedCheckpoint(cp.id); // Report to the store
-                  useDrivingStore.getState().setDrivingFeedback(`👀 ${cp.label || 'Left-Right Check'} OK!`);
+                  useDrivingStore.getState().setDrivingFeedback(
+                    useDrivingStore.getState().language === 'en' ? '👀 Left-Right Check OK!' : `👀 ${cp.label || '安全確認'} OK!`
+                  );
                   safetyCheckState.current = { lookedLeft: false, lookedRight: false };
                   setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000);
                }

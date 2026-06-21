@@ -351,11 +351,14 @@ export const useDrivingStore = create<DrivingState>((set) => ({
 
     set((s) => {
       const newLogs = [...s.feedbackLogs];
+      const lang = s.language; // KAIZEN messages are user-facing -> bilingual
       if (speedViolations > 30) {
         newLogs.push({
           time: Date.now(),
           type: "KAIZEN",
-          message: `速度超過がありました (最大制限: ${SPEED_LIMIT}km/h)`,
+          message: lang === 'en'
+            ? `Speeding detected (limit: ${SPEED_LIMIT} km/h)`
+            : `速度超過がありました (最大制限: ${SPEED_LIMIT}km/h)`,
         });
       }
 
@@ -363,17 +366,24 @@ export const useDrivingStore = create<DrivingState>((set) => ({
         newLogs.push({
           time: Date.now(),
           type: "KAIZEN",
-          message: `赤信号で停止しなかったチェックが ${signalViolations} 回ありました`,
+          message: lang === 'en'
+            ? `Failed to stop at a red light ${signalViolations} time(s)`
+            : `赤信号で停止しなかったチェックが ${signalViolations} 回ありました`,
           meta: { penalty: 10 * signalViolations, signalViolations },
         });
       }
 
       // ▼▼▼ Added: add logs for ignored checkpoints ▼▼▼
+      // English mode uses type-based wording; Japanese mode keeps the specific
+      // checkpoint label (which is the JA-mode display text).
       missedCheckpoints.forEach(cp => {
         let msg = "";
-        if (cp.type === 'stop') msg = `${cp.label || '一時停止'}を無視しました`;
-        else if (cp.type === 'safety-check') msg = `${cp.label || '安全確認'}を行いませんでした`;
-        
+        if (cp.type === 'stop') {
+          msg = lang === 'en' ? 'You ignored a required stop' : `${cp.label || '一時停止'}を無視しました`;
+        } else if (cp.type === 'safety-check') {
+          msg = lang === 'en' ? 'You skipped a safety check' : `${cp.label || '安全確認'}を行いませんでした`;
+        }
+
         if (msg) {
             newLogs.push({
             time: Date.now(),
