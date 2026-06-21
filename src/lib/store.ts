@@ -61,7 +61,7 @@ export type LessonId =
   | "crosswalk"
   | "railroad-crossing";
 
-export type ScreenId = "home" | "driving" | "feedback" | "auth" | "history" | "tutorial";
+export type ScreenId = "home" | "driving" | "feedback" | "auth" | "history" | "tutorial" | "language";
 export type MissionState = "idle" | "briefing" | "active" | "success" | "failed";
 
 export interface DrivingState {
@@ -167,7 +167,13 @@ export interface DrivingState {
 }
 
 export const useDrivingStore = create<DrivingState>((set) => ({
-  screen: "home",
+  // First launch (no saved language) starts on the language-selection page;
+  // returning visitors (saved choice) go straight to Home. ClientApp is
+  // client-only (ssr:false), so reading localStorage here is safe.
+  screen:
+    typeof window !== "undefined" && localStorage.getItem("language")
+      ? "home"
+      : "language",
   isPaused: false,
   language:
     typeof window !== "undefined" && localStorage.getItem("language") === "en"
