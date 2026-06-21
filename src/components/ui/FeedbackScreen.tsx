@@ -42,6 +42,7 @@ export function FeedbackScreen() {
   }, []);
 
   const saveResultToFirestore = async (state: DrivingState) => {
+    if (!db) return; // guest-only mode: nothing to persist to
     const user = state.user;
     if (!user) return;
     try {

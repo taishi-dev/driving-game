@@ -29,7 +29,7 @@ function UserProfileHeader() {
     if (screen === 'driving' || screen === 'feedback' || screen === 'auth' || screen === 'history') return null;
 
     const handleLogout = async () => {
-        await auth.signOut();
+        if (auth) await auth.signOut();
         setUser(null);
         setMissionHistory([]);
     }

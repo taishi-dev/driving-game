@@ -15,7 +15,7 @@ export function HistoryScreen() {
 
   useEffect(() => {
     async function fetchHistory() {
-      if (!user) {
+      if (!user || !db) {
         setLoading(false);
         return;
       }

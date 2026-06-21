@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useDrivingStore } from '@/lib/store';
-import { auth } from '@/lib/firebase';
+import { auth, isFirebaseConfigured } from '@/lib/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
 
@@ -20,7 +20,13 @@ export function AuthScreen() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    
+
+    if (!auth) {
+      setError('現在ログイン機能を利用できません。ゲストとしてご利用ください。');
+      setLoading(false);
+      return;
+    }
+
     try {
       let userCredential;
       if (isRegistering) {
@@ -51,6 +57,29 @@ export function AuthScreen() {
       setLoading(false);
     }
   };
+
+  // Fail soft: Firebase is not configured on this deployment, so sign-in cannot
+  // work. Don't render the form (it would call auth APIs with a null client);
+  // offer guest play instead.
+  if (!isFirebaseConfigured) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-slate-900 text-white">
+        <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 w-96 shadow-2xl text-center">
+          <h2 className="text-2xl font-bold mb-4 text-blue-400">🚗 ログイン</h2>
+          <p className="text-slate-300 mb-6 leading-relaxed">
+            現在サインイン機能を一時的にご利用いただけません。<br />
+            ゲストとして練習を続けられます。
+          </p>
+          <button
+            onClick={() => setScreen('home')}
+            className="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded font-bold transition-colors"
+          >
+            ゲストとして続ける
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-full flex items-center justify-center bg-slate-900 text-white">
