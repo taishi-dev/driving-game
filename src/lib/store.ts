@@ -121,6 +121,11 @@ export interface DrivingState {
   setCalibrationStage: (stage: "idle" | "waiting_for_brake" | "calibrated") => void;
   startCalibration: () => void;
 
+  // Pedal input mode: camera (foot tracking) or keyboard (W/S) fallback for
+  // when legs/feet can't be tracked reliably. See docs/superpowers/plans/0004.
+  pedalInputMode: "camera" | "keyboard";
+  setPedalInputMode: (mode: "camera" | "keyboard") => void;
+
   // Mission scoring/time
   missionStartTime: number;
   missionEndTime: number;
@@ -177,6 +182,10 @@ export const useDrivingStore = create<DrivingState>((set) => ({
     brakePressCount: 0,
   },
   calibrationStage: "idle",
+  pedalInputMode:
+    typeof window !== "undefined" && localStorage.getItem("pedalInputMode") === "keyboard"
+      ? "keyboard"
+      : "camera",
 
   speed: 0,
   gear: "D",
@@ -383,6 +392,10 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   updatePedalState: (pedalState) =>
     set({ pedalState, throttle: pedalState.throttle, brake: pedalState.brake }),
   setCalibrationStage: (stage) => set({ calibrationStage: stage }),
+  setPedalInputMode: (mode) => {
+    if (typeof window !== "undefined") localStorage.setItem("pedalInputMode", mode);
+    set({ pedalInputMode: mode });
+  },
   startCalibration: () =>
     set({
       calibrationStage: "waiting_for_brake",

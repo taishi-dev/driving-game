@@ -498,6 +498,12 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
   };
 
   const processPoseForPedals = (result: PoseLandmarkerResult, deltaTime: number, drawingUtils: DrawingUtils | null, handInfo: string) => {
+    // Keyboard pedal mode: do not let the camera touch the pedals, so the
+    // keyboard's setPedals() stays authoritative. Fallback for users whose
+    // legs/feet can't be tracked (distance, dark clothing). Steering still uses
+    // the camera. See docs/superpowers/plans/0004-keyboard-pedal-fallback.md.
+    if (useDrivingStore.getState().pedalInputMode === 'keyboard') return;
+
     // ポーズランドマークを描画
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
