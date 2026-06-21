@@ -86,7 +86,7 @@ function StopSign({ position, orientation = "z" }: { position: [number, number, 
                         <meshStandardMaterial color="#ef4444" />
                     </mesh>
                     <Text position={[0, 0, 0.06]} fontSize={0.3} color="white" rotation={[0,0,Math.PI]}>
-                        止まれ
+                        STOP
                     </Text>
                 </group>
             </group>

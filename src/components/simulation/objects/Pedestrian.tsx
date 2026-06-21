@@ -6,7 +6,7 @@ import { useRef, useMemo } from "react";
 import { Group } from "three";
 import { ModelErrorBoundary } from "./ModelErrorBoundary";
 
-// scale を受け取れるように追加
+// Added so it can accept a scale
 export function Pedestrian({ 
   startPos, 
   endPos, 
@@ -44,12 +44,12 @@ export function Pedestrian({
   const Model = () => {
     const { scene } = useGLTF("/models/women.glb");
     const clonedScene = useMemo(() => scene.clone(), [scene]);
-    // ここでモデル自体の倍率調整も可能ですが、今回は親グループで制御します
+    // The model's own scale could be adjusted here, but in this case we control it via the parent group
     return <primitive object={clonedScene} scale={0.5} />; 
   };
 
   return (
-    // ここで scale を適用
+    // Apply the scale here
     <group ref={groupRef} position={startPos} scale={scale}>
       <ModelErrorBoundary fallback={
         <mesh position={[0, 0.8, 0]}>

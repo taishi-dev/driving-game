@@ -38,7 +38,7 @@ export interface SignalStateLog {
   state: SignalState;
 }
 
-// ✅ 追加: チェックポイントの型定義 (他のファイルから参照されるため復元)
+// ✅ Added: checkpoint type definition (restored because other files reference it)
 export type MissionCheckpoint = {
   id: string;
   position: [number, number, number];
@@ -46,8 +46,8 @@ export type MissionCheckpoint = {
   type: 'stop' | 'speed-limit' | 'mirror' | 'safety-check';
   label?: string;
   targetYaw?: number; 
-  visual?: string; // traffic-light判定用
-  minDuration?: number; // 停止時間判定用
+  visual?: string; // used for traffic-light detection
+  minDuration?: number; // used to judge stop duration
 };
 
 export type LessonId =
@@ -61,13 +61,15 @@ export type LessonId =
   | "crosswalk"
   | "railroad-crossing";
 
-export type ScreenId = "home" | "driving" | "feedback" | "auth" | "history" | "tutorial";
+export type ScreenId = "home" | "driving" | "feedback" | "auth" | "history" | "tutorial" | "language";
 export type MissionState = "idle" | "briefing" | "active" | "success" | "failed";
 
 export interface DrivingState {
   // Screen Management
   screen: ScreenId;
   isPaused: boolean;
+  // UI language. Persisted to localStorage; default Japanese.
+  language: "ja" | "en";
 
   // Vehicle Control, Head Tracking, Foot Pedal, Telemetry, Replay System, System
   steeringAngle: number;
@@ -103,6 +105,7 @@ export interface DrivingState {
 
   // Actions
   setScreen: (screen: ScreenId) => void;
+  setLanguage: (lang: "ja" | "en") => void;
   setIsPaused: (paused: boolean) => void;
   setSteering: (val: number) => void;
   setPedals: (throttle: number, brake: number) => void;
@@ -120,6 +123,11 @@ export interface DrivingState {
   updatePedalState: (pedalState: PedalState) => void;
   setCalibrationStage: (stage: "idle" | "waiting_for_brake" | "calibrated") => void;
   startCalibration: () => void;
+
+  // Pedal input mode: camera (foot tracking) or keyboard (W/S) fallback for
+  // when legs/feet can't be tracked reliably. See docs/superpowers/plans/0004.
+  pedalInputMode: "camera" | "keyboard";
+  setPedalInputMode: (mode: "camera" | "keyboard") => void;
 
   // Mission scoring/time
   missionStartTime: number;
@@ -147,20 +155,30 @@ export interface DrivingState {
   setRecordedVideo: (url: string | null) => void;
   setGear: (gear: "P" | "D" | "R") => void;
 
-  // ✅ 追加: チェックポイント管理用の型定義
+  // ✅ Added: type definitions for checkpoint management
   activeCheckpoints: MissionCheckpoint[];
   registerCheckpoint: (cp: MissionCheckpoint) => void;
   unregisterCheckpoint: (id: string) => void;
 
-  // ✅ 追加: クリア済みチェックポイント管理
+  // ✅ Added: cleared-checkpoint management
   clearedCheckpointIds: string[];
   addClearedCheckpoint: (id: string) => void;
   resetClearedCheckpoints: () => void;
 }
 
 export const useDrivingStore = create<DrivingState>((set) => ({
-  screen: "home",
+  // First launch (no saved language) starts on the language-selection page;
+  // returning visitors (saved choice) go straight to Home. ClientApp is
+  // client-only (ssr:false), so reading localStorage here is safe.
+  screen:
+    typeof window !== "undefined" && localStorage.getItem("language")
+      ? "home"
+      : "language",
   isPaused: false,
+  language:
+    typeof window !== "undefined" && localStorage.getItem("language") === "en"
+      ? "en"
+      : "ja",
 
   steeringAngle: 0,
   throttle: 0,
@@ -177,6 +195,10 @@ export const useDrivingStore = create<DrivingState>((set) => ({
     brakePressCount: 0,
   },
   calibrationStage: "idle",
+  pedalInputMode:
+    typeof window !== "undefined" && localStorage.getItem("pedalInputMode") === "keyboard"
+      ? "keyboard"
+      : "camera",
 
   speed: 0,
   gear: "D",
@@ -205,6 +227,10 @@ export const useDrivingStore = create<DrivingState>((set) => ({
     })),
 
   setScreen: (screen) => set({ screen }),
+  setLanguage: (lang) => {
+    if (typeof window !== "undefined") localStorage.setItem("language", lang);
+    set({ language: lang });
+  },
   setIsPaused: (paused) => set({ isPaused: paused }),
   setSteering: (val) => set({ steeringAngle: val }),
   setPedals: (throttle, brake) => set({ throttle, brake }),
@@ -241,7 +267,7 @@ export const useDrivingStore = create<DrivingState>((set) => ({
     set((s) => ({ deviationPenalty: s.deviationPenalty + amount })),
 
   calculateMissionResult: (coursePath) => {
-    // free-mode は採点しない
+    // free-mode is not scored
     const st = useDrivingStore.getState();
     if (st.currentLesson === "free-mode") return;
 
@@ -322,20 +348,23 @@ export const useDrivingStore = create<DrivingState>((set) => ({
       console.error('Signal violation check failed', e);
     }
 
-    // ▼▼▼ 追加: 未クリアのチェックポイント判定 (動的登録されたもの) ▼▼▼
-    // activeCheckpoints にあるのに clearedCheckpointIds にないものを探す
+    // ▼▼▼ Added: detect uncleared checkpoints (dynamically registered ones) ▼▼▼
+    // Find entries that are in activeCheckpoints but not in clearedCheckpointIds
     const missedCheckpoints = st.activeCheckpoints.filter(
         cp => !st.clearedCheckpointIds.includes(cp.id)
     );
-    // ▲▲▲ 追加終わり ▲▲▲
+    // ▲▲▲ End of addition ▲▲▲
 
     set((s) => {
       const newLogs = [...s.feedbackLogs];
+      const lang = s.language; // KAIZEN messages are user-facing -> bilingual
       if (speedViolations > 30) {
         newLogs.push({
           time: Date.now(),
           type: "KAIZEN",
-          message: `速度超過がありました (最大制限: ${SPEED_LIMIT}km/h)`,
+          message: lang === 'en'
+            ? `Speeding detected (limit: ${SPEED_LIMIT} km/h)`
+            : `速度超過がありました (最大制限: ${SPEED_LIMIT}km/h)`,
         });
       }
 
@@ -343,17 +372,24 @@ export const useDrivingStore = create<DrivingState>((set) => ({
         newLogs.push({
           time: Date.now(),
           type: "KAIZEN",
-          message: `赤信号で停止しなかったチェックが ${signalViolations} 回ありました`,
+          message: lang === 'en'
+            ? `Failed to stop at a red light ${signalViolations} time(s)`
+            : `赤信号で停止しなかったチェックが ${signalViolations} 回ありました`,
           meta: { penalty: 10 * signalViolations, signalViolations },
         });
       }
 
-      // ▼▼▼ 追加: チェックポイント無視のログ追加 ▼▼▼
+      // ▼▼▼ Added: add logs for ignored checkpoints ▼▼▼
+      // English mode uses type-based wording; Japanese mode keeps the specific
+      // checkpoint label (which is the JA-mode display text).
       missedCheckpoints.forEach(cp => {
         let msg = "";
-        if (cp.type === 'stop') msg = `${cp.label || '一時停止'}を無視しました`;
-        else if (cp.type === 'safety-check') msg = `${cp.label || '安全確認'}を行いませんでした`;
-        
+        if (cp.type === 'stop') {
+          msg = lang === 'en' ? 'You ignored a required stop' : `${cp.label || '一時停止'}を無視しました`;
+        } else if (cp.type === 'safety-check') {
+          msg = lang === 'en' ? 'You skipped a safety check' : `${cp.label || '安全確認'}を行いませんでした`;
+        }
+
         if (msg) {
             newLogs.push({
             time: Date.now(),
@@ -362,9 +398,9 @@ export const useDrivingStore = create<DrivingState>((set) => ({
             });
         }
       });
-      // ▲▲▲ 追加終わり ▲▲▲
+      // ▲▲▲ End of addition ▲▲▲
 
-      // 未クリア数に応じたペナルティ加算 (例: 1つにつき20点)
+      // Add a penalty based on the number of uncleared checkpoints (e.g. 20 points each)
       const missedPenalty = missedCheckpoints.length * 20;
 
       return {
@@ -383,6 +419,10 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   updatePedalState: (pedalState) =>
     set({ pedalState, throttle: pedalState.throttle, brake: pedalState.brake }),
   setCalibrationStage: (stage) => set({ calibrationStage: stage }),
+  setPedalInputMode: (mode) => {
+    if (typeof window !== "undefined") localStorage.setItem("pedalInputMode", mode);
+    set({ pedalInputMode: mode });
+  },
   startCalibration: () =>
     set({
       calibrationStage: "waiting_for_brake",
@@ -407,7 +447,7 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   setRecordedVideo: (url) => set({ recordedVideo: url }),
   setGear: (gear) => set({ gear }),
 
-  // ✅ 追加: チェックポイント管理の実装 (ここが抜けていました)
+  // ✅ Added: checkpoint management implementation (this was missing)
   activeCheckpoints: [],
   registerCheckpoint: (cp) => set((state) => ({ 
     activeCheckpoints: [...state.activeCheckpoints, cp] 
@@ -416,7 +456,7 @@ export const useDrivingStore = create<DrivingState>((set) => ({
     activeCheckpoints: state.activeCheckpoints.filter((c) => c.id !== id) 
   })),
 
-  // ✅ 追加: クリア済み管理の実装
+  // ✅ Added: cleared-state management implementation
   clearedCheckpointIds: [],
   addClearedCheckpoint: (id) => set((state) => ({
     clearedCheckpointIds: [...state.clearedCheckpointIds, id]
