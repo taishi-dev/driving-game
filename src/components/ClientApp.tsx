@@ -12,6 +12,7 @@ import { AuthScreen } from '@/components/auth/AuthScreen';
 import { HistoryScreen } from '@/components/ui/HistoryScreen';
 import { auth } from '@/lib/firebase';
 import { TutorialScreen } from '@/components/ui/TutorialScreen';
+import { LanguageScreen } from '@/components/ui/LanguageScreen';
 
 const VisionController = dynamic(() => import('@/components/vision/VisionController'), { ssr: false });
 const Scene = dynamic(() => import('@/components/simulation/Scene').then(mod => mod.Scene), { ssr: false });
@@ -26,7 +27,7 @@ function UserProfileHeader() {
     // This could get in the way during driving or on the feedback screen, so we could limit it
     // to HOME only. For now it stays visible at all times; we could also make it less prominent
     // while driving, but per the requirements it is placed in the top-right corner.
-    if (screen === 'driving' || screen === 'feedback' || screen === 'auth' || screen === 'history') return null;
+    if (screen === 'driving' || screen === 'feedback' || screen === 'auth' || screen === 'history' || screen === 'language') return null;
 
     const handleLogout = async () => {
         if (auth) await auth.signOut();
@@ -261,6 +262,7 @@ export default function ClientApp() {
             </div>
           )}
 
+          {screen === 'language' && <LanguageScreen />}
           {screen === 'home' && <HomeScreen />}
           {screen === 'auth' && <AuthScreen />}
           {screen === 'history' && <HistoryScreen />}
