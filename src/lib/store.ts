@@ -423,3 +423,18 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   })),
   resetClearedCheckpoints: () => set({ clearedCheckpointIds: [] }),
 }));
+
+// E2E/debug hook: expose the store on `window.__drivingStore` only when the URL
+// carries `?e2e`. Opt-in, so normal sessions are unaffected, and it is NOT a DOM
+// node, so it never causes re-renders. Used by the Playwright tests to read
+// state (e.g. steeringAngle) that has no visible UI element.
+if (typeof window !== "undefined") {
+  try {
+    if (new URLSearchParams(window.location.search).has("e2e")) {
+      (window as unknown as { __drivingStore?: typeof useDrivingStore }).__drivingStore =
+        useDrivingStore;
+    }
+  } catch {
+    // location may be unavailable in some environments; ignore.
+  }
+}
