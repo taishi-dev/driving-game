@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId } from 'react';
 import { useDrivingStore, MissionCheckpoint } from '@/lib/store';
 
 // IDは自動生成するので、ID以外の情報を渡せばOKにします
@@ -8,8 +8,8 @@ export function useRegisterCheckpoint(checkpointData: CheckpointProps) {
   const register = useDrivingStore((state) => state.registerCheckpoint);
   const unregister = useDrivingStore((state) => state.unregisterCheckpoint);
   
-  // コンポーネントごとにユニークなIDを生成
-  const id = useRef(`cp_${Math.random().toString(36).substr(2, 9)}`).current;
+  // Stable unique ID per component instance (pure; replaces Math.random()).
+  const id = useId();
 
   useEffect(() => {
     // マウント時にチェックポイントを登録

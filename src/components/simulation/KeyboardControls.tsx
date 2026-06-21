@@ -3,44 +3,58 @@
 import { useEffect } from "react";
 import { useDrivingStore } from "@/lib/store";
 
+// Steering magnitude applied per key press. The car physics applies its own
+// curve/boost on top of this (see Car.tsx), so a partial value already gives a
+// firm turn without being twitchy.
+const STEER_AMOUNT = 0.6;
+
 export default function KeyboardControls() {
   const setPedals = useDrivingStore((state) => state.setPedals);
-  const setDebugInfo = useDrivingStore((state) => state.setDebugInfo);
+  const setSteering = useDrivingStore((state) => state.setSteering);
 
   useEffect(() => {
-    // Track key states
+    // Track key states (pedals + steering fallback).
     const keys = {
       ArrowUp: false,
       w: false,
       ArrowDown: false,
       s: false,
+      ArrowLeft: false,
+      a: false,
+      ArrowRight: false,
+      d: false,
+    };
+    type KeyName = keyof typeof keys;
+    const isTracked = (k: string): k is KeyName =>
+      Object.prototype.hasOwnProperty.call(keys, k);
+
+    const apply = () => {
+      // Pedals — instant 0/1 input is fine; Car physics ramps acceleration.
+      const gas = keys.ArrowUp || keys.w ? 1.0 : 0.0;
+      const brake = keys.ArrowDown || keys.s ? 1.0 : 0.0;
+      setPedals(gas, brake);
+
+      // Steering fallback for when the webcam is unavailable. When hands are
+      // detected, the vision loop overrides steering every frame; with no
+      // camera the vision loop is not running, so these keys take effect.
+      const left = keys.ArrowLeft || keys.a;
+      const right = keys.ArrowRight || keys.d;
+      const steer = right ? STEER_AMOUNT : left ? -STEER_AMOUNT : 0;
+      setSteering(steer);
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (Object.prototype.hasOwnProperty.call(keys, e.key)) {
-         // @ts-ignore
-         keys[e.key] = true;
-         updatePedals();
+      if (isTracked(e.key)) {
+        keys[e.key] = true;
+        apply();
       }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (Object.prototype.hasOwnProperty.call(keys, e.key)) {
-         // @ts-ignore
-         keys[e.key] = false;
-         updatePedals();
+      if (isTracked(e.key)) {
+        keys[e.key] = false;
+        apply();
       }
-    };
-
-    const updatePedals = () => {
-      // Simple boolean logic for now. 
-      // Future: Ramp up/down logic can be here or in Car physics.
-      // Car physics has acceleration, so instant 0/1 input is fine.
-      
-      const gas = (keys.ArrowUp || keys.w) ? 1.0 : 0.0;
-      const brake = (keys.ArrowDown || keys.s) ? 1.0 : 0.0;
-      
-      setPedals(gas, brake);
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -50,7 +64,7 @@ export default function KeyboardControls() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [setPedals]);
+  }, [setPedals, setSteering]);
 
   return null; // Logic only component
 }

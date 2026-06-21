@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useDrivingStore } from '@/lib/store';
 import { auth, isFirebaseConfigured } from '@/lib/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { FirebaseError } from 'firebase/app';
 
 export function AuthScreen() {
   const setScreen = useDrivingStore(state => state.setScreen);
@@ -37,16 +38,19 @@ export function AuthScreen() {
       setUser(userCredential.user);
       setScreen('home');
       
-    } catch (err: any) {
-      let errorMessage = err.message;
-      if (err.code === 'auth/email-already-in-use') {
-        errorMessage = 'このメールアドレスは既に登録されています';
-      } else if (err.code === 'auth/weak-password') {
-        errorMessage = 'パスワードは6文字以上にしてください';
-      } else if (err.code === 'auth/invalid-email') {
-        errorMessage = '無効なメールアドレスです';
-      } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        errorMessage = 'メールアドレスまたはパスワードが正しくありません';
+    } catch (err: unknown) {
+      let errorMessage = 'エラーが発生しました';
+      if (err instanceof FirebaseError) {
+        errorMessage = err.message;
+        if (err.code === 'auth/email-already-in-use') {
+          errorMessage = 'このメールアドレスは既に登録されています';
+        } else if (err.code === 'auth/weak-password') {
+          errorMessage = 'パスワードは6文字以上にしてください';
+        } else if (err.code === 'auth/invalid-email') {
+          errorMessage = '無効なメールアドレスです';
+        } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+          errorMessage = 'メールアドレスまたはパスワードが正しくありません';
+        }
       }
       setError(errorMessage);
     } finally {

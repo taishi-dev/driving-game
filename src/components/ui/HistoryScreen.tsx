@@ -41,9 +41,9 @@ export function HistoryScreen() {
         }));
         
         setMissionHistory(historyData);
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error("Error fetching history:", e);
-        if (e.code === 'failed-precondition') {
+        if (e instanceof Error && 'code' in e && e.code === 'failed-precondition') {
           setError('データベースの設定が必要です。管理者にお問い合わせください。');
         } else {
           setError('履歴の読み込みに失敗しました');

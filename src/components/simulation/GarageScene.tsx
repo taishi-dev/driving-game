@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Environment, ContactShadows, Float, Stars } from "@react-three/drei";
+import { ContactShadows } from "@react-three/drei";
 import { ExternalCarVisuals } from "./Car";
 import { Suspense, useRef } from "react";
 import { Group } from "three";
