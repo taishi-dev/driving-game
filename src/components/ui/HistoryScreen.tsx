@@ -10,7 +10,8 @@ export function HistoryScreen() {
   const user = useDrivingStore(state => state.user);
   const missionHistory = useDrivingStore(state => state.missionHistory);
   const setMissionHistory = useDrivingStore(state => state.setMissionHistory);
-  const [loading, setLoading] = useState(true);
+  // Spinner only when there is nothing cached to show; cached history renders instantly.
+  const [loading, setLoading] = useState(() => useDrivingStore.getState().missionHistory.length === 0);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -20,7 +21,9 @@ export function HistoryScreen() {
         return;
       }
 
-      setLoading(true);
+      // Background refresh: only show the spinner when nothing is cached yet.
+      const hadCache = useDrivingStore.getState().missionHistory.length > 0;
+      if (!hadCache) setLoading(true);
       setError('');
       try {
         const q = query(
@@ -43,10 +46,14 @@ export function HistoryScreen() {
         setMissionHistory(historyData);
       } catch (e: unknown) {
         console.error("Error fetching history:", e);
-        if (e instanceof Error && 'code' in e && e.code === 'failed-precondition') {
-          setError('データベースの設定が必要です。管理者にお問い合わせください。');
-        } else {
-          setError('履歴の読み込みに失敗しました');
+        // Keep showing cached history if a background refresh fails; only surface
+        // an error when there is nothing cached to display.
+        if (useDrivingStore.getState().missionHistory.length === 0) {
+          if (e instanceof Error && 'code' in e && e.code === 'failed-precondition') {
+            setError('データベースの設定が必要です。管理者にお問い合わせください。');
+          } else {
+            setError('履歴の読み込みに失敗しました');
+          }
         }
       } finally {
         setLoading(false);
