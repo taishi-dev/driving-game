@@ -47,17 +47,19 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
   // Throttle for per-frame status (debug) string writes to the store.
   const lastDebugTimeRef = useRef<number>(0);
 
-  // 最後の描画時間lastProcessingTimeRefを使用して、経過時間がTHROTTLE_MSいないなら、
-  // MediaPipeに寄る座標の取得や描画を行わない実装であると、秒数当たりに取得できるデータ点が少なく、動きがスムーズにならないため一時的に廃止
+  // Using lastProcessingTimeRef to skip MediaPipe coordinate retrieval and
+  // drawing while the elapsed time is under THROTTLE_MS resulted in too few
+  // data points per second, making the motion choppy, so it is temporarily
+  // disabled.
 
   // const lastProcessingTimeRef = useRef<number>(0);
   // const THROTTLE_MS = 100;
 
-  // 1ユーロフィルタマネージャー
+  // One Euro filter manager
   const poseFilterManagerRef = useRef<PoseLandmarkFilterManager>(
     new PoseLandmarkFilterManager(1.0, 0.004, 1.5)
   );
-  const streamRef = useRef<MediaStream | null>(null); // ストリーム管理用
+  const streamRef = useRef<MediaStream | null>(null); // Stream management
   // Ref-indirection so startCamera's useCallback can invoke the loop without
   // capturing predictWebcam as a dependency (the function is declared below).
   const predictWebcamRef = useRef<() => void>(() => {});
@@ -82,24 +84,24 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
     setDebugInfo(info);
   }, [setDebugInfo]);
 
-  // ■ カメラを停止する関数（物理的に切断）
+  // Function to stop the camera (physically disconnect)
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => {
-        track.stop(); // これがカメラのライトを消すコマンドだ
+        track.stop(); // This is the command that turns off the camera light
       });
       streamRef.current = null;
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-    // ループを止める
+    // Stop the loop
     if (requestRef.current) {
       cancelAnimationFrame(requestRef.current);
       requestRef.current = 0;
     }
-    
-    // 画面を漆黒に塗りつぶす
+
+    // Fill the screen with solid black
     if (canvasRef.current) {
         const ctx = canvasRef.current.getContext("2d");
         if (ctx) {
@@ -110,10 +112,10 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
     setDebugInfo("Camera Stopped (Paused)");
   }, [setDebugInfo]);
 
-  // ■ カメラを開始する関数
+  // Function to start the camera
   const startCamera = useCallback(async () => {
     try {
-        // AIモデルがまだ準備できていなければ待つ（本来はロード済みのはず）
+        // Wait if the AI models are not ready yet (they should normally be loaded)
         if (!faceLandmarkerRef.current || !handLandmarkerRef.current) {
             console.log("Waiting for models...");
             return;
@@ -121,7 +123,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
 
         // Browser without camera API support (e.g. insecure context / old browser).
         if (!navigator.mediaDevices?.getUserMedia) {
-            setCameraError("このブラウザではカメラを利用できません。キーボードで運転できます（←→で操作）。");
+            setCameraError("This browser does not support the camera. You can drive with the keyboard (use the arrow keys to steer).");
             setDebugInfo("Camera not supported");
             return;
         }
@@ -149,14 +151,14 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
         const denied = e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "PermissionDeniedError");
         setCameraError(
             denied
-                ? "カメラへのアクセスが拒否されました。ブラウザの設定で許可するか、キーボード（←→で操作）で運転してください。"
-                : "カメラを起動できませんでした。キーボード（←→で操作）でも運転できます。"
+                ? "Camera access was denied. Allow it in your browser settings, or drive with the keyboard (use the arrow keys to steer)."
+                : "The camera could not be started. You can also drive with the keyboard (use the arrow keys to steer)."
         );
         setDebugInfo("Camera Error: " + String(e));
     }
-  }, [setDebugInfo, setCameraError]); // predictWebcamは依存に入れない（ループするため）
+  }, [setDebugInfo, setCameraError]); // Do not add predictWebcam to the dependencies (it loops)
 
-  // ■ 初期化（MediaPipeのロード）
+  // Initialization (loading MediaPipe)
   useEffect(() => {
     let isMounted = true;
     async function setupMediaPipe() {
@@ -220,7 +222,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
             setVisionReady(true);
             setDebugInfo("Models Ready.");
 
-            // 初回ロード完了時に、ポーズしていなければカメラ起動
+            // On first load completion, start the camera if not paused
             if (!isPausedRef.current) {
                 startCamera();
             }
@@ -242,7 +244,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
 
     return () => {
         isMounted = false;
-        stopCamera(); // アンマウント時は確実に停止
+        stopCamera(); // Make sure to stop on unmount
         // Release MediaPipe model resources to avoid leaking GPU/WASM contexts.
         faceLandmarkerRef.current?.close();
         handLandmarkerRef.current?.close();
@@ -254,12 +256,12 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
         objectDetectorRef.current = null;
         drawingUtilsRef.current = null;
     };
-  }, []); // 初回のみ実行
+  }, []); // Run only once
 
-  // ■ isPaused の変化に合わせてカメラをON/OFFする
+  // Turn the camera on/off in response to changes in isPaused
   useEffect(() => {
-    
-    // MediaPipeのロードが終わっていない場合は無視（ロード完了時の処理に任せる）
+
+    // Ignore if MediaPipe has not finished loading (leave it to the load-completion handler)
     if (!faceLandmarkerRef.current) return;
 
     if (isPaused) {
@@ -271,9 +273,9 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
   
 
 
-  // ■ AI推論ループ
+  // AI inference loop
   const predictWebcam = () => {
-    // 停止指示が出ていたらループ終了
+    // End the loop if a stop has been requested
     if (!videoRef.current || !canvasRef.current || !streamRef.current) return;
 
     const video = videoRef.current;
@@ -285,7 +287,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
              canvas.width = video.videoWidth;
              canvas.height = video.videoHeight;
          }
-         // 映像を描画（フィルタなし、鮮明に）
+         // Draw the video (no filter, sharp)
          ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
     }
 
@@ -377,7 +379,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
         }
     }
 
-    // 次のフレームを要求
+    // Request the next frame
     requestRef.current = requestAnimationFrame(predictWebcam);
   };
   // Keep the ref current so startCamera (declared above) can call this without
@@ -504,11 +506,11 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
     // the camera. See docs/superpowers/plans/0004-keyboard-pedal-fallback.md.
     if (useDrivingStore.getState().pedalInputMode === 'keyboard') return;
 
-    // ポーズランドマークを描画
+    // Draw the pose landmarks
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
 
-    // ランドマークを1ユーロフィルタでフィルタリング
+    // Filter the landmarks with the One Euro filter
     let filteredLandmarks = result.landmarks && result.landmarks.length > 0 ? result.landmarks[0] : null;
     if (filteredLandmarks) {
       const timestamp = performance.now();
@@ -525,66 +527,66 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
           visibility: landmark.visibility,
         };
       });
-      // フィルタリング後のランドマークを使用
+      // Use the filtered landmarks
       filteredLandmarks = filtered;
     }
 
-    // storeから最新の状態を直接取得
+    // Read the latest state directly from the store
     const currentCalibrationStage: 'idle' | 'waiting_for_brake' | 'calibrated' = useDrivingStore.getState().calibrationStage;
     const currentPedalState = useDrivingStore.getState().pedalState;
     const currentFootCalibration = useDrivingStore.getState().footCalibration;
 
-    // 状態に応じた色を決定
-    let footColor = "#0000FF"; // デフォルト: 青色（通常時）
-    let landmarkColor = "#8080FF"; // デフォルト: 薄い青色
+    // Decide the color based on the state
+    let footColor = "#0000FF"; // Default: blue (normal)
+    let landmarkColor = "#8080FF"; // Default: light blue
 
     if (currentCalibrationStage === 'waiting_for_brake') {
-      // キャリブレーション中 - 進捗に応じて色の明るさを変える
+      // During calibration - vary the brightness of the color with the progress
       if (currentFootCalibration && currentFootCalibration.stabilityCheckStartTime) {
         const currentTime = performance.now();
         const elapsed = currentTime - currentFootCalibration.stabilityCheckStartTime;
         const progress = Math.min(elapsed / 5000, 1.0);
 
-        // 進捗に応じて緑色に近づく（0%: 黄色、100%: 緑色）
+        // Approach green as the progress increases (0%: yellow, 100%: green)
         const r = Math.floor(255 * (1 - progress));
         const g = 255;
         const b = 0;
         footColor = `rgb(${r}, ${g}, ${b})`;
         landmarkColor = `rgb(${Math.min(r + 80, 255)}, ${g}, ${Math.min(b + 80, 255)})`;
       } else {
-        footColor = "#FFFF00"; // 黄色（キャリブレーション開始前）
+        footColor = "#FFFF00"; // Yellow (before calibration starts)
         landmarkColor = "#FFFF80";
       }
     } else if (currentCalibrationStage === 'calibrated' && currentPedalState && currentFootCalibration?.isCalibrated) {
       if (currentPedalState.isBrakePressed) {
-        footColor = "#FF0000"; // 赤色（ブレーキON）
+        footColor = "#FF0000"; // Red (brake ON)
         landmarkColor = "#FF8080";
       } else if (currentPedalState.isAccelPressed) {
-        footColor = "#00FF00"; // 緑色（アクセルON）
+        footColor = "#00FF00"; // Green (accelerator ON)
         landmarkColor = "#80FF80";
       } else {
-        footColor = "#0000FF"; // 青色（待機中）
+        footColor = "#0000FF"; // Blue (idle)
         landmarkColor = "#8080FF";
       }
     } else {
-      // その他の状態（キャリブレーション前など）
-      footColor = "#888888"; // 灰色
+      // Other states (e.g. before calibration)
+      footColor = "#888888"; // Gray
       landmarkColor = "#AAAAAA";
     }
 
     if (filteredLandmarks && ctx && canvas) {
       const landmarks = filteredLandmarks;
 
-      // 右足のみを描画（腰、膝から下）
-      // 23(左腰), 24(右腰), 26(右膝), 28(右足首), 30(右踵), 32(右足先)
+      // Draw only the right leg (hip and below the knee)
+      // 23 (left hip), 24 (right hip), 26 (right knee), 28 (right ankle), 30 (right heel), 32 (right foot index)
       const rightFootConnections = [
-        [24, 26], // 右腰 → 右膝
-        [26, 28], // 右膝 → 右足首
-        [28, 30], // 右足首 → 右踵
-        [30, 32], // 右踵 → 右足先
+        [24, 26], // Right hip -> right knee
+        [26, 28], // Right knee -> right ankle
+        [28, 30], // Right ankle -> right heel
+        [30, 32], // Right heel -> right foot index
       ];
 
-      // 右足のランドマークを線で結ぶ（状態に応じた色）
+      // Connect the right-leg landmarks with lines (color based on the state)
       ctx.save();
       ctx.strokeStyle = footColor;
       ctx.lineWidth = 4;
@@ -602,8 +604,8 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
       }
       ctx.restore();
 
-      // 右足と腰のランドマークを描画（状態に応じた色）
-      const rightFootLandmarkIndices = [23, 24, 26, 28, 30, 32]; // 左腰、右腰、右膝、右足首、右踵、右足先
+      // Draw the right-leg and hip landmarks (color based on the state)
+      const rightFootLandmarkIndices = [23, 24, 26, 28, 30, 32]; // Left hip, right hip, right knee, right ankle, right heel, right foot index
       if (drawingUtils) {
         const footLandmarks = rightFootLandmarkIndices.map(i => landmarks[i]).filter(Boolean);
         if (footLandmarks.length > 0) {
@@ -613,9 +615,9 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
     }
 
 
-    // キャリブレーション段階に応じた処理
+    // Handling based on the calibration stage
     if (['idle', 'waiting_for_brake'].includes(currentCalibrationStage)) {
-      // キャリブレーション中 - 5秒間の足位置安定性をチェック
+      // During calibration - check foot-position stability over 5 seconds
       if (filteredLandmarks) {
         const currentTime = performance.now();
         const stabilityCheck = checkFootStability(
@@ -628,33 +630,33 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
           setFootCalibration(stabilityCheck.calibration);
 
           if (stabilityCheck.isStable) {
-            // 5秒間安定していた場合、キャリブレーション完了
+            // Calibration is complete if the foot stayed stable for 5 seconds
             setCalibrationStage('calibrated');
-            setDebugInfoThrottled(`${handInfo} | 足元のキャリブレーション完了！`);
+            setDebugInfoThrottled(`${handInfo} | Foot calibration complete!`);
             // NOTE: do NOT auto-navigate to the driving screen here. This callback
             // also runs during the tutorial (which mounts VisionController), and
             // forcing setScreen('driving') yanked the user out of the tutorial
             // mid-step. Screen transitions are owned by the UI, not this loop.
           } else {
-            // 安定化中 - 進捗を表示
+            // Stabilizing - show the progress
             const progressPercent = (stabilityCheck.progress * 100).toFixed(0);
-            setDebugInfoThrottled(`${handInfo} | 足を固定してください... ${progressPercent}%`);
+            setDebugInfoThrottled(`${handInfo} | Please keep your foot still... ${progressPercent}%`);
 
-            // 初回の場合、キャリブレーション段階を'waiting_for_brake'に設定
+            // On the first pass, set the calibration stage to 'waiting_for_brake'
             if (currentCalibrationStage === 'idle') {
               setCalibrationStage('waiting_for_brake');
             }
           }
         } else {
-          setDebugInfoThrottled(`${handInfo} | 足が検出できません。椅子に座ってください`);
+          setDebugInfoThrottled(`${handInfo} | Foot not detected. Please sit in the chair`);
         }
       } else {
-        setDebugInfoThrottled(`${handInfo} | 足が検出できません`);
+        setDebugInfoThrottled(`${handInfo} | Foot not detected`);
       }
     } else if (currentCalibrationStage === 'calibrated' && currentFootCalibration && currentFootCalibration.isCalibrated) {
-      // キャリブレーション完了 - ペダル認識を実行
+      // Calibration complete - run pedal recognition
       if (filteredLandmarks) {
-        // 画面が'driving'の場合のみペダル認識を実行
+        // Run pedal recognition only when the screen is 'driving'
         const screen = useDrivingStore.getState().screen;
         if (screen === 'driving') {
           const recognitionResult = processPedalRecognition(
@@ -664,20 +666,20 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
             deltaTime
           );
 
-          // キャリブレーションを更新（アクセル踏み込み位置の記録）
+          // Update the calibration (record the accelerator press position)
           setFootCalibration(recognitionResult.updatedCalibration);
 
-          // ペダル状態を更新
+          // Update the pedal state
           updatePedalState(recognitionResult.pedalState);
 
-          // デバッグ情報を更新
+          // Update the debug info
           const { throttle, brake, isAccelPressed, isBrakePressed } = recognitionResult.pedalState;
           setDebugInfoThrottled(
             `${handInfo} | Accel: ${isAccelPressed ? 'ON' : 'OFF'} (${(throttle * 100).toFixed(0)}%) | ` +
             `Brake: ${isBrakePressed ? 'ON' : 'OFF'} (${(brake * 100).toFixed(0)}%)`
           );
         } else {
-          // 運転画面以外ではペダル状態をリセット
+          // Reset the pedal state outside the driving screen
           updatePedalState({
             throttle: 0,
             brake: 0,
@@ -686,23 +688,23 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
             brakePressDuration: 0,
             brakePressCount: 0,
           });
-          setDebugInfoThrottled(`${handInfo} | キャリブレーション完了`);
+          setDebugInfoThrottled(`${handInfo} | Calibration complete`);
         }
       } else {
-        setDebugInfoThrottled(`${handInfo} | 足が検出できません`);
+        setDebugInfoThrottled(`${handInfo} | Foot not detected`);
       }
     } else {
       setDebugInfoThrottled(handInfo);
     }
   };
 
-  // 状態説明テキストの生成（storeから直接取得して最新の状態を使用）
+  // Build the status description text (read directly from the store for the latest state)
   const debugInfo = useDrivingStore(state => state.debugInfo);
   const calibrationStage = useDrivingStore(state => state.calibrationStage);
   const pedalState = useDrivingStore(state => state.pedalState);
   const footCalibration = useDrivingStore(state => state.footCalibration);
 
-  // 進捗パーセンテージを抽出
+  // Extract the progress percentage
   const getProgressFromDebugInfo = () => {
     const match = debugInfo.match(/(\d+)%/);
     return match ? parseInt(match[1]) : 0;
@@ -712,37 +714,37 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
     if (calibrationStage === 'waiting_for_brake') {
       const progress = getProgressFromDebugInfo();
       return {
-        title: '⚠️ 足を固定中...',
-        message: `5秒間足を動かさないでください (${progress}%)`,
+        title: '⚠️ Holding foot still...',
+        message: `Please keep your foot still for 5 seconds (${progress}%)`,
         color: '#FFFF00',
         bgColor: 'rgba(255, 255, 0, 0.2)'
       };
     } else if (calibrationStage === 'calibrated' && footCalibration?.isCalibrated) {
       if (pedalState.isBrakePressed) {
         return {
-          title: '🔴 ブレーキ',
-          message: `制動力: ${(pedalState.brake * 100).toFixed(0)}%`,
+          title: '🔴 Brake',
+          message: `Braking force: ${(pedalState.brake * 100).toFixed(0)}%`,
           color: '#FF0000',
           bgColor: 'rgba(255, 0, 0, 0.2)'
         };
       } else if (pedalState.isAccelPressed) {
         return {
-          title: '🟢 アクセル',
-          message: `スロットル: ${(pedalState.throttle * 100).toFixed(0)}%`,
+          title: '🟢 Accelerator',
+          message: `Throttle: ${(pedalState.throttle * 100).toFixed(0)}%`,
           color: '#00FF00',
           bgColor: 'rgba(0, 255, 0, 0.2)'
         };
       } else {
         return {
-          title: '⚪ 待機中',
-          message: 'ペダル操作なし',
+          title: '⚪ Idle',
+          message: 'No pedal input',
           color: '#FFFFFF',
           bgColor: 'rgba(255, 255, 255, 0.1)'
         };
       }
     } else {
       return {
-        title: '📷 カメラ起動中',
+        title: '📷 Starting camera',
         message: debugInfo,
         color: '#FFFFFF',
         bgColor: 'rgba(0, 0, 0, 0.8)'
@@ -763,10 +765,10 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
         alignItems: 'flex-end',
         opacity: 0.9,
     }}>
-        {/* videoタグは非表示で裏で動かす */}
+        {/* The video tag is hidden and runs in the background */}
         <video ref={videoRef} style={{ display: 'none' }} autoPlay playsInline muted></video>
 
-        {/* カメラ起動失敗時のユーザー向け案内（再試行 + キーボード操作の代替） */}
+        {/* User guidance shown when the camera fails to start (retry + keyboard control fallback) */}
         {cameraError && (
           <div style={{
             backgroundColor: 'rgba(127, 29, 29, 0.95)',
@@ -781,7 +783,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
             fontSize: '13px',
             lineHeight: 1.5,
           }}>
-            <div style={{ fontWeight: 'bold', marginBottom: '6px', fontSize: '14px' }}>📷 カメラを利用できません</div>
+            <div style={{ fontWeight: 'bold', marginBottom: '6px', fontSize: '14px' }}>📷 Camera unavailable</div>
             <div style={{ marginBottom: '10px' }}>{cameraError}</div>
             <button
               onClick={() => { setCameraError(null); startCamera(); }}
@@ -795,7 +797,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
                 borderRadius: '6px',
                 cursor: 'pointer',
               }}
-            >再試行</button>
+            >Retry</button>
           </div>
         )}
 
@@ -803,19 +805,19 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
           position: "relative",
           width: "240px",
           height: "180px",
-          backgroundColor: "black", // キャンバスの裏地も黒にしておく
+          backgroundColor: "black", // Keep the canvas backing black too
           borderRadius: '10px',
           overflow: 'hidden'
         }}>
             <canvas ref={canvasRef} style={{
                 width: '100%',
                 height: '100%',
-                backgroundColor: 'black', // 停止時はここが見える
+                backgroundColor: 'black', // This is visible when stopped
                 transform: 'scaleX(-1)'
             }} />
         </div>
 
-        {/* 状態表示パネル */}
+        {/* Status display panel */}
         <div style={{
             backgroundColor: statusDisplay.bgColor,
             backdropFilter: 'blur(10px)',

@@ -5,7 +5,7 @@ import { ThreeElements } from "@react-three/fiber";
 import { Euler } from "three";
 
 type ThreeModelLoaderProps = ThreeElements["group"] & {
-  /** 読み込む glTF / glb モデルのパス */
+  /** Path to the glTF / glb model to load */
   url: string;
   scale?: number | [number, number, number];
   rotation?: Euler | [number, number, number];

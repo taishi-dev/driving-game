@@ -27,12 +27,12 @@ export function TrafficLight({ position, rotation = [0, 0, 0], interval = 5000 }
 
   const lightColor = state === 'green' ? '#00ff00' : state === 'yellow' ? '#ffff00' : '#ff0000';
 
-  // ✅ 追加: 自動採点エリアの登録 (半径4mで一時停止)
+  // Added: register an automatic scoring area (stop within a radius of 4m)
   useRegisterCheckpoint({
     position: position,
     radius: 4.0,
     type: 'stop',
-    label: '信号一時停止'
+    label: 'Traffic Light Stop'
   });
 
   return (
@@ -46,7 +46,7 @@ export function TrafficLight({ position, rotation = [0, 0, 0], interval = 5000 }
         <Model />
       </ModelErrorBoundary>
 
-      {/* 信号の光 */}
+      {/* Traffic light glow */}
       <mesh position={[0, 3.5, 0.2]}>
         <sphereGeometry args={[0.3]} />
         <meshBasicMaterial color={lightColor} toneMapped={false} />

@@ -1,7 +1,7 @@
 import { useEffect, useId } from 'react';
 import { useDrivingStore, MissionCheckpoint } from '@/lib/store';
 
-// IDは自動生成するので、ID以外の情報を渡せばOKにします
+// The ID is auto-generated, so passing the non-ID information is enough
 type CheckpointProps = Omit<MissionCheckpoint, 'id'>;
 
 export function useRegisterCheckpoint(checkpointData: CheckpointProps) {
@@ -12,14 +12,14 @@ export function useRegisterCheckpoint(checkpointData: CheckpointProps) {
   const id = useId();
 
   useEffect(() => {
-    // マウント時にチェックポイントを登録
+    // Register the checkpoint on mount
     register({ ...checkpointData, id });
 
-    // アンマウント時に削除
+    // Remove it on unmount
     return () => {
       unregister(id);
     };
-    // 位置やタイプが変わったら再登録
+    // Re-register when the position or type changes
   }, [
       checkpointData.position[0], 
       checkpointData.position[2], 

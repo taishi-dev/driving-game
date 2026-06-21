@@ -38,7 +38,7 @@ export interface SignalStateLog {
   state: SignalState;
 }
 
-// ✅ 追加: チェックポイントの型定義 (他のファイルから参照されるため復元)
+// ✅ Added: checkpoint type definition (restored because other files reference it)
 export type MissionCheckpoint = {
   id: string;
   position: [number, number, number];
@@ -46,8 +46,8 @@ export type MissionCheckpoint = {
   type: 'stop' | 'speed-limit' | 'mirror' | 'safety-check';
   label?: string;
   targetYaw?: number; 
-  visual?: string; // traffic-light判定用
-  minDuration?: number; // 停止時間判定用
+  visual?: string; // used for traffic-light detection
+  minDuration?: number; // used to judge stop duration
 };
 
 export type LessonId =
@@ -68,6 +68,8 @@ export interface DrivingState {
   // Screen Management
   screen: ScreenId;
   isPaused: boolean;
+  // UI language. Persisted to localStorage; default Japanese.
+  language: "ja" | "en";
 
   // Vehicle Control, Head Tracking, Foot Pedal, Telemetry, Replay System, System
   steeringAngle: number;
@@ -103,6 +105,7 @@ export interface DrivingState {
 
   // Actions
   setScreen: (screen: ScreenId) => void;
+  setLanguage: (lang: "ja" | "en") => void;
   setIsPaused: (paused: boolean) => void;
   setSteering: (val: number) => void;
   setPedals: (throttle: number, brake: number) => void;
@@ -152,12 +155,12 @@ export interface DrivingState {
   setRecordedVideo: (url: string | null) => void;
   setGear: (gear: "P" | "D" | "R") => void;
 
-  // ✅ 追加: チェックポイント管理用の型定義
+  // ✅ Added: type definitions for checkpoint management
   activeCheckpoints: MissionCheckpoint[];
   registerCheckpoint: (cp: MissionCheckpoint) => void;
   unregisterCheckpoint: (id: string) => void;
 
-  // ✅ 追加: クリア済みチェックポイント管理
+  // ✅ Added: cleared-checkpoint management
   clearedCheckpointIds: string[];
   addClearedCheckpoint: (id: string) => void;
   resetClearedCheckpoints: () => void;
@@ -166,6 +169,10 @@ export interface DrivingState {
 export const useDrivingStore = create<DrivingState>((set) => ({
   screen: "home",
   isPaused: false,
+  language:
+    typeof window !== "undefined" && localStorage.getItem("language") === "en"
+      ? "en"
+      : "ja",
 
   steeringAngle: 0,
   throttle: 0,
@@ -214,6 +221,10 @@ export const useDrivingStore = create<DrivingState>((set) => ({
     })),
 
   setScreen: (screen) => set({ screen }),
+  setLanguage: (lang) => {
+    if (typeof window !== "undefined") localStorage.setItem("language", lang);
+    set({ language: lang });
+  },
   setIsPaused: (paused) => set({ isPaused: paused }),
   setSteering: (val) => set({ steeringAngle: val }),
   setPedals: (throttle, brake) => set({ throttle, brake }),
@@ -250,7 +261,7 @@ export const useDrivingStore = create<DrivingState>((set) => ({
     set((s) => ({ deviationPenalty: s.deviationPenalty + amount })),
 
   calculateMissionResult: (coursePath) => {
-    // free-mode は採点しない
+    // free-mode is not scored
     const st = useDrivingStore.getState();
     if (st.currentLesson === "free-mode") return;
 
@@ -331,12 +342,12 @@ export const useDrivingStore = create<DrivingState>((set) => ({
       console.error('Signal violation check failed', e);
     }
 
-    // ▼▼▼ 追加: 未クリアのチェックポイント判定 (動的登録されたもの) ▼▼▼
-    // activeCheckpoints にあるのに clearedCheckpointIds にないものを探す
+    // ▼▼▼ Added: detect uncleared checkpoints (dynamically registered ones) ▼▼▼
+    // Find entries that are in activeCheckpoints but not in clearedCheckpointIds
     const missedCheckpoints = st.activeCheckpoints.filter(
         cp => !st.clearedCheckpointIds.includes(cp.id)
     );
-    // ▲▲▲ 追加終わり ▲▲▲
+    // ▲▲▲ End of addition ▲▲▲
 
     set((s) => {
       const newLogs = [...s.feedbackLogs];
@@ -357,7 +368,7 @@ export const useDrivingStore = create<DrivingState>((set) => ({
         });
       }
 
-      // ▼▼▼ 追加: チェックポイント無視のログ追加 ▼▼▼
+      // ▼▼▼ Added: add logs for ignored checkpoints ▼▼▼
       missedCheckpoints.forEach(cp => {
         let msg = "";
         if (cp.type === 'stop') msg = `${cp.label || '一時停止'}を無視しました`;
@@ -371,9 +382,9 @@ export const useDrivingStore = create<DrivingState>((set) => ({
             });
         }
       });
-      // ▲▲▲ 追加終わり ▲▲▲
+      // ▲▲▲ End of addition ▲▲▲
 
-      // 未クリア数に応じたペナルティ加算 (例: 1つにつき20点)
+      // Add a penalty based on the number of uncleared checkpoints (e.g. 20 points each)
       const missedPenalty = missedCheckpoints.length * 20;
 
       return {
@@ -420,7 +431,7 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   setRecordedVideo: (url) => set({ recordedVideo: url }),
   setGear: (gear) => set({ gear }),
 
-  // ✅ 追加: チェックポイント管理の実装 (ここが抜けていました)
+  // ✅ Added: checkpoint management implementation (this was missing)
   activeCheckpoints: [],
   registerCheckpoint: (cp) => set((state) => ({ 
     activeCheckpoints: [...state.activeCheckpoints, cp] 
@@ -429,7 +440,7 @@ export const useDrivingStore = create<DrivingState>((set) => ({
     activeCheckpoints: state.activeCheckpoints.filter((c) => c.id !== id) 
   })),
 
-  // ✅ 追加: クリア済み管理の実装
+  // ✅ Added: cleared-state management implementation
   clearedCheckpointIds: [],
   addClearedCheckpoint: (id) => set((state) => ({
     clearedCheckpointIds: [...state.clearedCheckpointIds, id]

@@ -4,7 +4,35 @@ import { Suspense, useEffect, useRef } from "react";
 import {addDoc, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
+// User-facing strings, bilingual (ja/en).
+const STRINGS = {
+  ja: {
+    aiInstructorFeedback: 'AI Instructor Feedback',
+    feedbackPerfect: '全体的に素晴らしい走行でした！速度・視線ともに安定しています。',
+    feedbackStable: '全体的に安定した走行でしたが、いくつか気になる点がありました。',
+    improvementPoints: '改善ポイント:',
+    retry: 'もう一度挑戦',
+    backToHome: 'ホームに戻る',
+    missionFeedback: 'Mission Feedback',
+    summaryMore: ' 他',
+    summaryGreat: '素晴らしい走行でした',
+  },
+  en: {
+    aiInstructorFeedback: 'AI Instructor Feedback',
+    feedbackPerfect: 'Overall, an excellent drive! Both your speed and gaze were steady.',
+    feedbackStable: 'Overall a steady drive, but there were a few points worth noting.',
+    improvementPoints: 'Points to improve:',
+    retry: 'Try Again',
+    backToHome: 'Back to Home',
+    missionFeedback: 'Mission Feedback',
+    summaryMore: ' and more',
+    summaryGreat: 'A great drive',
+  },
+} as const;
+
 export function FeedbackScreen() {
+  const language = useDrivingStore((state) => state.language);
+  const t = STRINGS[language];
   const setScreen = useDrivingStore(state => state.setScreen);
   const setMissionState = useDrivingStore(state => state.setMissionState);
   const currentLesson = useDrivingStore(state => state.currentLesson);
@@ -26,7 +54,7 @@ export function FeedbackScreen() {
     // Run Analysis once
     if (!analyzedRef.current) {
         analyzedRef.current = true;
-        // ✅ 修正: Car.tsxで実行済みのため、ここでは削除（コメントアウト）
+        // Fix: Already executed in Car.tsx, so removed here (commented out).
         // const path = getCoursePath(currentLesson);
         // calculateMissionResult(path);
 
@@ -46,6 +74,7 @@ export function FeedbackScreen() {
     const user = state.user;
     if (!user) return;
     try {
+        const tt = STRINGS[useDrivingStore.getState().language];
         const kaizenLogs = state.feedbackLogs.filter((l: FeedbackEvent) => l.type === 'KAIZEN');
         const kaizenPenalty = kaizenLogs.reduce((acc: number, l: FeedbackEvent) => acc + (typeof l.meta?.penalty === 'number' ? l.meta.penalty : 5), 0);
         const totalPenalty = kaizenPenalty + Math.floor(state.deviationPenalty || 0);
@@ -63,13 +92,13 @@ export function FeedbackScreen() {
             lesson: state.currentLesson,
             score: score,
             clearTime: clearTime,
-            feedbackSummary: kaizenLogs.length > 0 ? kaizenLogs[0].message + ' 他' : '素晴らしい走行でした',
+            feedbackSummary: kaizenLogs.length > 0 ? kaizenLogs[0].message + tt.summaryMore : tt.summaryGreat,
         };
 
-        // Firestoreへの保存
+        // Save to Firestore
         const docRef = await addDoc(collection(db, "mission_logs"), logData);
 
-        // StoreのHistoryも更新（再フェッチを防ぐため）
+        // Update the store's history too (to avoid a re-fetch)
         addHistoryItem({ id: docRef.id, ...logData });
 
     } catch (e) {
@@ -114,7 +143,7 @@ export function FeedbackScreen() {
     <div className="w-full h-full flex flex-col bg-slate-900 text-white">
       {/* Header */}
       <div className="h-16 px-6 flex items-center justify-between border-b border-slate-700 bg-slate-800">
-        <h2 className="text-xl font-bold text-blue-400">Mission Feedback: {currentLesson}</h2>
+        <h2 className="text-xl font-bold text-blue-400">{t.missionFeedback}: {currentLesson}</h2>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
@@ -204,16 +233,16 @@ export function FeedbackScreen() {
         <div className="w-1/2 p-8 overflow-y-auto">
             <div className="mb-8 p-6 bg-slate-800 rounded-xl border border-slate-700">
                 <h3 className="text-lg font-bold mb-4 text-green-400 flex items-center gap-2">
-                    <span>✨</span> AI Instructor Feedback
+                    <span>✨</span> {t.aiInstructorFeedback}
                 </h3>
                 <div className="space-y-4 text-slate-300 leading-relaxed">
                     {kaizenLogs.length === 0 ? (
-                        <p>全体的に素晴らしい走行でした！速度・視線ともに安定しています。</p>
+                        <p>{t.feedbackPerfect}</p>
                     ) : (
                         <>
-                            <p>全体的に安定した走行でしたが、いくつか気になる点がありました。</p>
+                            <p>{t.feedbackStable}</p>
                             <div className="mt-4">
-                                <span className="text-yellow-400 font-bold">改善ポイント:</span>
+                                <span className="text-yellow-400 font-bold">{t.improvementPoints}</span>
                                 <ul className="list-disc list-inside mt-2 space-y-2 text-sm">
                                     {kaizenLogs.map((log, i) => (
                                         <li key={i}>
@@ -264,13 +293,13 @@ export function FeedbackScreen() {
                     onClick={handleRetry}
                     className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors shadow-lg shadow-blue-900/20"
                 >
-                    もう一度挑戦
+                    {t.retry}
                 </button>
                 <button
                     onClick={handleHome}
                     className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition-colors border border-slate-600"
                 >
-                    ホームに戻る
+                    {t.backToHome}
                 </button>
             </div>
         </div>

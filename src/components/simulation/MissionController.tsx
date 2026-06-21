@@ -18,14 +18,14 @@ export const MISSION_GOALS: Record<
   },
 
   "left-turn": {
-    // getCoursePath(): exit は z=-38 のまま x=-8 → -60 なので -30 はOK
+    // getCoursePath(): the exit keeps z=-38 while x goes -8 → -60, so -30 is OK
     position: [-30, 0, -38],
     size: [10, 5, 5],
     rotation: Math.PI / 2,
   },
 
   "right-turn": {
-    // getCoursePath(): exit は z=-38 のまま x=8 → 60 なので 30 はOK
+    // getCoursePath(): the exit keeps z=-38 while x goes 8 → 60, so 30 is OK
     position: [30, 0, -38],
     size: [10, 5, 5],
     rotation: -Math.PI / 2,
@@ -38,7 +38,7 @@ export const MISSION_GOALS: Record<
   },
 
   crank: {
-    // getCoursePath(): 最後は xL=-8 の直進で ( -8,0,-100 ) が終点
+    // getCoursePath(): ends with a straight at xL=-8, with ( -8,0,-100 ) as the endpoint
     position: [-8, 0, -100],
     size: [10, 5, 5],
     rotation: 0,
@@ -50,13 +50,13 @@ export const MISSION_GOALS: Record<
     rotation: 0,
   },
 
-  // ✅ 追加: 横断歩道レベルのゴール
+  // ✅ Added: goal for the crosswalk level
   "crosswalk": {
     position: [0, 0, -80],
     size: [10, 5, 5],
     rotation: 0,
   },
-  // ✅ 追加: レベル8 ゴール
+  // ✅ Added: level 8 goal
   "railroad-crossing": {
     position: [0, 0, -100], 
     size: [10, 5, 5],
@@ -79,7 +79,7 @@ export interface Checkpoint {
     // For mirrors:
     targetYaw?: number; // Expected look direction (radians)
     yawTolerance?: number;
-    // ✅ 追加: フィードバック表示用のラベル
+    // ✅ Added: label used for feedback display
     label?: string;
 }
 
@@ -96,17 +96,17 @@ export const MISSION_CHECKPOINTS: Partial<Record<LessonId, Checkpoint[]>> = {
         { id: 'mirror-1', type: 'mirror', position: [0, 0, -28], radius: 6, targetYaw: 0.5, yawTolerance: 0.5, label: '安全確認' }
     ],
     "traffic-light": [
-        // 進入前の信号停止（直進のみ）
+        // Stop at the signal before entering (straight-ahead only)
         { id: "signal-1", type: "stop", position: [0, 0, -18], radius: 4, minDuration: 1200, visual: "traffic-light", orientation: "z", label: '赤信号停止' },
     ],
-    // ✅ 追加: 横断歩道レベルのチェックポイント
+    // ✅ Added: checkpoint for the crosswalk level
     "crosswalk": [
-        // 横断歩道の手前で一時停止
+        // Stop just before the crosswalk
         { id: 'cw-stop-1', type: 'stop', position: [0, 0, -25], radius: 5, minDuration: 1000, label: '横断歩道前停止' }
     ],
-    // ✅ 追加: レベル8 チェックポイント
+    // ✅ Added: level 8 checkpoint
     "railroad-crossing": [
-        // 踏切の手前で一時停止
+        // Stop just before the railroad crossing
         { id: 'rr-stop-1', type: 'stop', position: [0, 0, -50], radius: 5, minDuration: 2000, label: '踏切前一時停止' }
     ]
 };

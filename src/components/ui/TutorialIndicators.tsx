@@ -2,12 +2,33 @@
 
 import { useDrivingStore } from "@/lib/store";
 
+const STRINGS = {
+  ja: {
+    steeringResponse: "ステアリング反応",
+    accelerator: "アクセル",
+    brake: "ブレーキ",
+    statusIdle: "待機中...",
+    statusMeasuring: "足の位置を計測中...",
+    statusComplete: "キャリブレーション完了",
+  },
+  en: {
+    steeringResponse: "Steering Response",
+    accelerator: "Accelerator",
+    brake: "Brake",
+    statusIdle: "Standing by...",
+    statusMeasuring: "Measuring foot position...",
+    statusComplete: "Calibration complete",
+  },
+} as const;
+
 export function SteeringIndicator() {
   const steeringAngle = useDrivingStore((state) => state.steeringAngle);
+  const language = useDrivingStore((state) => state.language);
+  const t = STRINGS[language];
 
   return (
     <div className="bg-slate-900/50 p-6 rounded-lg mb-6 border border-slate-700">
-      <div className="text-sm text-slate-400 mb-2">ステアリング反応</div>
+      <div className="text-sm text-slate-400 mb-2">{t.steeringResponse}</div>
       <div className="relative w-full h-8 bg-slate-700 rounded-full overflow-hidden">
         <div
           className="absolute top-0 bottom-0 bg-blue-500 transition-all duration-100"
@@ -29,6 +50,8 @@ export function SteeringIndicator() {
 export function PedalIndicator() {
   const pedalState = useDrivingStore((state) => state.pedalState);
   const calibrationStage = useDrivingStore((state) => state.calibrationStage);
+  const language = useDrivingStore((state) => state.language);
+  const t = STRINGS[language];
 
   return (
     <div className="bg-slate-900/50 p-4 rounded-lg mb-6 border border-slate-700">
@@ -40,7 +63,7 @@ export function PedalIndicator() {
               : "border-slate-600 bg-slate-800"
           }`}
         >
-          <div className="text-lg font-bold mb-1">アクセル</div>
+          <div className="text-lg font-bold mb-1">{t.accelerator}</div>
           <div className="text-3xl font-mono">
             {(pedalState.throttle * 100).toFixed(0)}%
           </div>
@@ -52,7 +75,7 @@ export function PedalIndicator() {
               : "border-slate-600 bg-slate-800"
           }`}
         >
-          <div className="text-lg font-bold mb-1">ブレーキ</div>
+          <div className="text-lg font-bold mb-1">{t.brake}</div>
           <div className="text-3xl font-mono">
             {(pedalState.brake * 100).toFixed(0)}%
           </div>
@@ -62,10 +85,10 @@ export function PedalIndicator() {
       <div className="mt-4 p-2 bg-black/40 rounded text-sm text-yellow-300 font-mono">
         STATUS:{" "}
         {calibrationStage === "idle"
-          ? "待機中..."
+          ? t.statusIdle
           : calibrationStage === "waiting_for_brake"
-          ? "足の位置を計測中..."
-          : "キャリブレーション完了"}
+          ? t.statusMeasuring
+          : t.statusComplete}
       </div>
     </div>
   );

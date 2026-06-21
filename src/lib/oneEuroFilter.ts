@@ -1,12 +1,12 @@
 /**
- * 1ユーロフィルタ（One Euro Filter）
- * ランドマークの座標のぶらつきを抑えるための適応型ローパスフィルタ
+ * One Euro Filter
+ * An adaptive low-pass filter for suppressing jitter in landmark coordinates.
  *
- * 参考: https://cristal.univ-lille.fr/~casiez/1euro/
+ * Reference: https://cristal.univ-lille.fr/~casiez/1euro/
  */
 
 /**
- * 低速時は強くスムージング、高速時は弱くスムージングを適用するフィルタ
+ * A filter that smooths strongly at low speeds and weakly at high speeds.
  */
 class LowPassFilter {
   private y: number | null = null;
@@ -36,7 +36,7 @@ class LowPassFilter {
 }
 
 /**
- * 1ユーロフィルタのメインクラス
+ * Main One Euro Filter class
  */
 export class OneEuroFilter {
   private xFilter: LowPassFilter;
@@ -44,9 +44,9 @@ export class OneEuroFilter {
   private lastTime: number | null = null;
 
   /**
-   * @param minCutoff - 最小カットオフ周波数（デフォルト: 1.0）
-   * @param beta - 速度係数（デフォルト: 0.007）高いほど高速動作時の遅延が少ない
-   * @param dCutoff - 微分のカットオフ周波数（デフォルト: 1.0）
+   * @param minCutoff - Minimum cutoff frequency (default: 1.0)
+   * @param beta - Speed coefficient (default: 0.007); higher values reduce lag during fast motion
+   * @param dCutoff - Cutoff frequency for the derivative (default: 1.0)
    */
   constructor(
     private minCutoff: number = 1.0,
@@ -58,7 +58,7 @@ export class OneEuroFilter {
   }
 
   /**
-   * カットオフ周波数からアルファ値を計算
+   * Compute the alpha value from a cutoff frequency.
    */
   private alpha(cutoff: number, dt: number = 1.0): number {
     const tau = 1.0 / (2 * Math.PI * cutoff);
@@ -67,32 +67,32 @@ export class OneEuroFilter {
   }
 
   /**
-   * 値をフィルタリング
-   * @param value - フィルタリングする値
-   * @param timestamp - タイムスタンプ（ミリ秒）
+   * Filter a value.
+   * @param value - The value to filter
+   * @param timestamp - Timestamp (in milliseconds)
    */
   filter(value: number, timestamp: number): number {
-    // 時間差分を計算（秒単位）
+    // Compute the time delta (in seconds)
     let dt = 1.0;
     if (this.lastTime !== null && timestamp > this.lastTime) {
       dt = (timestamp - this.lastTime) / 1000.0;
     }
     this.lastTime = timestamp;
 
-    // 速度を推定
+    // Estimate the speed
     const prevFiltered = this.xFilter.lastValue();
     const dx = prevFiltered !== null ? (value - prevFiltered) / dt : 0;
     const edx = this.dxFilter.filter(dx, this.alpha(this.dCutoff, dt));
 
-    // カットオフ周波数を速度に応じて調整
+    // Adjust the cutoff frequency according to the speed
     const cutoff = this.minCutoff + this.beta * Math.abs(edx);
 
-    // フィルタリング
+    // Apply filtering
     return this.xFilter.filter(value, this.alpha(cutoff, dt));
   }
 
   /**
-   * フィルタをリセット
+   * Reset the filter.
    */
   reset(): void {
     this.xFilter = new LowPassFilter(this.alpha(this.minCutoff));
@@ -102,7 +102,7 @@ export class OneEuroFilter {
 }
 
 /**
- * 3D座標用の1ユーロフィルタ
+ * One Euro Filter for 3D coordinates
  */
 export class OneEuroFilter3D {
   private xFilter: OneEuroFilter;
@@ -116,7 +116,7 @@ export class OneEuroFilter3D {
   }
 
   /**
-   * 3D座標をフィルタリング
+   * Filter 3D coordinates.
    */
   filter(
     point: { x: number; y: number; z: number },
@@ -130,7 +130,7 @@ export class OneEuroFilter3D {
   }
 
   /**
-   * フィルタをリセット
+   * Reset the filter.
    */
   reset(): void {
     this.xFilter.reset();
@@ -140,7 +140,7 @@ export class OneEuroFilter3D {
 }
 
 /**
- * ポーズランドマーク全体用のフィルタマネージャー
+ * Filter manager for the entire set of pose landmarks
  */
 export class PoseLandmarkFilterManager {
   private filters: Map<number, OneEuroFilter3D> = new Map();
@@ -152,7 +152,7 @@ export class PoseLandmarkFilterManager {
   ) {}
 
   /**
-   * 特定のランドマークをフィルタリング
+   * Filter a specific landmark.
    */
   filterLandmark(
     index: number,
@@ -168,7 +168,7 @@ export class PoseLandmarkFilterManager {
   }
 
   /**
-   * すべてのフィルタをリセット
+   * Reset all filters.
    */
   reset(): void {
     this.filters.clear();

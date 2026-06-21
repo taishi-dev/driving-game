@@ -1,24 +1,26 @@
 import { useDrivingStore } from "@/lib/store";
 import { GarageScene } from "../simulation/GarageScene";
 
-// ✅ 修正: レベル7を追加しました
+// Added level 7+. Labels are bilingual (ja/en); `desc` is already English.
 const LESSONS = [
-  { id: "tutorial", label: "チュートリアル", sub: "BASIC", desc: "LEARN CONTROLS", icon: "TUTORIAL" },
-  { id: "straight", label: "直線走行", sub: "LEVEL 01", desc: "BASIC CONTROL", icon: "START" },
-  { id: "left-turn", label: "左折", sub: "LEVEL 02", desc: "TURNING LEFT", icon: "LEFT" },
-  { id: "right-turn", label: "右折", sub: "LEVEL 03", desc: "TURNING RIGHT", icon: "RIGHT" },
-  { id: "s-curve", label: "S字カーブ", sub: "LEVEL 04", desc: "S-CURVE", icon: "S" },
-  { id: "crank", label: "クランク", sub: "LEVEL 05", desc: "CRANK", icon: "C" },
-  { id: "traffic-light", label: "信号", sub: "LEVEL 06", desc: "TRAFFIC LIGHT PRACTICE", icon: "TL" },
-  { id: "crosswalk", label: "横断歩道", sub: "LEVEL 07", desc: "STOP FOR PEDESTRIANS", icon: "CW" },
-  { id: "railroad-crossing", label: "踏切", sub: "LEVEL 08", desc: "RAILROAD CROSSING", icon: "RC" },
-  { id: "free-mode", label: "フリーモード", sub: "FREE", desc: "EXPLORE THE CITY", icon: "FREE" },
+  { id: "tutorial", label: { ja: "チュートリアル", en: "Tutorial" }, sub: "BASIC", desc: "LEARN CONTROLS", icon: "TUTORIAL" },
+  { id: "straight", label: { ja: "直線走行", en: "Straight Driving" }, sub: "LEVEL 01", desc: "BASIC CONTROL", icon: "START" },
+  { id: "left-turn", label: { ja: "左折", en: "Left Turn" }, sub: "LEVEL 02", desc: "TURNING LEFT", icon: "LEFT" },
+  { id: "right-turn", label: { ja: "右折", en: "Right Turn" }, sub: "LEVEL 03", desc: "TURNING RIGHT", icon: "RIGHT" },
+  { id: "s-curve", label: { ja: "S字カーブ", en: "S-Curve" }, sub: "LEVEL 04", desc: "S-CURVE", icon: "S" },
+  { id: "crank", label: { ja: "クランク", en: "Crank" }, sub: "LEVEL 05", desc: "CRANK", icon: "C" },
+  { id: "traffic-light", label: { ja: "信号", en: "Traffic Light" }, sub: "LEVEL 06", desc: "TRAFFIC LIGHT PRACTICE", icon: "TL" },
+  { id: "crosswalk", label: { ja: "横断歩道", en: "Crosswalk" }, sub: "LEVEL 07", desc: "STOP FOR PEDESTRIANS", icon: "CW" },
+  { id: "railroad-crossing", label: { ja: "踏切", en: "Railroad Crossing" }, sub: "LEVEL 08", desc: "RAILROAD CROSSING", icon: "RC" },
+  { id: "free-mode", label: { ja: "フリーモード", en: "Free Mode" }, sub: "FREE", desc: "EXPLORE THE CITY", icon: "FREE" },
 ] as const;
 
 export function HomeScreen() {
   const setLesson = useDrivingStore((state) => state.setLesson);
   const setScreen = useDrivingStore((state) => state.setScreen);
   const setMissionState = useDrivingStore((state) => state.setMissionState);
+  const language = useDrivingStore((state) => state.language);
+  const setLanguage = useDrivingStore((state) => state.setLanguage);
 
   const handleSelectLesson = (lessonId: (typeof LESSONS)[number]["id"]) => {
     // チュートリアルは特別扱い
@@ -57,6 +59,22 @@ export function HomeScreen() {
             </h1>
             <p className="text-sm font-bold text-slate-400 tracking-[0.3em] mt-2">SIMULATION SYSTEM v2.0</p>
           </div>
+
+          {/* Language switcher (JA / EN), persisted in the store */}
+          <div className="flex gap-1 text-sm font-bold">
+            <button
+              onClick={() => setLanguage('ja')}
+              className={`px-3 py-1 rounded transition-colors ${language === 'ja' ? 'bg-blue-600 text-white' : 'bg-slate-800/80 text-slate-400 hover:text-white'}`}
+            >
+              JA
+            </button>
+            <button
+              onClick={() => setLanguage('en')}
+              className={`px-3 py-1 rounded transition-colors ${language === 'en' ? 'bg-blue-600 text-white' : 'bg-slate-800/80 text-slate-400 hover:text-white'}`}
+            >
+              EN
+            </button>
+          </div>
         </div>
 
         {/* Bottom Area: Carousel */}
@@ -87,7 +105,7 @@ export function HomeScreen() {
                   </div>
 
                   <div>
-                    <h3 className="text-2xl font-black italic text-white group-hover:text-blue-300 mb-1">{lesson.label}</h3>
+                    <h3 className="text-2xl font-black italic text-white group-hover:text-blue-300 mb-1">{lesson.label[language]}</h3>
                     <p className="text-xs text-slate-400 font-mono">{lesson.desc}</p>
                   </div>
 
