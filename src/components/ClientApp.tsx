@@ -23,9 +23,9 @@ function UserProfileHeader() {
     const setMissionHistory = useDrivingStore(state => state.setMissionHistory);
     const screen = useDrivingStore(state => state.screen);
 
-    // 運転中やフィードバック画面では邪魔になる可能性があるので、HOMEのみ表示するなど調整可
-    // 今回は常時表示しつつ、運転中は目立たなくする等の配慮も可能だが、
-    // 要件通り右上に配置する。
+    // This could get in the way during driving or on the feedback screen, so we could limit it
+    // to HOME only. For now it stays visible at all times; we could also make it less prominent
+    // while driving, but per the requirements it is placed in the top-right corner.
     if (screen === 'driving' || screen === 'feedback' || screen === 'auth' || screen === 'history') return null;
 
     const handleLogout = async () => {
@@ -92,27 +92,52 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
   }
 }
 
+// UI strings (JA / EN), selected by the store's `language`
+const STRINGS = {
+  ja: {
+    pausedHint: '画面をクリックして再開',
+    backToHome: 'ホームへ戻る',
+    appTitle: 'バーチャル教習所',
+    cameraHint: '画面クリックで一時停止 / 再開',
+    cameraHint2: 'カメラを起動中... 手を上げてハンドル操作、W/Sキーでアクセル/ブレーキ',
+    startMission: 'ミッション開始',
+  },
+  en: {
+    pausedHint: 'Click the screen to resume',
+    backToHome: 'Back to Home',
+    appTitle: 'Virtual Driving School',
+    cameraHint: 'Click the screen to pause / resume',
+    cameraHint2: 'Starting camera... Raise your hands to steer, use the W/S keys for the accelerator/brake',
+    startMission: 'Start Mission',
+  },
+} as const;
+
 // Mission Definitions
-const MISSION_INFO: Record<string, { title: string, desc: string }> = {
-    'straight': { title: '直線走行', desc: '基本の直線走行です。ハンドルを安定させ、一定の速度で走り抜けましょう。' },
-    'left-turn': { title: '左折', desc: '交差点を左折します。速度を十分に落とし、巻き込みに注意して曲がりましょう。' },
-    'right-turn': { title: '右折', desc: '交差点を右折します。交差点の中心のすぐ内側を通るように意識しましょう。' },
-    's-curve': { title: 'S字カーブ', desc: 'S字型の狭路です。内輪差・外輪差を考慮し、脱輪しないように慎重に進みましょう。' },
-    'crank': { title: 'クランク', desc: '直角に曲がる狭路です。車両感覚を研ぎ澄まし、適切なタイミングでハンドルを切りましょう。' },
-    'traffic-light': { title: '信号機', desc: '信号のある交差点です。赤信号で停止し、青になったら発進しましょう。' },
-    // ✅ 追加: レベル7
-    'crosswalk': { title: '横断歩道', desc: '横断歩道があります。歩行者が渡ろうとしている時は、必ず停止線の手前で一時停止しましょう。' },
-    'railroad-crossing': { title: '踏切', desc: '前方に踏切があります。必ず一時停止し、左右の安全を確認してから通過してください。警報機が鳴っている場合は進入してはいけません。' }
+const MISSION_INFO: Record<string, { title: { ja: string, en: string }, desc: { ja: string, en: string } }> = {
+    'straight': { title: { ja: '直線走行', en: 'Straight Driving' }, desc: { ja: '基本の直線走行です。ハンドルを安定させ、一定の速度で走り抜けましょう。', en: 'Basic straight-line driving. Keep the wheel steady and drive through at a constant speed.' } },
+    'left-turn': { title: { ja: '左折', en: 'Left Turn' }, desc: { ja: '交差点を左折します。速度を十分に落とし、巻き込みに注意して曲がりましょう。', en: 'Turn left at the intersection. Slow down enough and watch for cyclists and pedestrians on the inside as you turn.' } },
+    'right-turn': { title: { ja: '右折', en: 'Right Turn' }, desc: { ja: '交差点を右折します。交差点の中心のすぐ内側を通るように意識しましょう。', en: 'Turn right at the intersection. Aim to pass just inside the center of the intersection.' } },
+    's-curve': { title: { ja: 'S字カーブ', en: 'S-Curve' }, desc: { ja: 'S字型の狭路です。内輪差・外輪差を考慮し、脱輪しないように慎重に進みましょう。', en: 'A narrow S-shaped lane. Account for the difference in the path of the inner and outer wheels and proceed carefully to avoid going off the track.' } },
+    'crank': { title: { ja: 'クランク', en: 'Crank' }, desc: { ja: '直角に曲がる狭路です。車両感覚を研ぎ澄まし、適切なタイミングでハンドルを切りましょう。', en: 'A narrow lane with right-angle turns. Sharpen your sense of the vehicle and turn the wheel at the right moment.' } },
+    'traffic-light': { title: { ja: '信号機', en: 'Traffic Light' }, desc: { ja: '信号のある交差点です。赤信号で停止し、青になったら発進しましょう。', en: 'An intersection with a traffic light. Stop on red and set off once it turns green.' } },
+    // Added: Level 7
+    'crosswalk': { title: { ja: '横断歩道', en: 'Crosswalk' }, desc: { ja: '横断歩道があります。歩行者が渡ろうとしている時は、必ず停止線の手前で一時停止しましょう。', en: 'There is a crosswalk ahead. When a pedestrian is about to cross, always come to a stop before the stop line.' } },
+    'railroad-crossing': { title: { ja: '踏切', en: 'Railroad Crossing' }, desc: { ja: '前方に踏切があります。必ず一時停止し、左右の安全を確認してから通過してください。警報機が鳴っている場合は進入してはいけません。', en: 'There is a railroad crossing ahead. Always come to a stop, check that it is safe on both sides, and then proceed. Do not enter while the warning bell is sounding.' } }
 };
 
 function MissionOverlay() {
     const currentLesson = useDrivingStore(state => state.currentLesson);
     const missionState = useDrivingStore(state => state.missionState);
     const setMissionState = useDrivingStore(state => state.setMissionState);
+    const language = useDrivingStore(state => state.language);
+    const t = STRINGS[language];
 
     if (missionState !== 'briefing') return null;
 
-    const info = MISSION_INFO[currentLesson] || { title: currentLesson, desc: '' };
+    const mission = MISSION_INFO[currentLesson];
+    const info = mission
+        ? { title: mission.title[language], desc: mission.desc[language] }
+        : { title: currentLesson, desc: '' };
 
     return (
         <div style={{
@@ -155,7 +180,7 @@ function MissionOverlay() {
                     onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#1d4ed8'}
                     onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#2563eb'}
                 >
-                    ミッション開始
+                    {t.startMission}
                 </button>
             </div>
         </div>
@@ -168,6 +193,8 @@ export default function ClientApp() {
   const setIsPaused = useDrivingStore(state => state.setIsPaused);
   const setScreen = useDrivingStore(state => state.setScreen);
   const setMisssionState = useDrivingStore(state => state.setMissionState);
+  const language = useDrivingStore(state => state.language);
+  const t = STRINGS[language];
 
   useDrivingFeedback(); // Activate Feedback Logic
 
@@ -177,9 +204,9 @@ export default function ClientApp() {
     setScreen('home');
   }
 
-  // クリックした時の動作（ボタンの上でクリックした時は反応しないようにする工夫付き）
+  // Click behavior (with a guard so clicks on buttons do not trigger it)
   const handleGlobalClick = (e: React.MouseEvent) => {
-    // もしクリックした場所が「ボタン」なら、一時停止機能は発動させない（ボタンの邪魔をしないため）
+    // If the click landed on a button, do not trigger the pause feature (so we don't interfere with the button)
     if ((e.target as HTMLElement).closest('button')) {
       return;
     }
@@ -211,7 +238,7 @@ export default function ClientApp() {
               }}>
                 PAUSED ⏸
               </h1>
-              <p style={{color: '#94a3b8', fontSize: '18px'}}>画面をクリックして再開</p>
+              <p style={{color: '#94a3b8', fontSize: '18px'}}>{t.pausedHint}</p>
               <div style={{display: 'flex', gap:'20px', marginTop:'20px'}}>
                  <button
                   onClick={handleGoHome}
@@ -229,7 +256,7 @@ export default function ClientApp() {
                   }}
                   onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#b91c1c'}
                   onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#dc2626'}
-                >ホームへ戻る</button>
+                >{t.backToHome}</button>
               </div>
             </div>
           )}
@@ -256,9 +283,9 @@ export default function ClientApp() {
                     pointerEvents: 'none',
                     userSelect: 'none'
                 }}>
-                    <h1 style={{ fontSize: '24px', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>バーチャル教習所</h1>
-                    <p style={{ fontSize: '14px', opacity: 0.8, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>画面クリックで一時停止 / 再開<br/>
-                       カメラを起動中... 手を上げてハンドル操作、W/Sキーでアクセル/ブレーキ</p>
+                    <h1 style={{ fontSize: '24px', fontWeight: 'bold', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{t.appTitle}</h1>
+                    <p style={{ fontSize: '14px', opacity: 0.8, textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>{t.cameraHint}<br/>
+                       {t.cameraHint2}</p>
                 </div>
 
                 <div style={{ width: '100%', height: '100%', zIndex: 0 }}>

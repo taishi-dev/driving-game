@@ -13,12 +13,12 @@ export function RailroadCrossing({ position, rotation = [0, 0, 0], scale = 1 }: 
     return <primitive object={clonedScene} />;
   };
 
-  // ✅ 追加: 踏切前の一時停止エリア登録 (半径5m)
+  // Added: register a stop area in front of the railroad crossing (radius 5m)
   useRegisterCheckpoint({
     position: position,
-    radius: 5.0, 
+    radius: 5.0,
     type: 'stop',
-    label: '踏切一時停止'
+    label: 'Railroad Crossing Stop'
   });
 
   return (

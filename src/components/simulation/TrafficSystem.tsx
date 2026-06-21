@@ -2,7 +2,7 @@
 
 import { useDrivingStore } from "@/lib/store";
 
-// objectsフォルダから個別にインポート
+// Import individually from the objects folder
 import { TrafficLight } from "./objects/TrafficLight";
 import { Pedestrian } from "./objects/Pedestrian";
 import { Crosswalk } from "./objects/Crosswalk";
@@ -12,13 +12,13 @@ import { RailroadCrossing } from "./objects/RailroadCrossing";
 export function TrafficSystem() {
   const currentLesson = useDrivingStore(state => state.currentLesson);
 
-  // 信号機を表示する条件: レベル6(traffic-light) または フリーモード
+  // Condition for showing the traffic light: level 6 (traffic-light) or free mode
   const showTrafficLight = currentLesson === "traffic-light" || currentLesson === "free-mode";
 
-  // 横断歩道を表示する条件: レベル7(crosswalk) または フリーモード
+  // Condition for showing the crosswalk: level 7 (crosswalk) or free mode
   const showCrosswalk = currentLesson === "crosswalk" || currentLesson === "free-mode";
 
-  // 踏切を表示する条件: レベル8(railroad-crossing) または フリーモード
+  // Condition for showing the railroad crossing: level 8 (railroad-crossing) or free mode
   const showRailroad = currentLesson === "railroad-crossing" || currentLesson === "free-mode";
 
   return (

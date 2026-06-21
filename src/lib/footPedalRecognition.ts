@@ -1,25 +1,27 @@
 /**
- * 足元のペダル操作認識用のユーティリティ関数
- * MediaPipe PoseLandmarkerを使用して、足の位置と角度からアクセル・ブレーキを認識します
+ * Utility functions for recognizing foot pedal operations.
+ * Uses the MediaPipe PoseLandmarker to recognize the accelerator and brake from
+ * the position and angle of the foot.
  *
- * ## 使用方法
+ * ## Usage
  *
- * ### 1. キャリブレーション（初期設定）
- * 運転開始時に、利用者が椅子に座ってブレーキを踏んでいる状態で：
+ * ### 1. Calibration (initial setup)
+ * At the start of driving, while the user is seated in the chair and pressing
+ * the brake:
  * ```typescript
  * import { calibrateFootPosition } from './footPedalRecognition';
  *
- * // MediaPipeのPoseLandmarkerから取得したランドマーク
+ * // Landmarks obtained from the MediaPipe PoseLandmarker
  * const calibration = calibrateFootPosition(landmarks);
  * if (calibration) {
- *   // storeに保存
+ *   // Save to the store
  *   useDrivingStore.getState().setFootCalibration(calibration);
  *   useDrivingStore.getState().setCalibrationStage('calibrated');
  * }
  * ```
  *
- * ### 2. ペダル認識の実行
- * 各フレームで以下を呼び出す：
+ * ### 2. Running pedal recognition
+ * Call the following on each frame:
  * ```typescript
  * import { processPedalRecognition } from './footPedalRecognition';
  *
@@ -28,80 +30,80 @@
  *   landmarks,
  *   store.footCalibration,
  *   store.pedalState,
- *   deltaTime // 前回からの経過時間（ms）
+ *   deltaTime // Elapsed time since the previous frame (ms)
  * );
  *
- * // キャリブレーションを更新（アクセル踏み込み位置の記録）
+ * // Update the calibration (record the accelerator press position)
  * store.setFootCalibration(result.updatedCalibration);
  *
- * // ペダル状態を更新（throttle/brakeも自動更新）
+ * // Update the pedal state (throttle/brake are updated automatically too)
  * store.updatePedalState(result.pedalState);
  * ```
  *
- * ## 動作仕様
+ * ## Behavior specification
  *
- * ### キャリブレーション
- * - 椅子に座って右足をブレーキの位置に置く
- * - 5秒間足を動かさずに固定する
- * - 足の位置が安定したら自動的にキャリブレーション完了
- * - Pause中やスタート画面でも自動的に運転画面に遷移
+ * ### Calibration
+ * - Sit in the chair and place the right foot in the brake position
+ * - Keep the foot still for 5 seconds
+ * - Calibration completes automatically once the foot position is stable
+ * - Transitions automatically to the driving screen even while paused or on the start screen
  *
- * ### アクセル
- * - 最初の位置（ブレーキ位置）から右側（カメラでは左側）に足を動かすとアクセルON
- * - 踏み込んだ位置を記憶し、その位置でアクセルを維持
- * - 最初の位置に戻る、または踏み込み位置と異なる場所に移動するとアクセルOFF
- * - アクセルOFF時はクリープ現象で微速前進（throttle = 0.05）
- * - 足先の角度でアクセルの強弱を調整（下がると強くなる）
+ * ### Accelerator
+ * - Moving the foot from the initial position (brake position) to the right (left as seen by the camera) turns the accelerator ON
+ * - Records the pressed position and holds the accelerator at that position
+ * - Returning to the initial position, or moving to a place different from the pressed position, turns the accelerator OFF
+ * - When the accelerator is OFF, creep produces slow forward movement (throttle = 0.05)
+ * - Adjusts the accelerator strength by the angle of the foot tip (it gets stronger as the tip lowers)
  *
- * ### ブレーキ
- * - 最初の位置（基準位置）より足先が地面側に傾くとブレーキON
- * - 傾きの度合いでブレーキの強さを制御
- * - 短時間（300ms未満）のブレーキはポンピングブレーキとして弱い減速
- * - 長時間（1秒以上）のブレーキは徐々に減速が強くなる
+ * ### Brake
+ * - Tilting the foot tip toward the ground relative to the initial position (reference position) turns the brake ON
+ * - Controls the brake strength by the degree of tilt
+ * - A short brake (under 300ms) acts as a pumping brake with weak deceleration
+ * - A long brake (1 second or more) gradually increases the deceleration
  */
 
 import { NormalizedLandmark } from "@mediapipe/tasks-vision";
 
 /**
- * 足の初期位置と角度を保存する型
+ * Type that stores the initial position and angle of the foot
  */
 export interface FootCalibration {
-  // 右足の基準位置（ブレーキを踏んでいる状態）
+  // Reference position of the right foot (while pressing the brake)
   rightAnkle: { x: number; y: number; z: number };
   rightHeel: { x: number; y: number; z: number };
   rightFootIndex: { x: number; y: number; z: number };
   rightKnee: { x: number; y: number; z: number };
 
-  // 左足の基準位置
+  // Reference position of the left foot
   leftAnkle: { x: number; y: number; z: number };
   leftHeel: { x: number; y: number; z: number };
   leftFootIndex: { x: number; y: number; z: number };
   leftKnee: { x: number; y: number; z: number };
 
-  // 腰の基準位置
+  // Reference position of the hips
   leftHip: { x: number; y: number; z: number };
   rightHip: { x: number; y: number; z: number };
   hipCenter: { x: number; y: number; z: number };
 
-  // 基準角度（足先の角度）
+  // Reference angles (foot-tip angles)
   rightFootAngle: number;
   leftFootAngle: number;
 
-  // 腰中点から右膝への角度（ブレーキ時の基準）
+  // Angle from the hip midpoint to the right knee (reference while braking)
   hipToRightKneeAngle: number;
 
-  // アクセル踏み込み時の位置（初回踏み込み時に記録）
+  // Position when the accelerator is pressed (recorded on the first press)
   accelPressPosition: { x: number; y: number; z: number } | null;
   accelPressAngle: number | null;
 
-  // 認証完了フラグ
+  // Calibration-complete flag
   isCalibrated: boolean;
 
-  // 安定性チェック用（5秒間の位置確認）
+  // For the stability check (verifying position over 5 seconds)
   stabilityCheckStartTime: number | null;
   stabilityCheckPosition: { x: number; y: number; z: number } | null;
 
-  // 平滑化用（前回の値を保存）
+  // For smoothing (stores the previous values)
   smoothedKneeAngle: number | null;
   smoothedFootAngle: number | null;
   smoothedHipCenter: { x: number; y: number; z: number } | null;
@@ -109,19 +111,19 @@ export interface FootCalibration {
 }
 
 /**
- * ペダル操作の状態
+ * State of the pedal operation
  */
 export interface PedalState {
   throttle: number; // 0.0 - 1.0
   brake: number; // 0.0 - 1.0
-  isAccelPressed: boolean; // アクセルが踏まれているか
-  isBrakePressed: boolean; // ブレーキが踏まれているか
-  brakePressDuration: number; // ブレーキを踏んでいる時間（ms）
-  brakePressCount: number; // ブレーキを踏んだ回数（ポンピングブレーキ用）
+  isAccelPressed: boolean; // Whether the accelerator is pressed
+  isBrakePressed: boolean; // Whether the brake is pressed
+  brakePressDuration: number; // How long the brake has been pressed (ms)
+  brakePressCount: number; // Number of times the brake was pressed (for pumping braking)
 }
 
 /**
- * MediaPipeのポーズランドマークのインデックス
+ * Indices of the MediaPipe pose landmarks
  * https://developers.google.com/mediapipe/solutions/vision/pose_landmarker
  */
 const POSE_LANDMARKS = {
@@ -138,8 +140,8 @@ const POSE_LANDMARKS = {
 };
 
 /**
- * 足首から足先への角度を計算する（ラジアン）
- * 地面に対する傾きを計算
+ * Calculate the angle from the ankle to the foot tip (radians)
+ * Computes the tilt relative to the ground
  */
 function calculateFootAngle(
   ankle: NormalizedLandmark,
@@ -151,8 +153,8 @@ function calculateFootAngle(
 }
 
 /**
- * 2点間の角度を計算する（ラジアン）
- * 水平線を基準とした角度
+ * Calculate the angle between two points (radians)
+ * Angle relative to the horizontal line
  */
 function calculateAngleBetweenPoints(
   p1: { x: number; y: number; z: number },
@@ -164,7 +166,7 @@ function calculateAngleBetweenPoints(
 }
 
 /**
- * 2点間の距離を計算する
+ * Calculate the distance between two points
  */
 function calculateDistance(
   p1: { x: number; y: number; z: number },
@@ -177,13 +179,13 @@ function calculateDistance(
 }
 
 /**
- * 初期認証: ブレーキを踏んでいる状態の足の位置と角度を記録する
+ * Initial calibration: record the foot position and angle while pressing the brake
  */
 export function calibrateFootPosition(
   landmarks: NormalizedLandmark[]
 ): FootCalibration | null {
   if (landmarks.length < 33) {
-    return null; // ポーズが検出されていない
+    return null; // No pose detected
   }
 
   const leftHip = landmarks[POSE_LANDMARKS.LEFT_HIP];
@@ -197,7 +199,7 @@ export function calibrateFootPosition(
   const leftHeel = landmarks[POSE_LANDMARKS.LEFT_HEEL];
   const leftFootIndex = landmarks[POSE_LANDMARKS.LEFT_FOOT_INDEX];
 
-  // ランドマークの信頼度チェック（visibilityが存在する場合）
+  // Check landmark confidence (when visibility is present)
   const minVisibility = 0.5;
   if (
     rightAnkle.visibility !== undefined && rightAnkle.visibility < minVisibility ||
@@ -208,14 +210,14 @@ export function calibrateFootPosition(
     return null;
   }
 
-  // 腰の中点を計算
+  // Calculate the hip midpoint
   const hipCenter = {
     x: (leftHip.x + rightHip.x) / 2,
     y: (leftHip.y + rightHip.y) / 2,
     z: (leftHip.z + rightHip.z) / 2,
   };
 
-  // 腰中点から右膝への角度を計算
+  // Calculate the angle from the hip midpoint to the right knee
   const hipToRightKneeAngle = calculateAngleBetweenPoints(
     hipCenter,
     { x: rightKnee.x, y: rightKnee.y, z: rightKnee.z }
@@ -236,12 +238,12 @@ export function calibrateFootPosition(
     rightFootAngle: calculateFootAngle(rightAnkle, rightFootIndex),
     leftFootAngle: calculateFootAngle(leftAnkle, leftFootIndex),
     hipToRightKneeAngle,
-    accelPressPosition: null, // アクセル踏み込み位置は初期化時はnull
+    accelPressPosition: null, // The accelerator press position is null at initialization
     accelPressAngle: null,
-    isCalibrated: false, // 安定性チェック前はfalse
+    isCalibrated: false, // false before the stability check
     stabilityCheckStartTime: null,
     stabilityCheckPosition: null,
-    smoothedKneeAngle: null, // 平滑化用の初期値
+    smoothedKneeAngle: null, // Initial value for smoothing
     smoothedFootAngle: null,
     smoothedHipCenter: null,
     smoothedRightKnee: null,
@@ -249,7 +251,7 @@ export function calibrateFootPosition(
 }
 
 /**
- * 5秒間の足位置安定性をチェックする
+ * Check foot-position stability over 5 seconds
  * @returns { isStable: boolean, progress: number (0-1), calibration: FootCalibration }
  */
 export function checkFootStability(
@@ -264,26 +266,26 @@ export function checkFootStability(
   const rightAnkle = landmarks[POSE_LANDMARKS.RIGHT_ANKLE];
   const currentPosition = { x: rightAnkle.x, y: rightAnkle.y, z: rightAnkle.z };
 
-  const STABILITY_DURATION = 3000; // 5秒
-  const STABILITY_THRESHOLD = 0.1; // 位置のずれの許容範囲
+  const STABILITY_DURATION = 3000; // 5 seconds
+  const STABILITY_THRESHOLD = 0.1; // Allowed range for position deviation
 
-  // 初回または位置が大きくずれた場合はリセット
+  // Reset on the first pass or if the position deviated significantly
   if (!previousCalibration || !previousCalibration.stabilityCheckPosition || !previousCalibration.stabilityCheckStartTime) {
     const newCalibration = calibrateFootPosition(landmarks);
     if (newCalibration) {
       newCalibration.stabilityCheckStartTime = currentTime;
       newCalibration.stabilityCheckPosition = currentPosition;
-      newCalibration.isCalibrated = false; // まだ安定していない
+      newCalibration.isCalibrated = false; // Not stable yet
       return { isStable: false, progress: 0, calibration: newCalibration };
     }
     return { isStable: false, progress: 0, calibration: null };
   }
 
-  // 位置が安定しているかチェック
+  // Check whether the position is stable
   const distance = calculateDistance(previousCalibration.stabilityCheckPosition, currentPosition);
 
   if (distance > STABILITY_THRESHOLD) {
-    // 位置がずれた場合はリセット
+    // Reset if the position deviated
     const newCalibration = calibrateFootPosition(landmarks);
     if (newCalibration) {
       newCalibration.stabilityCheckStartTime = currentTime;
@@ -294,12 +296,12 @@ export function checkFootStability(
     return { isStable: false, progress: 0, calibration: null };
   }
 
-  // 経過時間を計算
+  // Calculate the elapsed time
   const elapsedTime = currentTime - previousCalibration.stabilityCheckStartTime;
   const progress = Math.min(elapsedTime / STABILITY_DURATION, 1.0);
 
   if (elapsedTime >= STABILITY_DURATION) {
-    // 5秒間安定していた場合、キャリブレーション完了
+    // Calibration is complete if it stayed stable for 5 seconds
     const finalCalibration = { ...previousCalibration };
     finalCalibration.isCalibrated = true;
     return { isStable: true, progress: 1.0, calibration: finalCalibration };
@@ -309,14 +311,14 @@ export function checkFootStability(
 }
 
 /**
- * アクセル操作を認識する（新ロジック）
+ * Recognize the accelerator operation (new logic)
  *
- * ロジック:
- * - 右足が基準位置（ブレーキ位置）から右側（カメラ反転により左側に見える）に動いたらアクセルON
- * - 踏み込み位置を記録
- * - 基準位置に戻ったらアクセルOFF（クリープ現象）
- * - 踏み込み位置と異なる場合もアクセルOFF
- * - 足先の角度変化でアクセルの強弱を制御
+ * Logic:
+ * - The accelerator turns ON when the right foot moves from the reference position (brake position) to the right (appears on the left due to camera mirroring)
+ * - Record the pressed position
+ * - The accelerator turns OFF when returning to the reference position (creep)
+ * - The accelerator also turns OFF when it differs from the pressed position
+ * - Control the accelerator strength by the change in the foot-tip angle
  */
 export function recognizeAcceleration(
   landmarks: NormalizedLandmark[],
@@ -333,105 +335,105 @@ export function recognizeAcceleration(
   const rightAnkle = landmarks[POSE_LANDMARKS.RIGHT_ANKLE];
   const rightFootIndex = landmarks[POSE_LANDMARKS.RIGHT_FOOT_INDEX];
 
-  // 現在の足首位置
+  // Current ankle position
   const currentAnklePos = { x: rightAnkle.x, y: rightAnkle.y, z: rightAnkle.z };
 
-  // 足先の現在の角度
+  // Current angle of the foot tip
   const currentAngle = calculateFootAngle(rightAnkle, rightFootIndex);
 
-  // 基準位置（ブレーキ位置）からの距離を計算
+  // Calculate the distance from the reference position (brake position)
   const distanceFromBrake = calculateDistance(calibration.rightAnkle, currentAnklePos);
 
-  // 現在の腰の中点を計算
+  // Calculate the current hip midpoint
   const currentHipCenter = {
     x: (leftHip.x + rightHip.x) / 2,
     y: (leftHip.y + rightHip.y) / 2,
     z: (leftHip.z + rightHip.z) / 2,
   };
 
-  // 現在の腰中点から右膝への角度を計算
+  // Calculate the current angle from the hip midpoint to the right knee
   const currentHipToKneeAngle = calculateAngleBetweenPoints(
     currentHipCenter,
     { x: rightKnee.x, y: rightKnee.y, z: rightKnee.z }
   );
 
-  // 基準角度との差分
+  // Difference from the reference angle
   const kneeAngleDiff = currentHipToKneeAngle - calibration.hipToRightKneeAngle;
 
-  // しきい値の設定
-  const POSITION_THRESHOLD = 0.03; // 基準位置と判定する閾値（余裕を持たせて安定化）
-  const ACCEL_MOVE_THRESHOLD = 0.01; // アクセル踏み込みと判定する閾値（体の中心から右側へ）
-  const ACCEL_RETURN_THRESHOLD = 0.02; // アクセルから戻る際の閾値（ヒステリシス）
-  const ANGLE_SENSITIVITY = 7.0; // 角度の感度
-  const KNEE_ANGLE_THRESHOLD = 0.25; // 腰-膝角度の閾値（ラジアン、約5.8度）
+  // Threshold settings
+  const POSITION_THRESHOLD = 0.03; // Threshold for deciding the reference position (with margin for stability)
+  const ACCEL_MOVE_THRESHOLD = 0.01; // Threshold for deciding an accelerator press (from the body center to the right)
+  const ACCEL_RETURN_THRESHOLD = 0.02; // Threshold for returning from the accelerator (hysteresis)
+  const ANGLE_SENSITIVITY = 7.0; // Angle sensitivity
+  const KNEE_ANGLE_THRESHOLD = 0.25; // Hip-knee angle threshold (radians, about 5.8 degrees)
 
   let isAccelPressed = false;
   let throttle = 0;
   const updatedCalibration = { ...calibration };
 
-  // アクセル方向の移動を計算（カメラ反転を考慮）
-  // 実際の右方向への移動 = カメラ上で左方向への移動 = x座標の減少
-  // つまり、horizontalMovementが正の値の場合にアクセル方向
+  // Calculate the movement in the accelerator direction (accounting for camera mirroring)
+  // Actual movement to the right = movement to the left on camera = decrease in the x coordinate
+  // In other words, a positive horizontalMovement means the accelerator direction
   const horizontalMovement = calibration.rightAnkle.x - currentAnklePos.x;
-  const isMovingToAccel = horizontalMovement > ACCEL_MOVE_THRESHOLD; // 右方向（カメラ上では左）への移動
+  const isMovingToAccel = horizontalMovement > ACCEL_MOVE_THRESHOLD; // Movement to the right (left on camera)
 
-  // 腰-膝角度がアクセル方向に開いているか判定
+  // Determine whether the hip-knee angle is opening in the accelerator direction
   const isKneeAngleOpening = kneeAngleDiff > KNEE_ANGLE_THRESHOLD;
 
- 
 
-  // 基準位置（ブレーキ位置）にいるか判定
-  // ヒステリシス：アクセルが踏まれている場合は、より厳しい閾値を使用
+
+  // Determine whether the foot is at the reference position (brake position)
+  // Hysteresis: use a stricter threshold when the accelerator is pressed
   const brakeThreshold = previousState.isAccelPressed ? ACCEL_RETURN_THRESHOLD : POSITION_THRESHOLD;
   const isAtBrakePosition = distanceFromBrake < brakeThreshold && !isMovingToAccel && !isKneeAngleOpening;
   if (isAtBrakePosition) {
-    // 基準位置にいる = アクセルOFF
+    // At the reference position = accelerator OFF
     isAccelPressed = false;
     throttle = 0;
-    // アクセル踏み込み位置をリセット
+    // Reset the accelerator press position
     updatedCalibration.accelPressPosition = null;
     updatedCalibration.accelPressAngle = null;
   } else if (isMovingToAccel || isKneeAngleOpening) {
-    // アクセル方向に移動している、または腰-膝角度が開いている
+    // Moving in the accelerator direction, or the hip-knee angle is opening
 
     if (calibration.accelPressPosition === null) {
-      // 初めてアクセル位置に移動した場合
-      // アクセル踏み込み位置として記録
+      // First time moving to the accelerator position
+      // Record it as the accelerator press position
       updatedCalibration.accelPressPosition = currentAnklePos;
       updatedCalibration.accelPressAngle = currentAngle;
       isAccelPressed = true;
 
-      // 基本的なスロットル値（移動距離ベース）
+      // Basic throttle value (based on movement distance)
       const moveDistance = Math.abs(horizontalMovement);
       const baseThrottle = Math.min((moveDistance - ACCEL_MOVE_THRESHOLD) / 0.1, 0.8);
-      throttle = Math.max(0.20, baseThrottle); // クリープ現象を考慮して最低20%
+      throttle = Math.max(0.20, baseThrottle); // Minimum 20% to account for creep
     } else {
-      // アクセル踏み込み位置が記録済み
-      // 踏み込み位置からの距離を計算
+      // The accelerator press position is already recorded
+      // Calculate the distance from the pressed position
       const distanceFromAccel = calculateDistance(calibration.accelPressPosition, currentAnklePos);
 
-      // アクセル位置にいるか判定（余裕を持たせる）
+      // Determine whether the foot is at the accelerator position (with margin)
       const isAtAccelPosition = distanceFromAccel < POSITION_THRESHOLD * 2;
 
       if (isAtAccelPosition && isMovingToAccel) {
-        // アクセル位置にいて、アクセル方向にいる = アクセルON
+        // At the accelerator position and in the accelerator direction = accelerator ON
         isAccelPressed = true;
 
-        // 基本的なスロットル値
+        // Basic throttle value
         const baseThrottle = 0.6;
 
-        // 足先の角度による強弱調整
+        // Strength adjustment by the foot-tip angle
         if (calibration.accelPressAngle !== null) {
           const angleDiff = currentAngle - calibration.accelPressAngle;
 
-          // 足先が下がる（角度が大きくなる）とアクセルが強くなる
+          // The accelerator gets stronger as the foot tip lowers (the angle increases)
           const angleAdjustment = angleDiff * ANGLE_SENSITIVITY;
           throttle = Math.max(0.20, Math.min(1.0, baseThrottle + angleAdjustment));
         } else {
           throttle = baseThrottle;
         }
       } else {
-        // 踏み込み位置から離れた、またはアクセル方向でない = アクセルOFF
+        // Moved away from the pressed position, or not in the accelerator direction = accelerator OFF
         isAccelPressed = false;
         throttle = 0;
         updatedCalibration.accelPressPosition = null;
@@ -439,17 +441,17 @@ export function recognizeAcceleration(
       }
     }
   } else {
-    // アクセル方向以外への移動 = アクセルOFF
+    // Movement other than the accelerator direction = accelerator OFF
     isAccelPressed = false;
     throttle = 0;
     updatedCalibration.accelPressPosition = null;
     updatedCalibration.accelPressAngle = null;
   }
 
-  // クリープ現象の実装（アクセルを離した直後）
+  // Creep implementation (right after releasing the accelerator)
   if (!isAccelPressed && previousState.isAccelPressed && !isAtBrakePosition) {
-    // アクセルを離したばかりで、まだブレーキ位置に戻っていない場合はクリープ
-    throttle = 0.05; // 微速前進
+    // Creep if the accelerator was just released and has not yet returned to the brake position
+    throttle = 0.05; // Slow forward movement
   }
   console.log("Accel",isAccelPressed)
 
@@ -457,19 +459,19 @@ export function recognizeAcceleration(
 }
 
 /**
- * ブレーキ操作を認識する（改善版）
+ * Recognize the brake operation (improved version)
  *
- * ロジック:
- * - 基準位置よりも足先が地面側（下方向）に傾いたらブレーキON
- * - 傾きの度合いでブレーキの強さを制御
- * - ブレーキを踏んでいる時間が長いと徐々に減速が強くなる
- * - 短時間のブレーキはポンピングブレーキとして弱い減速
+ * Logic:
+ * - The brake turns ON when the foot tip tilts toward the ground (downward) relative to the reference position
+ * - Control the brake strength by the degree of tilt
+ * - The longer the brake is held, the stronger the deceleration gradually becomes
+ * - A short brake acts as a pumping brake with weak deceleration
  */
 export function recognizeBraking(
   landmarks: NormalizedLandmark[],
   calibration: FootCalibration,
   previousState: PedalState,
-  deltaTime: number // 前回の更新からの経過時間（ms）
+  deltaTime: number // Elapsed time since the previous update (ms)
 ): { brake: number; isBrakePressed: boolean; brakePressDuration: number; brakePressCount: number } {
   if (!calibration.isCalibrated || landmarks.length < 33) {
     return {
@@ -486,26 +488,26 @@ export function recognizeBraking(
   const rightAnkle = landmarks[POSE_LANDMARKS.RIGHT_ANKLE];
   const rightFootIndex = landmarks[POSE_LANDMARKS.RIGHT_FOOT_INDEX];
 
-  // 現在の腰の中点を計算
+  // Calculate the current hip midpoint
   const currentHipCenter = {
     x: (leftHip.x + rightHip.x) / 2,
     y: (leftHip.y + rightHip.y) / 2,
     z: (leftHip.z + rightHip.z) / 2,
   };
 
-  // 現在の腰中点から右膝への角度を計算
+  // Calculate the current angle from the hip midpoint to the right knee
   const currentHipToKneeAngle = calculateAngleBetweenPoints(
     currentHipCenter,
     { x: rightKnee.x, y: rightKnee.y, z: rightKnee.z }
   );
 
-  // キャリブレーション時の角度との差分を計算
+  // Calculate the difference from the angle at calibration time
   const angleDiff = Math.abs(currentHipToKneeAngle - calibration.hipToRightKneeAngle);
 
-  // ブレーキと判定する角度の閾値
-  const BRAKE_ANGLE_THRESHOLD = 1.2; // ラジアン（約5.8度）の範囲内であればブレーキと判定
+  // Angle threshold for deciding a brake
+  const BRAKE_ANGLE_THRESHOLD = 1.2; // A brake is decided if within the radian range (about 5.8 degrees)
 
-  // 足先の現在の角度（ブレーキの強弱判定用）
+  // Current foot-tip angle (for judging brake strength)
   const currentFootAngle = calculateFootAngle(rightAnkle, rightFootIndex);
   const footAngleDiff = currentFootAngle - calibration.rightFootAngle;
   const MAX_BRAKE_FOOT_ANGLE = 0.4;
@@ -515,23 +517,23 @@ export function recognizeBraking(
   let brakePressDuration = previousState.brakePressDuration;
   let brakePressCount = previousState.brakePressCount;
 
-  // 腰-膝の角度がキャリブレーション時の角度とほぼ同じか判定
+  // Determine whether the hip-knee angle is roughly the same as at calibration time
   if (angleDiff < BRAKE_ANGLE_THRESHOLD) {
     isBrakePressed = true;
 
-    // 角度に基づいてブレーキの基本強さを計算
+    // Calculate the base brake strength based on the angle
     const angleBasedBrake = Math.min(footAngleDiff / MAX_BRAKE_FOOT_ANGLE, 1.0);
 
-    // ブレーキを踏んでいる時間を累積
+    // Accumulate the time the brake has been held
     brakePressDuration += deltaTime;
-    
-    // シンプルなブレーキ強度計算
-    brake = Math.max(0, Math.min(angleBasedBrake, 1.0)) * 1.5; // 最大100%の制動力
+
+    // Simple brake-strength calculation
+    brake = Math.max(0, Math.min(angleBasedBrake, 1.0)) * 1.5; // Up to 100% braking force
 
   } else {
-    // ブレーキを離した
+    // The brake was released
     if (previousState.isBrakePressed) {
-      // 前回はブレーキを踏んでいた = 1回のブレーキ操作が完了
+      // The brake was pressed last time = one brake operation is complete
       brakePressCount += 1;
       brakePressDuration = 0;
     }
@@ -543,7 +545,7 @@ export function recognizeBraking(
 }
 
 /**
- * 足元のペダル操作を総合的に処理する（改善版 + 平滑化対応）
+ * Comprehensively process the foot pedal operations (improved version + smoothing support)
  */
 export function processPedalRecognition(
   landmarks: NormalizedLandmark[],
@@ -565,24 +567,24 @@ export function processPedalRecognition(
     };
   }
 
-  // 平滑化パラメータ（指数移動平均）
-  const SMOOTHING_ALPHA = 0.3; // 0に近いほど滑らか、1に近いほど反応が早い
+  // Smoothing parameter (exponential moving average)
+  const SMOOTHING_ALPHA = 0.3; // Closer to 0 is smoother, closer to 1 reacts faster
 
   const leftHip = landmarks[POSE_LANDMARKS.LEFT_HIP];
   const rightHip = landmarks[POSE_LANDMARKS.RIGHT_HIP];
   const rightKnee = landmarks[POSE_LANDMARKS.RIGHT_KNEE];
 
-  // 現在の腰の中点を計算
+  // Calculate the current hip midpoint
   const rawHipCenter = {
     x: (leftHip.x + rightHip.x) / 2,
     y: (leftHip.y + rightHip.y) / 2,
     z: (leftHip.z + rightHip.z) / 2,
   };
 
-  // 現在の右膝の座標
+  // Current right-knee coordinates
   const rawRightKnee = { x: rightKnee.x, y: rightKnee.y, z: rightKnee.z };
 
-  // 平滑化: 腰の中点
+  // Smoothing: hip midpoint
   let smoothedHipCenter: { x: number; y: number; z: number };
   if (calibration.smoothedHipCenter === null) {
     smoothedHipCenter = rawHipCenter;
@@ -594,7 +596,7 @@ export function processPedalRecognition(
     };
   }
 
-  // 平滑化: 右膝の座標
+  // Smoothing: right-knee coordinates
   let smoothedRightKnee: { x: number; y: number; z: number };
   if (calibration.smoothedRightKnee === null) {
     smoothedRightKnee = rawRightKnee;
@@ -606,20 +608,20 @@ export function processPedalRecognition(
     };
   }
 
-  // 平滑化した座標を使って角度を計算
+  // Calculate the angle using the smoothed coordinates
   const kneeOffsetX = smoothedRightKnee.x - smoothedHipCenter.x;
   const kneeOffsetY = Math.abs(smoothedRightKnee.y - smoothedHipCenter.y);
   const currentKneeAngle = Math.atan2(kneeOffsetX, kneeOffsetY);
 
-  // キャリブレーション時の角度
+  // Angle at calibration time
   const calibKneeOffsetX = calibration.rightKnee.x - calibration.hipCenter.x;
   const calibKneeOffsetY = Math.abs(calibration.rightKnee.y - calibration.hipCenter.y);
   const calibKneeAngle = Math.atan2(calibKneeOffsetX, calibKneeOffsetY);
 
-  // 角度の差分（生の値）
+  // Angle difference (raw value)
   const rawKneeAngleDiff = currentKneeAngle - calibKneeAngle;
 
-  // 角度も平滑化
+  // Smooth the angle too
   let smoothedKneeAngleDiff: number;
   if (calibration.smoothedKneeAngle === null) {
     smoothedKneeAngleDiff = rawKneeAngleDiff;
@@ -627,7 +629,7 @@ export function processPedalRecognition(
     smoothedKneeAngleDiff = SMOOTHING_ALPHA * rawKneeAngleDiff + (1 - SMOOTHING_ALPHA) * calibration.smoothedKneeAngle;
   }
 
-  // 平滑化した値をキャリブレーションに保存
+  // Save the smoothed values into the calibration
   const smoothedCalibration = {
     ...calibration,
     smoothedHipCenter,
@@ -637,19 +639,19 @@ export function processPedalRecognition(
 
   console.log("kneeAngleDiff (raw/smoothed)", rawKneeAngleDiff.toFixed(3), "/", smoothedKneeAngleDiff.toFixed(3));
 
-  // アクセル認識（平滑化済みのキャリブレーションを使用）
+  // Accelerator recognition (using the smoothed calibration)
   const accelResult = recognizeAcceleration(landmarks, smoothedCalibration, previousState);
 
-  // ブレーキ認識（更新されたキャリブレーションを使用）
+  // Brake recognition (using the updated calibration)
   const brakeResult = recognizeBraking(landmarks, accelResult.updatedCalibration, previousState, deltaTime);
 
-  // アクセルとブレーキの排他制御（同時に踏まない）
+  // Mutual exclusion of accelerator and brake (never both at once)
   const throttle = accelResult.throttle;
   let brake = brakeResult.brake;
   let isBrakePressed = brakeResult.isBrakePressed;
 
   if (accelResult.isAccelPressed && brakeResult.isBrakePressed) {
-    // 両方踏んでいる場合はアクセルを優先（ブレーキの誤検出を防ぐため）
+    // Prioritize the accelerator when both are pressed (to prevent false brake detection)
     brake = 0;
     isBrakePressed = false;
   }
@@ -670,19 +672,19 @@ export function processPedalRecognition(
 }
 
 /**
- * ブレーキカウントをリセットするためのヘルパー関数
- * 一定時間ブレーキを踏まなかった場合にカウントをリセット
+ * Helper function for resetting the brake count
+ * Resets the count if the brake has not been pressed for a certain time
  */
 export function shouldResetBrakeCount(
   pedalState: PedalState,
-  timeSinceLastBrake: number // 最後にブレーキを離してからの経過時間（ms）
+  timeSinceLastBrake: number // Elapsed time since the brake was last released (ms)
 ): boolean {
-  const RESET_THRESHOLD = 2000; // 2秒
+  const RESET_THRESHOLD = 2000; // 2 seconds
   return !pedalState.isBrakePressed && timeSinceLastBrake > RESET_THRESHOLD;
 }
 
 /**
- * ブレーキカウントをリセットしたPedalStateを返す
+ * Return a PedalState with the brake count reset
  */
 export function resetBrakeCount(pedalState: PedalState): PedalState {
   return {

@@ -5,7 +5,7 @@ import { useDrivingStore } from "@/lib/store";
 export function Dashboard() {
   const isOffTrack = useDrivingStore(state => state.isOffTrack);
   
-  // ★追加: ストアからメッセージを取得
+  // Added: get the message from the store
   const drivingFeedback = useDrivingStore(state => state.drivingFeedback);
 
   return (
@@ -22,8 +22,8 @@ export function Dashboard() {
         zIndex: 50
     }}>
       
-      {/* ★追加: 採点フィードバック（OKメッセージ）の表示エリア 
-        画面の上部中央に緑色で表示します
+      {/* Added: display area for scoring feedback (OK messages)
+        Shown in green at the top center of the screen.
       */}
       {drivingFeedback && (
           <div style={{
@@ -37,7 +37,7 @@ export function Dashboard() {
           }}>
               <div style={{
                   backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                  border: '2px solid #4ade80', // 明るい緑
+                  border: '2px solid #4ade80', // bright green
                   borderRadius: '12px',
                   padding: '16px 32px',
                   color: '#4ade80',
@@ -51,7 +51,7 @@ export function Dashboard() {
           </div>
       )}
 
-      {/* Warning Overlay (脱輪警告) */}
+      {/* Warning Overlay (off-track warning) */}
       {isOffTrack && (
           <div style={{
               position: 'absolute',

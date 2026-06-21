@@ -6,12 +6,12 @@ export function Crosswalk({ position, rotation = 0, width = 6, length = 3 }: { p
   const stripeCount = 6;
   const stripeWidth = width / stripeCount / 2;
   
-  // ✅ 追加: 横断歩道は左右確認 (半径6m)
+  // Added: the crosswalk requires a left-right safety check (radius 6m)
   useRegisterCheckpoint({
     position: position,
     radius: 6.0,
     type: 'safety-check',
-    label: '横断歩道 安全確認'
+    label: 'Crosswalk Safety Check'
   });
 
   return (

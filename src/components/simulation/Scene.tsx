@@ -30,7 +30,7 @@ export function Scene({ cameraTarget = "player" }: { cameraTarget?: "player" | "
 
           <Car cameraTarget={cameraTarget} />
 
-          {/* ミッション系は free-mode では出さない */}
+          {/* Mission-related elements are not shown in free-mode */}
           {!isFreeMode && (
             <>
               <Road />
@@ -40,7 +40,7 @@ export function Scene({ cameraTarget = "player" }: { cameraTarget?: "player" | "
             </>
           )}
 
-          {/* 街は free-mode のときだけ出す（常時でもOK） */}
+          {/* The city is shown only in free-mode (could be shown always too) */}
           {isFreeMode && (
             <>
               <ThreeModelLoader url="/models/city.glb" position={[16, 0, -100]} rotation={[0, Math.PI / 2, 0]} scale={0.01} />

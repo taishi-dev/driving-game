@@ -5,11 +5,66 @@ import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
 
+const STRINGS = {
+  ja: {
+    loginRequiredTitle: '🔒 ログインが必要です',
+    loginRequiredBody: '履歴を見るにはログインしてください',
+    loginButton: 'ログイン / 新規登録',
+    back: '戻る',
+    drivingRecordSuffix: ' の走行記録',
+    backToHome: '← ホームに戻る',
+    dbConfigError: 'データベースの設定が必要です。管理者にお問い合わせください。',
+    loadFailed: '履歴の読み込みに失敗しました',
+    noHistory: '履歴はまだありません',
+    noHistorySub: 'ミッションをクリアすると記録が残ります',
+    challengeMission: 'ミッションに挑戦する',
+    totalRecords: (n: number) => `全 ${n} 件の記録`,
+    sortedByLatest: '最新順に表示',
+    loadingRecords: 'Loading records...',
+    reload: '再読み込み',
+    lessons: {
+      'straight': '直線走行',
+      'left-turn': '左折',
+      'right-turn': '右折',
+      's-curve': 'S字カーブ',
+      'crank': 'クランク',
+      'traffic-light': '信号交差点',
+    } as Record<string, string>,
+  },
+  en: {
+    loginRequiredTitle: '🔒 Login Required',
+    loginRequiredBody: 'Please log in to view your history',
+    loginButton: 'Log In / Sign Up',
+    back: 'Back',
+    drivingRecordSuffix: "'s driving records",
+    backToHome: '← Back to Home',
+    dbConfigError: 'Database setup is required. Please contact the administrator.',
+    loadFailed: 'Failed to load history',
+    noHistory: 'No history yet',
+    noHistorySub: 'Clear a mission to start recording your progress',
+    challengeMission: 'Take on a Mission',
+    totalRecords: (n: number) => `${n} records total`,
+    sortedByLatest: 'Sorted by latest',
+    loadingRecords: 'Loading records...',
+    reload: 'Reload',
+    lessons: {
+      'straight': 'Straight Driving',
+      'left-turn': 'Left Turn',
+      'right-turn': 'Right Turn',
+      's-curve': 'S-Curve',
+      'crank': 'Crank',
+      'traffic-light': 'Traffic Light',
+    } as Record<string, string>,
+  },
+} as const;
+
 export function HistoryScreen() {
   const setScreen = useDrivingStore(state => state.setScreen);
   const user = useDrivingStore(state => state.user);
   const missionHistory = useDrivingStore(state => state.missionHistory);
   const setMissionHistory = useDrivingStore(state => state.setMissionHistory);
+  const language = useDrivingStore(state => state.language);
+  const t = STRINGS[language];
   // Spinner only when there is nothing cached to show; cached history renders instantly.
   const [loading, setLoading] = useState(() => useDrivingStore.getState().missionHistory.length === 0);
   const [error, setError] = useState('');
@@ -50,9 +105,9 @@ export function HistoryScreen() {
         // an error when there is nothing cached to display.
         if (useDrivingStore.getState().missionHistory.length === 0) {
           if (e instanceof Error && 'code' in e && e.code === 'failed-precondition') {
-            setError('データベースの設定が必要です。管理者にお問い合わせください。');
+            setError(t.dbConfigError);
           } else {
-            setError('履歴の読み込みに失敗しました');
+            setError(t.loadFailed);
           }
         }
       } finally {
@@ -60,27 +115,27 @@ export function HistoryScreen() {
       }
     }
     fetchHistory();
-  }, [user, setMissionHistory]);
+  }, [user, setMissionHistory, t]);
 
-  // ログインしていない場合
+  // When the user is not logged in
   if (!user) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-blue-400 mb-4">🔒 ログインが必要です</h2>
-          <p className="text-slate-400 mb-6">履歴を見るにはログインしてください</p>
+          <h2 className="text-2xl font-bold text-blue-400 mb-4">{t.loginRequiredTitle}</h2>
+          <p className="text-slate-400 mb-6">{t.loginRequiredBody}</p>
           <div className="space-x-4">
-            <button 
+            <button
               onClick={() => setScreen('auth')}
               className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded font-bold"
             >
-              ログイン / 新規登録
+              {t.loginButton}
             </button>
-            <button 
+            <button
               onClick={() => setScreen('home')}
               className="px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded"
             >
-              戻る
+              {t.back}
             </button>
           </div>
         </div>
@@ -89,15 +144,7 @@ export function HistoryScreen() {
   }
 
   const getLessonName = (lesson: string) => {
-    const names: Record<string, string> = {
-      'straight': '直線走行',
-      'left-turn': '左折',
-      'right-turn': '右折',
-      's-curve': 'S字カーブ',
-      'crank': 'クランク',
-      'traffic-light': '信号交差点'
-    };
-    return names[lesson] || lesson;
+    return t.lessons[lesson] || lesson;
   };
 
   const getScoreRank = (score: number) => {
@@ -113,48 +160,48 @@ export function HistoryScreen() {
       <div className="flex justify-between items-center mb-8 pb-4 border-b border-slate-700">
         <h2 className="text-2xl font-bold text-blue-400">📊 Driving History</h2>
         <p className="text-sm text-slate-400 mt-1">
-          {user.email?.split('@')[0]} の走行記録
+          {user.email?.split('@')[0]}{t.drivingRecordSuffix}
         </p>
         <button onClick={() => setScreen('home')} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded">
-          ← ホームに戻る
+          {t.backToHome}
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="text-center text-slate-500 mt-10">
-            <div className="animate-pulse">Loading records...</div>
+            <div className="animate-pulse">{t.loadingRecords}</div>
           </div>
         ) : error ? (
           <div className="text-center mt-10">
             <div className="text-red-400 mb-4">{error}</div>
-            <button 
+            <button
               onClick={() => window.location.reload()}
               className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded"
             >
-              再読み込み
+              {t.reload}
             </button>
           </div>
         ) : missionHistory.length === 0 ? (
           <div className="text-center mt-10">
             <div className="text-6xl mb-4">🏎️</div>
-            <div className="text-slate-500 mb-4">履歴はまだありません</div>
-            <p className="text-slate-600 text-sm mb-6">ミッションをクリアすると記録が残ります</p>
-            <button 
+            <div className="text-slate-500 mb-4">{t.noHistory}</div>
+            <p className="text-slate-600 text-sm mb-6">{t.noHistorySub}</p>
+            <button
               onClick={() => setScreen('home')}
               className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded font-bold"
             >
-              ミッションに挑戦する
+              {t.challengeMission}
             </button>
           </div>
         ) : (
           <>
             <div className="flex justify-between items-center mb-4">
               <div className="text-sm text-slate-400">
-                全 {missionHistory.length} 件の記録
+                {t.totalRecords(missionHistory.length)}
               </div>
               <div className='text-xs text-slate-500'>
-                最新順に表示  
+                {t.sortedByLatest}
               </div>
             </div>
             <div className="grid gap-3">
@@ -168,14 +215,14 @@ export function HistoryScreen() {
                 <div className="text-xl font-bold text-slate-600 w-10 text-center">
                   #{missionHistory.length - index}
                 </div>
-              {/* メイン情報 */}
+              {/* Main info */}
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-1">
                         <span className="font-bold text-lg text-white">
                           {getLessonName(item.lesson)}
                         </span>
                         <span className="text-xs text-slate-500">
-                          {new Date(item.timestamp).toLocaleString('ja-JP', {
+                          {new Date(item.timestamp).toLocaleString(language === 'en' ? 'en-US' : 'ja-JP', {
                             month: 'short',
                             day: 'numeric',
                             hour: '2-digit',
@@ -186,13 +233,13 @@ export function HistoryScreen() {
                       <div className="text-sm text-slate-400">{item.feedbackSummary}</div>
                     </div>
                     
-                    {/* タイム */}
+                    {/* Time */}
                     <div className="text-center px-3">
                       <div className="text-xs text-slate-500">TIME</div>
                       <div className="text-lg font-mono text-white">{item.clearTime}</div>
                     </div>
                     
-                    {/* スコア */}
+                    {/* Score */}
                     <div className="text-center px-3">
                       <div className="text-xs text-slate-500">SCORE</div>
                       <div className={`text-2xl font-bold ${
@@ -203,7 +250,7 @@ export function HistoryScreen() {
                       </div>
                     </div>
                     
-                    {/* ランク */}
+                    {/* Rank */}
                     <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${scoreInfo.bg}`}>
                       <span className={`text-2xl font-black ${scoreInfo.color}`}>
                         {scoreInfo.rank}

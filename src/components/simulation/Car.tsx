@@ -44,7 +44,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   // Checkpoint Logic (Local Ref)
   const clearedCheckpoints = useRef<Set<string>>(new Set());
   
-  // ✅ 追加: 左右確認の状態保持用
+  // Added: holds the state of the left/right safety check
   const safetyCheckState = useRef({ lookedLeft: false, lookedRight: false });
 
   // Get Course Path for Ghost Car
@@ -57,7 +57,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   // Reset on lesson change
   useEffect(() => {
     clearedCheckpoints.current.clear();
-    useDrivingStore.getState().resetClearedCheckpoints(); // ✅ Store側のクリアリストもリセット
+    useDrivingStore.getState().resetClearedCheckpoints(); // Also reset the cleared list on the store side
     safetyCheckState.current = { lookedLeft: false, lookedRight: false };
 
     speed.current = 0;
@@ -227,7 +227,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
         const frames = recordedFrames.current;
         useDrivingStore.setState({ replayData: frames });
 
-        // ✅ 追加: ゴール判定時にここで採点を実行（未クリアのチェックポイントがログに残る）
+        // Added: run scoring here when the goal is reached (uncleared checkpoints remain in the log)
         calculateMissionResult(coursePath);
 
         setMissionState("success");
@@ -235,7 +235,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
         return;
       }
 
-      // ✅ 修正: activeCheckpoints (動的リスト) を使用して判定
+      // Fixed: use activeCheckpoints (the dynamic list) for the check
       activeCheckpoints.forEach((cp) => {
         if (clearedCheckpoints.current.has(cp.id)) return;
 
@@ -243,49 +243,53 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
         const dz = groupRef.current!.position.z - cp.position[2];
         const dist = Math.sqrt(dx * dx + dz * dz);
 
-        // 範囲内に入ったら
+        // When entering the range
         if (dist < cp.radius) {
-          
-          // [A] 一時停止
+
+          // [A] Stop
           if (cp.type === "stop") {
-            if (Math.abs(speed.current) < 0.02) { // 速度判定
+            if (Math.abs(speed.current) < 0.02) { // Speed check
               clearedCheckpoints.current.add(cp.id);
-              addClearedCheckpoint(cp.id); // ✅ Storeに報告
-              useDrivingStore.getState().setDrivingFeedback(`🛑 ${cp.label || '一時停止'} OK!`);
+              addClearedCheckpoint(cp.id); // Report to the store
+              useDrivingStore.getState().setDrivingFeedback(
+                useDrivingStore.getState().language === 'en' ? '🛑 Stop OK!' : `🛑 ${cp.label || '一時停止'} OK!`
+              );
               setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000);
             }
           } 
           
-          // [B] ミラー確認 / 左右確認 (safety-check)
+          // [B] Mirror check / left-right check (safety-check)
           else if (cp.type === "mirror" || cp.type === "safety-check") {
             if (cp.type === "safety-check") {
-               const yaw = headRotation.yaw; 
-               // 0.3ラジアン(約17度)以上で見たとみなす
+               const yaw = headRotation.yaw;
+               // Count it as looked if it exceeds 0.3 radians (about 17 degrees)
                if (yaw > 0.3) safetyCheckState.current.lookedLeft = true;
                if (yaw < -0.3) safetyCheckState.current.lookedRight = true;
 
                if (safetyCheckState.current.lookedLeft && safetyCheckState.current.lookedRight) {
                   clearedCheckpoints.current.add(cp.id);
-                  addClearedCheckpoint(cp.id); // ✅ Storeに報告
-                  useDrivingStore.getState().setDrivingFeedback(`👀 ${cp.label || '左右確認'} OK!`);
+                  addClearedCheckpoint(cp.id); // Report to the store
+                  useDrivingStore.getState().setDrivingFeedback(
+                    useDrivingStore.getState().language === 'en' ? '👀 Left-Right Check OK!' : `👀 ${cp.label || '安全確認'} OK!`
+                  );
                   safetyCheckState.current = { lookedLeft: false, lookedRight: false };
                   setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000);
                }
             } else {
-               // 従来のmirrorロジック
+               // Conventional mirror logic
                const needed = cp.targetYaw || 0;
                const tolerance = 0.5;
                const currentYaw = headRotation.yaw;
                if (Math.abs(currentYaw - needed) < tolerance) {
                  clearedCheckpoints.current.add(cp.id);
-                 addClearedCheckpoint(cp.id); // ✅ Storeに報告
-                 useDrivingStore.getState().setDrivingFeedback(`👀 確認 OK!`);
+                 addClearedCheckpoint(cp.id); // Report to the store
+                 useDrivingStore.getState().setDrivingFeedback(`👀 Check OK!`);
                  setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000);
                }
             }
           }
         } else {
-            // エリアを通り過ぎたらリセット (safety-checkのみ)
+            // Reset once the area is passed (safety-check only)
             if (cp.type === 'safety-check' && dist > cp.radius + 2) {
                  safetyCheckState.current = { lookedLeft: false, lookedRight: false };
             }
