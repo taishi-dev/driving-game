@@ -13,6 +13,8 @@ export function TutorialScreen() {
     const calibrationStage = useDrivingStore(state => state.calibrationStage);
     const pedalState = useDrivingStore(state => state.pedalState);
     const steeringAngle = useDrivingStore(state => state.steeringAngle);
+    const pedalInputMode = useDrivingStore(state => state.pedalInputMode);
+    const setPedalInputMode = useDrivingStore(state => state.setPedalInputMode);
     
     // チュートリアルのステップ管理
     const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
@@ -170,6 +172,28 @@ export function TutorialScreen() {
                             <p className="text-green-400 font-bold animate-pulse">
                                 設定完了！足を前へ出すとブレーキ、手前でアクセルです。
                             </p>
+                        )}
+
+                        {/* Fallback: drive with keyboard pedals when feet can't be tracked */}
+                        {pedalInputMode === 'keyboard' ? (
+                            <div className="mt-4 p-3 bg-cyan-900/30 border border-cyan-700 rounded">
+                                <p className="text-cyan-300 text-sm font-bold mb-2">
+                                    キーボードモードで操作します（W: アクセル / S: ブレーキ）
+                                </p>
+                                <button
+                                    onClick={() => setPedalInputMode('camera')}
+                                    className="text-xs text-slate-400 underline hover:text-white transition-colors"
+                                >
+                                    カメラで足を認識する操作に戻す
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => { setPedalInputMode('keyboard'); nextStep(); }}
+                                className="mt-4 text-sm text-slate-400 underline hover:text-white transition-colors"
+                            >
+                                足の検出がうまくいかない場合は、キーボードで操作する（W / S）
+                            </button>
                         )}
                     </div>
                 )}

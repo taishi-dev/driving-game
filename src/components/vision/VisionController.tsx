@@ -190,14 +190,19 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
 
         poseLandmarkerRef.current = await PoseLandmarker.createFromOptions(filesetResolver, {
           baseOptions: {
-            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task`,
+            // 'full' over 'lite': markedly better on distant / low-contrast
+            // bodies (e.g. dark clothing) at a moderate GPU cost. Swap to
+            // 'heavy' for more accuracy, or back to 'lite' if framerate drops.
+            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task`,
             delegate: "GPU"
           },
           runningMode: "VIDEO",
           numPoses: 1,
-          minPoseDetectionConfidence: 0.5,
-          minPosePresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5
+          // Lowered 0.5 -> 0.3 so legs/feet keep tracking in poor conditions
+          // (distance, dark clothing). Smoothing downstream absorbs the jitter.
+          minPoseDetectionConfidence: 0.3,
+          minPosePresenceConfidence: 0.3,
+          minTrackingConfidence: 0.3
         });
 
         objectDetectorRef.current = await ObjectDetector.createFromOptions(filesetResolver, {
@@ -493,6 +498,12 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
   };
 
   const processPoseForPedals = (result: PoseLandmarkerResult, deltaTime: number, drawingUtils: DrawingUtils | null, handInfo: string) => {
+    // Keyboard pedal mode: do not let the camera touch the pedals, so the
+    // keyboard's setPedals() stays authoritative. Fallback for users whose
+    // legs/feet can't be tracked (distance, dark clothing). Steering still uses
+    // the camera. See docs/superpowers/plans/0004-keyboard-pedal-fallback.md.
+    if (useDrivingStore.getState().pedalInputMode === 'keyboard') return;
+
     // ポーズランドマークを描画
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
