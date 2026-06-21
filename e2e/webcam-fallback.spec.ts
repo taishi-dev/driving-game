@@ -71,17 +71,15 @@ test("keyboard steering works as the fallback when the camera is unavailable", a
   await expect.poll(() => steeringAngle(page)).toBe(0);
 });
 
-// Note: the camera-error overlay only renders after MediaPipe models finish
-// loading from their CDN (then getUserMedia is called and rejected). It is
-// therefore network-dependent and given a generous timeout. If the CDN is
-// unreachable this is expected to be the flaky one — quarantine it before the
-// keyboard-fallback test above if that ever happens.
+// Camera acquisition is decoupled from MediaPipe model loading (see
+// VisionController.acquireCamera), so the denial overlay appears promptly and
+// independently of the CDN — this test is deterministic, no network dependency.
 test("camera-denied shows the keyboard-fallback overlay", async ({ page }) => {
   await denyCamera(page);
   await startFreeDrive(page);
 
   await expect(page.getByText("📷 カメラを利用できません")).toBeVisible({
-    timeout: 60_000,
+    timeout: 15_000,
   });
   await expect(
     page.getByText("カメラへのアクセスが拒否されました", { exact: false }),

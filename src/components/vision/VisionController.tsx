@@ -58,8 +58,8 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
     new PoseLandmarkFilterManager(1.0, 0.004, 1.5)
   );
   const streamRef = useRef<MediaStream | null>(null); // ストリーム管理用
-  // Ref-indirection so startCamera's useCallback can invoke the loop without
-  // capturing predictWebcam as a dependency (the function is declared below).
+  // Ref-indirection so maybeStartLoop can invoke the loop without capturing
+  // predictWebcam as a dependency (the function is declared below).
   const predictWebcamRef = useRef<() => void>(() => {});
 
   const isPausedRef = useRef(isPaused);
@@ -110,37 +110,45 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
     setDebugInfo("Camera Stopped (Paused)");
   }, [setDebugInfo]);
 
-  // ■ カメラを開始する関数
-  const startCamera = useCallback(async () => {
+  // ■ 推論ループを開始する（カメラ映像とAIモデルの両方が準備できているときのみ）
+  // Camera-stream readiness and vision-model readiness are independent concerns,
+  // but the per-frame inference loop needs BOTH. Acquisition (acquireCamera) and
+  // model loading (setupMediaPipe) each call this when they finish, so the loop
+  // starts exactly once, when whichever was slower becomes ready.
+  const maybeStartLoop = useCallback(() => {
+    if (isPausedRef.current) return;
+    if (!streamRef.current || !videoRef.current) return; // camera not ready yet
+    if (!faceLandmarkerRef.current || !handLandmarkerRef.current) return; // models not ready yet
+    // Cancel any in-flight loop before starting a fresh one so loops never stack.
+    if (requestRef.current) cancelAnimationFrame(requestRef.current);
+    predictWebcamRef.current();
+  }, []);
+
+  // ■ カメラを取得する関数（AIモデルのロードとは独立して実行）
+  // Acquire the webcam as soon as the controller mounts, independent of MediaPipe
+  // model loading. This surfaces permission/availability problems — and the
+  // keyboard-fallback overlay — immediately, instead of waiting for the (CDN)
+  // models to load first. The inference loop still waits for the models via
+  // maybeStartLoop().
+  const acquireCamera = useCallback(async () => {
+    // Browser without camera API support (e.g. insecure context / old browser).
+    if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraError("このブラウザではカメラを利用できません。キーボードで運転できます（←→で操作）。");
+        setDebugInfo("Camera not supported");
+        return;
+    }
     try {
-        // AIモデルがまだ準備できていなければ待つ（本来はロード済みのはず）
-        if (!faceLandmarkerRef.current || !handLandmarkerRef.current) {
-            console.log("Waiting for models...");
-            return;
-        }
-
-        // Browser without camera API support (e.g. insecure context / old browser).
-        if (!navigator.mediaDevices?.getUserMedia) {
-            setCameraError("このブラウザではカメラを利用できません。キーボードで運転できます（←→で操作）。");
-            setDebugInfo("Camera not supported");
-            return;
-        }
-
         const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
         streamRef.current = stream;
         setCameraError(null);
 
         if (videoRef.current) {
             videoRef.current.srcObject = stream;
-            // Use a single onloadeddata handler. (Previously the loop was also
-            // registered via addEventListener, which started a second
-            // requestAnimationFrame loop and doubled the per-frame work.)
             videoRef.current.onloadeddata = () => {
                 videoRef.current?.play();
-                // Cancel any in-flight loop before starting a fresh one so loops
-                // never stack across start/stop cycles.
-                if (requestRef.current) cancelAnimationFrame(requestRef.current);
-                predictWebcamRef.current();
+                // Start the loop now if models are already loaded; otherwise
+                // setupMediaPipe's completion will start it.
+                maybeStartLoop();
             };
         }
         setDebugInfo("Camera Started");
@@ -154,7 +162,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
         );
         setDebugInfo("Camera Error: " + String(e));
     }
-  }, [setDebugInfo, setCameraError]); // predictWebcamは依存に入れない（ループするため）
+  }, [setDebugInfo, setCameraError, maybeStartLoop]); // predictWebcamは依存に入れない（ループするため）
 
   // ■ 初期化（MediaPipeのロード）
   useEffect(() => {
@@ -215,10 +223,9 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
             setVisionReady(true);
             setDebugInfo("Models Ready.");
 
-            // 初回ロード完了時に、ポーズしていなければカメラ起動
-            if (!isPausedRef.current) {
-                startCamera();
-            }
+            // Models are ready; start the loop if the camera stream is already
+            // acquired (acquireCamera runs independently on mount/resume).
+            maybeStartLoop();
         } else {
             // Unmounted while models were still loading (e.g. React StrictMode's
             // double mount in development) — release everything we created.
@@ -254,15 +261,12 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
   // ■ isPaused の変化に合わせてカメラをON/OFFする
   useEffect(() => {
     
-    // MediaPipeのロードが終わっていない場合は無視（ロード完了時の処理に任せる）
-    if (!faceLandmarkerRef.current) return;
-
     if (isPaused) {
         stopCamera();
     } else {
-        startCamera();
+        acquireCamera();
     }
-  }, [isPaused, startCamera, stopCamera]);
+  }, [isPaused, acquireCamera, stopCamera]);
   
 
 
@@ -375,7 +379,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
     // 次のフレームを要求
     requestRef.current = requestAnimationFrame(predictWebcam);
   };
-  // Keep the ref current so startCamera (declared above) can call this without
+  // Keep the ref current so maybeStartLoop (declared above) can call this without
   // capturing it as a dependency. Assigning during render is safe for refs.
   predictWebcamRef.current = predictWebcam;
 
@@ -773,7 +777,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
             <div style={{ fontWeight: 'bold', marginBottom: '6px', fontSize: '14px' }}>📷 カメラを利用できません</div>
             <div style={{ marginBottom: '10px' }}>{cameraError}</div>
             <button
-              onClick={() => { setCameraError(null); startCamera(); }}
+              onClick={() => { setCameraError(null); acquireCamera(); }}
               style={{
                 padding: '6px 14px',
                 fontSize: '13px',
