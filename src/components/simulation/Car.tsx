@@ -6,35 +6,19 @@ import { Vector3, Group } from "three";
 import { useDrivingStore, ReplayFrame } from "@/lib/store";
 import { checkMissionGoal } from "@/components/simulation/MissionController";
 import { getCoursePath } from "@/lib/course";
-import { useGLTF } from "@react-three/drei";
 
 export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "ghost" }) {
   const groupRef = useRef<Group>(null);
   const ghostRef = useRef<Group>(null);
   const { camera } = useThree();
 
-  const {
-    steeringAngle: steeringInput,
-    throttle: throttleInput,
-    brake: brakeInput,
-    headRotation,
-    setSpeed,
-    isPaused,
-    isReplaying,
-    replayData,
-    replayViewMode,
-    currentLesson,
-    setMissionState,
-    setScreen,
-    gear,
-    setGear,
-    // ✅ 追加: Storeから動的リストを取得
-    activeCheckpoints,
-    // ✅ 追加: クリア報告用とリザルト計算用
-    addClearedCheckpoint,
-    resetClearedCheckpoints,
-    calculateMissionResult
-  } = useDrivingStore();
+  // Reactive subscriptions: ONLY values actually read during render. Everything
+  // else (high-frequency inputs and actions) is read via useDrivingStore.getState()
+  // inside useFrame so that per-frame store writes never re-render this component
+  // (Car is the heaviest subtree in the scene).
+  const currentLesson = useDrivingStore((s) => s.currentLesson);
+  const isReplaying = useDrivingStore((s) => s.isReplaying);
+  const replayViewMode = useDrivingStore((s) => s.replayViewMode);
 
   const isFreeMode = currentLesson === "free-mode";
 
@@ -49,6 +33,10 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   // Recording state
   const recordedFrames = useRef<ReplayFrame[]>([]);
 
+  // Last speed value pushed to the store (rounded km/h). Used to avoid writing
+  // setSpeed on every frame — we only write when the displayed value changes.
+  const lastDisplaySpeed = useRef(-1);
+
   // Replay state
   const replayIndex = useRef(0);
   const ghostDist = useRef(0);
@@ -60,20 +48,16 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   const safetyCheckState = useRef({ lookedLeft: false, lookedRight: false });
 
   // Get Course Path for Ghost Car
-  const coursePath = useMemo(() => getCoursePath(currentLesson as any), [currentLesson]);
+  const coursePath = useMemo(() => getCoursePath(currentLesson), [currentLesson]);
   const courseLength = useMemo(() => {
     const len = coursePath.getLength?.() ?? 0;
     return Number.isFinite(len) && len > 0.0001 ? len : 0;
   }, [coursePath]);
 
-  // Car Model
-  const { scene } = useGLTF("/models/car.gltf");
-  const carScene = useMemo(() => scene.clone(), [scene]);
-
   // Reset on lesson change
   useEffect(() => {
     clearedCheckpoints.current.clear();
-    resetClearedCheckpoints(); // ✅ Store側のクリアリストもリセット
+    useDrivingStore.getState().resetClearedCheckpoints(); // ✅ Store側のクリアリストもリセット
     safetyCheckState.current = { lookedLeft: false, lookedRight: false };
 
     speed.current = 0;
@@ -92,9 +76,30 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     }
   }, [currentLesson]);
 
-  useFrame((state, delta) => {
+  useFrame(() => {
     if (!groupRef.current) return;
-    if (isPaused) return;
+
+    // Read the latest store state directly (no React subscription) so that
+    // per-frame input writes don't re-render Car.
+    const store = useDrivingStore.getState();
+    if (store.isPaused) return;
+
+    const {
+      steeringAngle: steeringInput,
+      throttle: throttleInput,
+      brake: brakeInput,
+      headRotation,
+      isReplaying,
+      replayData,
+      replayViewMode,
+      gear,
+      activeCheckpoints,
+      setSpeed,
+      setMissionState,
+      setScreen,
+      addClearedCheckpoint,
+      calculateMissionResult,
+    } = store;
 
     // Ensure camera is upright
     camera.up.set(0, 1, 0);
@@ -171,7 +176,14 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
         if (speed.current < creepSpeed) speed.current = creepSpeed;
       }
     }
-    setSpeed(Math.abs(speed.current) * 100);
+    // Telemetry: only write to the store when the displayed (rounded) km/h
+    // actually changes, instead of every frame. The speedometer reads a rounded
+    // value anyway, so this avoids waking up speed subscribers on every frame.
+    const displaySpeed = Math.round(Math.abs(speed.current) * 100);
+    if (displaySpeed !== lastDisplaySpeed.current) {
+      lastDisplaySpeed.current = displaySpeed;
+      setSpeed(displaySpeed);
+    }
 
     // Gear Direction Logic
     const direction = gear === "R" ? -1 : 1;
@@ -198,34 +210,6 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
       // Actually, regardless of gear, if you turn wheels LEFT, the car rotates LEFT (CCW).
       // (Forward -> Left Turn, Backward -> Tail swings Left -> Car rotates Left/CCW).
       // So we do NOT invert rotation based on gear.
-      
-      const turnDir = direction; // Use direction again to invert rotation when reversing for natural feel (steering left backs you into left spot)
-                                 // Wait, if I back up and turn Wheel Left:
-                                 // Front wheels point Left.
-                                 // Car describes a circle to its Left.
-                                 // The Rear moves Left? No, the Front swings Right? 
-                                 // If I turn Wheel Left (CCW), and move Forward: Car turns Left (CCW).
-                                 // If I turn Wheel Left (CCW), and move Backward: 
-                                 //  The car follows the same circle radius?
-                                 //  Yes. The arc is the same.
-                                 //  Moving Forward along arc -> Yaw changes +CCW.
-                                 //  Moving Backward along arc -> Yaw changes -CCW (CW)?
-                                 //  Let's simulate:
-                                 //  Car at (0,0), rot=0. Wheel Left.
-                                 //  Forward step: Pos becomes (-d, d), Rot becomes +delta.
-                                 //  Backward step: Pos becomes (+d, -d)? No.
-                                 //  Geometrically, backing up with Left Wheel means the Rear goes to the Left of the driver?
-                                 //  No, "Backing to the Left" usually means "Backing into a spot on the left".
-                                 //  To do that, you turn wheel... Left?
-                                 //  If I want the tail to go Left:
-                                 //  Steering Left -> Front wheels point Left.
-                                 //  Back up -> Front swings Right? Tail swings Left?
-                                 //  Actually, Steering Left means Center of Curvature is on the Left.
-                                 //  Backing up simply moves you along the circle CW?
-                                 //  Moving Forward CCW. Moving Backward CW.
-                                 //  So yes, Yaw Rotation direction IS inverted relative to Wheel angle.
-                                 //  Wheel + (Left): Speed + -> Rot +.
-                                 //  Wheel + (Left): Speed - (Back) -> Rot -.
       
       groupRef.current.rotation.y -= boostedSteering * turnSpeed * (speed.current / maxSpeed) * 3.0 * direction;
     }
@@ -354,7 +338,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
             <ExternalCarVisuals />
           </group>
         )}
-        {showDriverView && <CarVisuals steeringInput={steeringInput} />}
+        {showDriverView && <CarVisuals />}
         
         
         {/* Rearview Mirror Removed as per user request */}
@@ -372,7 +356,11 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   );
 }
 
-export function CarVisuals({ steeringInput }: { steeringInput: number }) {
+export function CarVisuals() {
+  // Subscribe to steering here (a small leaf component) rather than in Car, so
+  // that high-frequency steering changes only re-render the steering wheel mesh.
+  const steeringInput = useDrivingStore((s) => s.steeringAngle);
+
   return (
     <group rotation={[0, Math.PI, 0]}>
       <mesh position={[0, 1.1, -0.25]} rotation={[0.35, 0, 0]}>

@@ -26,7 +26,7 @@ export interface FeedbackEvent {
   time: number;
   type: "KAIZEN" | "GOOD";
   message: string;
-  meta?: Record<string, any>;
+  meta?: Record<string, unknown>;
 }
 
 /** Signal / Traffic Light state logs */

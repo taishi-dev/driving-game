@@ -1,29 +1,18 @@
-import { useEffect, useRef } from 'react';
-import { useDrivingStore } from '@/lib/store';
+import { useEffect } from 'react';
 
-// config
-const SPEED_LIMITS: Record<string, number> = {
-    'straight': 60,
-    's-curve': 15,
-    'crank': 10,
-    'left-turn': 20,
-    'right-turn': 20
-};
-
-const COOLDOWN_MS = 5000;
-
+/**
+ * Real-time driving feedback is currently disabled for performance.
+ * Mission analysis is now done post-run in store.ts (calculateMissionResult).
+ *
+ * NOTE: This hook previously called `useDrivingStore()` with no selector, which
+ * subscribes to the ENTIRE store. Because it is invoked from ClientApp (the app
+ * root), that re-rendered the whole app subtree on every store write — and the
+ * store is written many times per frame while driving. The destructured values
+ * were unused (the effect body is empty), so the subscription was pure overhead
+ * and has been removed.
+ */
 export function useDrivingFeedback() {
-    const { 
-        speed, isOffTrack, gaze, currentLesson, missionState, 
-        addFeedbackLog 
-    } = useDrivingStore();
-
-    const lastLogTimeRef = useRef<number>(0);
-    const gazeTimerRef = useRef<number>(0);
-
-    // Optimization: Real-time feedback disabled for performance. 
-    // Analysis is now done post-mission in store.ts (calculateMissionResult).
     useEffect(() => {
-        // Kept for future real-time features if needed.
+        // Placeholder for future real-time feedback features.
     }, []);
 }

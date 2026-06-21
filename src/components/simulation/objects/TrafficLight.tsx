@@ -36,7 +36,7 @@ export function TrafficLight({ position, rotation = [0, 0, 0], interval = 5000 }
   });
 
   return (
-    <group position={position} rotation={rotation as any}>
+    <group position={position} rotation={rotation as [number, number, number]}>
       <ModelErrorBoundary fallback={
         <mesh position={[0, 2, 0]}>
           <boxGeometry args={[0.5, 4, 0.5]} />

@@ -22,7 +22,7 @@ export function RailroadCrossing({ position, rotation = [0, 0, 0], scale = 1 }: 
   });
 
   return (
-    <group position={position} rotation={rotation as any} scale={scale}>
+    <group position={position} rotation={rotation as [number, number, number]} scale={scale}>
       <ModelErrorBoundary fallback={
         <mesh position={[0, 1.5, 0]}>
           <cylinderGeometry args={[0.1, 0.1, 3, 16]} />

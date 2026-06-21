@@ -114,7 +114,7 @@ function TrafficLight({
         // Log current signal state to the store so post-run analysis can reconstruct what drivers saw
         try {
             useDrivingStore.getState().addSignalStateLog({ time: Date.now(), checkpointId: id, state: currentState });
-        } catch (e) {
+        } catch {
             // noop
         }
 

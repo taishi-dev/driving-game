@@ -1,6 +1,12 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  type Firestore,
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -34,7 +40,23 @@ if (isFirebaseConfigured) {
   try {
     const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
     auth = getAuth(app);
-    db = getFirestore(app);
+    try {
+      // initializeFirestore (once, before any getFirestore) tunes two things:
+      // - experimentalAutoDetectLongPolling: avoids the ~10s WebChannel timeout
+      //   on networks/proxies that interfere with Firestore's streaming connection
+      //   (the per-load history stall). See docs/superpowers/plans/0003.
+      // - persistentLocalCache (browser only; IndexedDB): repeat reads are served
+      //   instantly and survive reloads/offline.
+      db = initializeFirestore(app, {
+        experimentalAutoDetectLongPolling: true,
+        ...(typeof window !== "undefined"
+          ? { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }
+          : {}),
+      });
+    } catch {
+      // Firestore already initialized (e.g. HMR / double module eval) — reuse it.
+      db = getFirestore(app);
+    }
   } catch (e) {
     // Defensive: any unexpected init failure also degrades to guest mode
     // rather than taking down the app.

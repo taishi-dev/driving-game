@@ -1,7 +1,6 @@
-import { useDrivingStore } from "@/lib/store";
+import { useDrivingStore, DrivingState, FeedbackEvent } from "@/lib/store";
 import { Scene } from "../simulation/Scene"; // Re-use scene for replay
 import { Suspense, useEffect, useRef } from "react";
-import { getCoursePath } from "@/lib/course";
 import {addDoc, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -16,7 +15,6 @@ export function FeedbackScreen() {
   const setReplayViewMode = useDrivingStore(state => state.setReplayViewMode); // New
   const feedbackLogs = useDrivingStore(state => state.feedbackLogs); // New
 
-  const calculateMissionResult = useDrivingStore(state => state.calculateMissionResult); // Action
   const analyzedRef = useRef(false);
 
   const addHistoryItem = useDrivingStore(state => state.addHistoryItem);
@@ -43,11 +41,13 @@ export function FeedbackScreen() {
     };
   }, []);
 
-  const saveResultToFirestore = async ( state: any) => {
+  const saveResultToFirestore = async (state: DrivingState) => {
     if (!db) return; // guest-only mode: nothing to persist to
+    const user = state.user;
+    if (!user) return;
     try {
-        const kaizenLogs = state.feedbackLogs.filter((l: any) => l.type === 'KAIZEN');
-        const kaizenPenalty = kaizenLogs.reduce((acc: number, l: any) => acc + (l.meta?.penalty ?? 5), 0);
+        const kaizenLogs = state.feedbackLogs.filter((l: FeedbackEvent) => l.type === 'KAIZEN');
+        const kaizenPenalty = kaizenLogs.reduce((acc: number, l: FeedbackEvent) => acc + (typeof l.meta?.penalty === 'number' ? l.meta.penalty : 5), 0);
         const totalPenalty = kaizenPenalty + Math.floor(state.deviationPenalty || 0);
         const score = Math.max(0, 100 - totalPenalty);
 
@@ -58,7 +58,7 @@ export function FeedbackScreen() {
         const clearTime = `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
 
         const logData = {
-            userId: state.user.uid,
+            userId: user.uid,
             timestamp: Date.now(),
             lesson: state.currentLesson,
             score: score,
@@ -232,7 +232,7 @@ export function FeedbackScreen() {
                     <div className="text-xs text-slate-500 mb-1">Score</div>
                     <div className="text-3xl font-bold text-blue-400">
                         {(() => {
-                            const kaizenPenalty = kaizenLogs.reduce((acc, l) => acc + (l.meta?.penalty ?? 5), 0);
+                            const kaizenPenalty = kaizenLogs.reduce((acc, l) => acc + (typeof l.meta?.penalty === 'number' ? l.meta.penalty : 5), 0);
                             const deviationPenalty = useDrivingStore.getState().deviationPenalty || 0;
                             const totalPenalty = kaizenPenalty + Math.floor(deviationPenalty);
                             return Math.max(0, 100 - totalPenalty);

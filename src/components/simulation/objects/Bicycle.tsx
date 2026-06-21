@@ -15,7 +15,7 @@ export function Bicycle({ position, rotation = [0, 0, 0], scale = 1 }: { positio
   };
 
   return (
-    <group position={position} rotation={rotation as any} scale={scale}>
+    <group position={position} rotation={rotation as [number, number, number]} scale={scale}>
       <ModelErrorBoundary fallback={
         // 万が一ファイルがない時用の代わりの箱
         <mesh position={[0, 0.5, 0]}>

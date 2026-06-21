@@ -1,15 +1,7 @@
-import { LessonId, useDrivingStore } from "@/lib/store";
-import { useFrame } from "@react-three/fiber";
-import { useEffect, useRef } from "react";
+import { LessonId } from "@/lib/store";
 import { Vector3 } from "three";
 
 export function MissionController() {
-  const currentLesson = useDrivingStore(state => state.currentLesson);
-  const missionState = useDrivingStore(state => state.missionState);
-  const setMissionState = useDrivingStore(state => state.setMissionState);
-  const setScreen = useDrivingStore(state => state.setScreen);
-  const speed = useDrivingStore(state => state.speed);
-
   // Logic is currently handled in Car.tsx due to access requirements
   return null;
 }
