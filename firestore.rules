@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // mission_logs: per-run records, one per completed run, owned by the writer.
+    // Scope: owner isolation ONLY. We do NOT validate field shape, types, sizes,
+    // or that `score` is genuine — `score` is private and client-trusted
+    // (CONTEXT.md). The day score becomes competitive/shared/rewarded, revisit
+    // this (ADR-0001): server-computed scores and/or field validation required.
+    match /mission_logs/{logId} {
+
+      // Owner-only reads (get + list). The HistoryScreen query constrains by
+      // where("userId","==",user.uid), satisfying this rule (rules are not filters).
+      allow read: if request.auth != null
+                  && resource.data.userId == request.auth.uid;
+
+      // Create owned by the caller. No further validation by design.
+      allow create: if request.auth != null
+                    && request.resource.data.userId == request.auth.uid;
+
+      // Owner may delete own runs. Note: resource.data (existing doc), NOT
+      // request.resource.data (null on delete). No client UI calls this yet.
+      allow delete: if request.auth != null
+                    && resource.data.userId == request.auth.uid;
+
+      // update intentionally omitted => denied by default (a mission_log is
+      // never edited in place).
+    }
+
+    // All other paths: denied by default (no match grants access).
+  }
+}
