@@ -68,7 +68,7 @@ export interface DrivingState {
   // Screen Management
   screen: ScreenId;
   isPaused: boolean;
-  // UI language. Persisted to localStorage; default Japanese.
+  // UI language. Persisted to localStorage; default English.
   language: "ja" | "en";
 
   // Vehicle Control, Head Tracking, Foot Pedal, Telemetry, Replay System, System
@@ -175,10 +175,12 @@ export const useDrivingStore = create<DrivingState>((set) => ({
       ? "home"
       : "language",
   isPaused: false,
+  // Default English: only an explicit saved "ja" choice yields Japanese;
+  // unset or any other value resolves to English.
   language:
-    typeof window !== "undefined" && localStorage.getItem("language") === "en"
-      ? "en"
-      : "ja",
+    typeof window !== "undefined" && localStorage.getItem("language") === "ja"
+      ? "ja"
+      : "en",
 
   steeringAngle: 0,
   throttle: 0,
