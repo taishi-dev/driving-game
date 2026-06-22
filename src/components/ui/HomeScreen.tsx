@@ -58,18 +58,19 @@ export function HomeScreen() {
               VIRTUAL <span className="text-blue-500">DRIVING</span> SCHOOL
             </h1>
             <p className="text-sm font-bold text-slate-400 tracking-[0.3em] mt-2">SIMULATION SYSTEM v2.0</p>
-          </div>
 
-          {/* Language selector (JA / EN), persisted in the store */}
-          <select
-            aria-label="Select language"
-            value={language}
-            onChange={(e) => setLanguage(e.target.value as 'ja' | 'en')}
-            className="bg-slate-800/80 text-white text-sm font-bold px-3 py-1.5 rounded border border-slate-700 hover:border-blue-500 focus:border-blue-500 focus:outline-none transition-colors cursor-pointer"
-          >
-            <option value="ja">日本語 (Japanese)</option>
-            <option value="en">English (英語)</option>
-          </select>
+            {/* Language selector (JA / EN), persisted in the store. Placed under
+                the title so it isn't hidden by the top-right profile header. */}
+            <select
+              aria-label="Select language"
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as 'ja' | 'en')}
+              className="mt-4 bg-slate-800/80 text-white text-sm font-bold px-3 py-1.5 rounded border border-slate-700 hover:border-blue-500 focus:border-blue-500 focus:outline-none transition-colors cursor-pointer"
+            >
+              <option value="ja">日本語 (Japanese)</option>
+              <option value="en">English (英語)</option>
+            </select>
+          </div>
         </div>
 
         {/* Bottom Area: Carousel */}
