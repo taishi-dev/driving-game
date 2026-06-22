@@ -68,7 +68,7 @@ export function HomeScreen() {
               className="mt-4 bg-slate-800/80 text-white text-sm font-bold px-3 py-1.5 rounded border border-slate-700 hover:border-blue-500 focus:border-blue-500 focus:outline-none transition-colors cursor-pointer"
             >
               <option value="ja">日本語 (Japanese)</option>
-              <option value="en">English (英語)</option>
+              <option value="en">English (English)</option>
             </select>
           </div>
         </div>
