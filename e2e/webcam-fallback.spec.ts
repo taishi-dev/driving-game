@@ -35,6 +35,12 @@ async function denyCamera(page: Page): Promise<void> {
 // Navigate from a fresh load into the driving screen via Free Mode, which goes
 // straight to active driving (no briefing overlay to dismiss).
 async function startFreeDrive(page: Page): Promise<void> {
+  // Skip the first-launch language picker: a fresh browser has no saved
+  // language, so the store routes to the LanguageScreen picker instead of Home
+  // and the Free Mode button is absent. Seed "ja" so it goes straight to Home
+  // with the button labelled フリーモード. (The camera-denied overlay text is
+  // hardcoded English regardless of language — see the assertions below.)
+  await page.addInitScript(() => localStorage.setItem("language", "ja"));
   await page.goto("/?e2e=1");
   await page.getByRole("button", { name: /フリーモード/ }).click();
   await page.waitForFunction(
@@ -78,10 +84,10 @@ test("camera-denied shows the keyboard-fallback overlay", async ({ page }) => {
   await denyCamera(page);
   await startFreeDrive(page);
 
-  await expect(page.getByText("📷 カメラを利用できません")).toBeVisible({
+  await expect(page.getByText("📷 Camera unavailable")).toBeVisible({
     timeout: 15_000,
   });
   await expect(
-    page.getByText("カメラへのアクセスが拒否されました", { exact: false }),
+    page.getByText("Camera access was denied", { exact: false }),
   ).toBeVisible();
 });
