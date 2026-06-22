@@ -10,7 +10,8 @@
     "type-check": "tsc --noEmit",
     "smoke": "start-server-and-test start http-get://127.0.0.1:3000 smoke:check",
     "smoke:check": "node -e \"\"",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "deploy:rules": "npx --yes firebase-tools@15.22.0 deploy --only firestore:rules"
   },
   "engines": {
     "node": ">=24"
