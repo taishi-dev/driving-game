@@ -60,21 +60,16 @@ export function HomeScreen() {
             <p className="text-sm font-bold text-slate-400 tracking-[0.3em] mt-2">SIMULATION SYSTEM v2.0</p>
           </div>
 
-          {/* Language switcher (JA / EN), persisted in the store */}
-          <div className="flex gap-1 text-sm font-bold">
-            <button
-              onClick={() => setLanguage('ja')}
-              className={`px-3 py-1 rounded transition-colors ${language === 'ja' ? 'bg-blue-600 text-white' : 'bg-slate-800/80 text-slate-400 hover:text-white'}`}
-            >
-              JA
-            </button>
-            <button
-              onClick={() => setLanguage('en')}
-              className={`px-3 py-1 rounded transition-colors ${language === 'en' ? 'bg-blue-600 text-white' : 'bg-slate-800/80 text-slate-400 hover:text-white'}`}
-            >
-              EN
-            </button>
-          </div>
+          {/* Language selector (JA / EN), persisted in the store */}
+          <select
+            aria-label="Select language"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value as 'ja' | 'en')}
+            className="bg-slate-800/80 text-white text-sm font-bold px-3 py-1.5 rounded border border-slate-700 hover:border-blue-500 focus:border-blue-500 focus:outline-none transition-colors cursor-pointer"
+          >
+            <option value="ja">日本語 (Japanese)</option>
+            <option value="en">English (英語)</option>
+          </select>
         </div>
 
         {/* Bottom Area: Carousel */}
