@@ -9,7 +9,7 @@
     "lint": "eslint",
     "type-check": "tsc --noEmit",
     "smoke": "start-server-and-test start http-get://127.0.0.1:3000 smoke:check",
-    "smoke:check": "node -e \"\"",
+    "smoke:check": "node scripts/smoke-check.mjs",
     "test:e2e": "playwright test",
     "deploy:rules": "npx --yes firebase-tools@15.22.0 deploy --only firestore:rules",
     "test:rules": "npx --yes firebase-tools@15.22.0 emulators:exec --only firestore --project demo-driving \"node --test tests/firestore-rules.test.mjs\""
