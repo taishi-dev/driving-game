@@ -11,7 +11,8 @@
     "smoke": "start-server-and-test start http-get://127.0.0.1:3000 smoke:check",
     "smoke:check": "node -e \"\"",
     "test:e2e": "playwright test",
-    "deploy:rules": "npx --yes firebase-tools@15.22.0 deploy --only firestore:rules"
+    "deploy:rules": "npx --yes firebase-tools@15.22.0 deploy --only firestore:rules",
+    "test:rules": "npx --yes firebase-tools@15.22.0 emulators:exec --only firestore --project demo-driving \"node --test tests/firestore-rules.test.mjs\""
   },
   "engines": {
     "node": ">=24"
@@ -29,6 +30,7 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@playwright/test": "^1.61.0",
     "@types/node": "^20",
     "@types/react": "^19",
