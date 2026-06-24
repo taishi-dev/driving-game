@@ -3,8 +3,10 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { FilesetResolver, FaceLandmarker, HandLandmarker, DrawingUtils, HandLandmarkerResult, PoseLandmarker, PoseLandmarkerResult, ObjectDetector, ObjectDetectorResult } from "@mediapipe/tasks-vision";
 import { useDrivingStore } from "@/lib/store";
-import { processPedalRecognition, checkFootStability, STABILITY_DURATION_MS } from "@/lib/footPedalRecognition";
+import { STABILITY_DURATION_MS } from "@/lib/footPedalRecognition";
 import { PoseLandmarkFilterManager } from "@/lib/oneEuroFilter";
+import { computeSteeringAndGear } from "@/lib/vision/steeringGear";
+import { decidePedalActions } from "@/lib/vision/pedalDecision";
 
 // How often (ms) the per-frame status string is allowed to be written to the
 // store. The detection loop runs at display rate; the human-readable panel only
@@ -391,115 +393,16 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
 
 
   const processSteeringAndGear = (handResult: HandLandmarkerResult, objectResult: ObjectDetectorResult | null) => {
-      const hands = handResult.landmarks.length;
-      let info = `Hands: ${hands}`;
-      
-      // --- Gear Logic ---
-      // Define Gear Zone: Right side of the screen, lower half.
-      // x: 0.8 ~ 1.0, y: 0.5 ~ 1.0
-      // If a hand is in this zone, we shift to REVERSE.
-      // Otherwise, we shift to DRIVE (default).
-      
-      let newGear: "D" | "R" = "D";
-      let gearHandIndex = -1;
-      
-      for (let i = 0; i < hands; i++) {
-          const landmarks = handResult.landmarks[i];
-          const wrist = landmarks[0];
-          
-          if (wrist.x > 0.8 && wrist.y > 0.5) {
-              newGear = "R";
-              gearHandIndex = i;
-              break; // Found a gear hand
-          }
-      }
-      
-      // Update Gear Store (avoid frequent updates if same)
       const currentGear = useDrivingStore.getState().gear;
-      if (currentGear !== newGear) {
-          setGear(newGear);
-      }
-      info += ` | Gear: ${newGear}`;
-      
-      // --- Steering Logic ---
-      // Use hands that are NOT the gear hand.
-      const steeringHands = [];
-      for (let i = 0; i < hands; i++) {
-          if (i !== gearHandIndex) {
-              steeringHands.push(handResult.landmarks[i]);
-          }
-      }
-      
-      let steering = 0;
-      let angle = 0;
-      
-      if (steeringHands.length >= 2) {
-          // Two-Hand Steering (Standard)
-          // Sort by x coordinate to distinguish left/right
-          const h1 = steeringHands[0][9]; // Middle finger MCP
-          const h2 = steeringHands[1][9];
-          
-          let left, right;
-          if (h1.x < h2.x) { left = steeringHands[0][9]; right = steeringHands[1][9]; }
-          else { left = steeringHands[1][9]; right = steeringHands[0][9]; }
-          
-          const dy = right.y - left.y;
-          const dx = right.x - left.x;
-          angle = Math.atan2(dy, dx);
-          
-          // Sensitivity adjustments
-          const sensitivity = 0.8;
-          steering = -angle * sensitivity;
-          
-      } else if (steeringHands.length === 1) {
-          // Single-Hand Steering (One Hand Detected or One Hand Shifting)
-          // Calculate tilt of the single hand.
-          // Using Wrist (0) and Middle Finger MCP (9)
-          const wrist = steeringHands[0][0];
-          const middle = steeringHands[0][9];
-          
-          const dy = middle.y - wrist.y;
-          const dx = middle.x - wrist.x;
-          
-          // Upright (Straight) is -90 degrees (-PI/2).
-          // We want deviation from -PI/2.
-          const handAngle = Math.atan2(dy, dx);
-          const neutralAngle = -Math.PI / 2;
-          
-          let diff = handAngle - neutralAngle;
-          
-          // Normalize to -PI to PI
-          if (diff > Math.PI) diff -= 2 * Math.PI;
-          if (diff < -Math.PI) diff += 2 * Math.PI;
-          
-          // Sensitivity for single hand
-          const oneHandSensitivity = 1.5;
-          steering = diff * oneHandSensitivity;
-          angle = diff; 
-          
-      } else {
-          // No hands for steering
-          steering = 0;
-      }
-      
-      // Clamp
-      const deadzone = 0.05;
-      if (Math.abs(steering) < deadzone) steering = 0;
-      steering = Math.max(-1, Math.min(1, steering));
-      
-      // Update Steering Store
-      setSteering(steering);
-      
-      info += ` | Str: ${steering.toFixed(2)}`;
-      
-      // Object Detection Info (Optional Display)
-      if (objectResult && objectResult.detections.length > 0) {
-          const det = objectResult.detections[0];
-          const cat = det.categories[0];
-          if (cat) info += ` | Obj: ${cat.categoryName}`;
-      }
-      
-      return info;
+      const result = computeSteeringAndGear({
+          landmarks: handResult.landmarks,
+          detections: objectResult?.detections ?? null,
+      });
+      // setGear stays conditional here: store.setGear is unconditional, so this
+      // guard is what keeps it from writing every frame.
+      if (currentGear !== result.newGear) setGear(result.newGear);
+      setSteering(result.steering);
+      return result.info;
   };
 
   const processPoseForPedals = (result: PoseLandmarkerResult, deltaTime: number, drawingUtils: DrawingUtils | null, handInfo: string) => {
@@ -618,87 +521,24 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
     }
 
 
-    // Handling based on the calibration stage
-    if (['idle', 'waiting_for_brake'].includes(currentCalibrationStage)) {
-      // During calibration - check foot-position stability over 5 seconds
-      if (filteredLandmarks) {
-        const currentTime = performance.now();
-        const stabilityCheck = checkFootStability(
-          filteredLandmarks,
-          currentFootCalibration,
-          currentTime
-        );
+    // Decide calibration/pedal actions (pure) and apply the resulting store writes.
+    const screen = useDrivingStore.getState().screen;
+    const now = performance.now();
+    const decision = decidePedalActions({
+      filteredLandmarks,
+      calibrationStage: currentCalibrationStage,
+      pedalState: currentPedalState,
+      footCalibration: currentFootCalibration,
+      screen,
+      currentTime: now,
+      deltaTime,
+      handInfo,
+    });
 
-        if (stabilityCheck.calibration) {
-          setFootCalibration(stabilityCheck.calibration);
-
-          if (stabilityCheck.isStable) {
-            // Calibration is complete if the foot stayed stable for 5 seconds
-            setCalibrationStage('calibrated');
-            setDebugInfoThrottled(`${handInfo} | Foot calibration complete!`);
-            // NOTE: do NOT auto-navigate to the driving screen here. This callback
-            // also runs during the tutorial (which mounts VisionController), and
-            // forcing setScreen('driving') yanked the user out of the tutorial
-            // mid-step. Screen transitions are owned by the UI, not this loop.
-          } else {
-            // Stabilizing - show the progress
-            const progressPercent = (stabilityCheck.progress * 100).toFixed(0);
-            setDebugInfoThrottled(`${handInfo} | Please keep your foot still... ${progressPercent}%`);
-
-            // On the first pass, set the calibration stage to 'waiting_for_brake'
-            if (currentCalibrationStage === 'idle') {
-              setCalibrationStage('waiting_for_brake');
-            }
-          }
-        } else {
-          setDebugInfoThrottled(`${handInfo} | Foot not detected. Please sit in the chair`);
-        }
-      } else {
-        setDebugInfoThrottled(`${handInfo} | Foot not detected`);
-      }
-    } else if (currentCalibrationStage === 'calibrated' && currentFootCalibration && currentFootCalibration.isCalibrated) {
-      // Calibration complete - run pedal recognition
-      if (filteredLandmarks) {
-        // Run pedal recognition only when the screen is 'driving'
-        const screen = useDrivingStore.getState().screen;
-        if (screen === 'driving') {
-          const recognitionResult = processPedalRecognition(
-            filteredLandmarks,
-            currentFootCalibration,
-            currentPedalState,
-            deltaTime
-          );
-
-          // Update the calibration (record the accelerator press position)
-          setFootCalibration(recognitionResult.updatedCalibration);
-
-          // Update the pedal state
-          updatePedalState(recognitionResult.pedalState);
-
-          // Update the debug info
-          const { throttle, brake, isAccelPressed, isBrakePressed } = recognitionResult.pedalState;
-          setDebugInfoThrottled(
-            `${handInfo} | Accel: ${isAccelPressed ? 'ON' : 'OFF'} (${(throttle * 100).toFixed(0)}%) | ` +
-            `Brake: ${isBrakePressed ? 'ON' : 'OFF'} (${(brake * 100).toFixed(0)}%)`
-          );
-        } else {
-          // Reset the pedal state outside the driving screen
-          updatePedalState({
-            throttle: 0,
-            brake: 0,
-            isAccelPressed: false,
-            isBrakePressed: false,
-            brakePressDuration: 0,
-            brakePressCount: 0,
-          });
-          setDebugInfoThrottled(`${handInfo} | Calibration complete`);
-        }
-      } else {
-        setDebugInfoThrottled(`${handInfo} | Foot not detected`);
-      }
-    } else {
-      setDebugInfoThrottled(handInfo);
-    }
+    if (decision.setFootCalibration) setFootCalibration(decision.setFootCalibration.value);
+    if (decision.setCalibrationStage) setCalibrationStage(decision.setCalibrationStage);
+    if (decision.updatePedalState) updatePedalState(decision.updatePedalState);
+    setDebugInfoThrottled(decision.debugInfo);
   };
 
   // Build the status description text (read directly from the store for the latest state)

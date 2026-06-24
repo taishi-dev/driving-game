@@ -62,7 +62,7 @@
  * - A long brake (1 second or more) gradually increases the deceleration
  */
 
-import { NormalizedLandmark } from "@mediapipe/tasks-vision";
+import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
 
 /**
  * How long (ms) the foot must stay still for calibration to complete.
