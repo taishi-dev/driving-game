@@ -62,7 +62,7 @@
  * - A long brake (1 second or more) gradually increases the deceleration
  */
 
-import { NormalizedLandmark } from "@mediapipe/tasks-vision";
+import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
 
 /**
  * Type that stores the initial position and angle of the foot
