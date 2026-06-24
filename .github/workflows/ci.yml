@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   quality:
-    name: Lint & Type-check
+    name: Lint, Type-check & Unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,6 +21,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run type-check
+      - run: npm run test:unit
 
   build-smoke:
     name: Build & Smoke
