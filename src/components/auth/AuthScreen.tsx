@@ -87,7 +87,10 @@ export function AuthScreen() {
     } catch (err: unknown) {
       let errorMessage: string = t.errGeneric;
       if (err instanceof FirebaseError) {
-        errorMessage = err.message;
+        // Log the raw error for debugging, but never render it: Firebase messages
+        // can leak internal detail (quotas, endpoints). Unrecognized codes fall
+        // through to the generic localized message.
+        console.error("Auth error:", err.code, err.message);
         if (err.code === 'auth/email-already-in-use') {
           errorMessage = t.errEmailInUse;
         } else if (err.code === 'auth/weak-password') {
