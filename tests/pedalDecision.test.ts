@@ -6,6 +6,7 @@ import { decidePedalActions } from "../src/lib/vision/pedalDecision.ts";
 import {
   calibrateFootPosition,
   processPedalRecognition,
+  STABILITY_DURATION_MS,
   type FootCalibration,
   type PedalState,
 } from "../src/lib/footPedalRecognition.ts";
@@ -84,13 +85,13 @@ test("idle + first stabilizing pass -> setFootCalibration + waiting_for_brake + 
   assert.equal(d.debugInfo, `${HANDINFO} | Please keep your foot still... 0%`);
 });
 
-test("stable for >=3000ms -> calibrated + 'Foot calibration complete!', no navigation", () => {
+test("held past the stability window -> calibrated + 'Foot calibration complete!', no navigation", () => {
   // startTime must be non-zero: checkFootStability treats a falsy start as "unset".
   const prev = fullCalibration({ stabilityCheckStartTime: 100, stabilityCheckPosition: { x: 0.5, y: 0.8, z: 0 } });
   const d = decidePedalActions({
     filteredLandmarks: validPose(), // right ankle (28) at (0.5,0.8) matches stabilityCheckPosition
     calibrationStage: "waiting_for_brake", pedalState: ZERO_PEDAL,
-    footCalibration: prev, screen: "driving", currentTime: 3700, deltaTime: 16, handInfo: HANDINFO,
+    footCalibration: prev, screen: "driving", currentTime: 100 + STABILITY_DURATION_MS + 100, deltaTime: 16, handInfo: HANDINFO,
   });
   assert.equal(d.setCalibrationStage, "calibrated");
   assert.equal(d.debugInfo, `${HANDINFO} | Foot calibration complete!`);
@@ -140,7 +141,7 @@ test("waiting_for_brake + partial progress -> 50%, and stage is NOT re-written",
   const d = decidePedalActions({
     filteredLandmarks: validPose(), // right ankle (28) at (0.5,0.8) matches stabilityCheckPosition
     calibrationStage: "waiting_for_brake", pedalState: ZERO_PEDAL,
-    footCalibration: prev, screen: "driving", currentTime: 1600, deltaTime: 16, handInfo: HANDINFO,
+    footCalibration: prev, screen: "driving", currentTime: 100 + STABILITY_DURATION_MS * 0.5, deltaTime: 16, handInfo: HANDINFO,
   });
   assert.ok(d.setFootCalibration, "expected setFootCalibration");
   assert.equal(d.setCalibrationStage, undefined); // not re-written once past idle

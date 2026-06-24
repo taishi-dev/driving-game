@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { FilesetResolver, FaceLandmarker, HandLandmarker, DrawingUtils, HandLandmarkerResult, PoseLandmarker, PoseLandmarkerResult, ObjectDetector, ObjectDetectorResult } from "@mediapipe/tasks-vision";
 import { useDrivingStore } from "@/lib/store";
+import { STABILITY_DURATION_MS } from "@/lib/footPedalRecognition";
 import { PoseLandmarkFilterManager } from "@/lib/oneEuroFilter";
 import { computeSteeringAndGear } from "@/lib/vision/steeringGear";
 import { decidePedalActions } from "@/lib/vision/pedalDecision";
@@ -450,7 +451,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
       if (currentFootCalibration && currentFootCalibration.stabilityCheckStartTime) {
         const currentTime = performance.now();
         const elapsed = currentTime - currentFootCalibration.stabilityCheckStartTime;
-        const progress = Math.min(elapsed / 5000, 1.0);
+        const progress = Math.min(elapsed / STABILITY_DURATION_MS, 1.0);
 
         // Approach green as the progress increases (0%: yellow, 100%: green)
         const r = Math.floor(255 * (1 - progress));

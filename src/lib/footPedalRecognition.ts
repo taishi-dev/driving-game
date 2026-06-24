@@ -65,6 +65,12 @@
 import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
 
 /**
+ * How long (ms) the foot must stay still for calibration to complete.
+ * Shared so the calibration logic and the on-screen progress indicator agree.
+ */
+export const STABILITY_DURATION_MS = 5000;
+
+/**
  * Type that stores the initial position and angle of the foot
  */
 export interface FootCalibration {
@@ -266,7 +272,7 @@ export function checkFootStability(
   const rightAnkle = landmarks[POSE_LANDMARKS.RIGHT_ANKLE];
   const currentPosition = { x: rightAnkle.x, y: rightAnkle.y, z: rightAnkle.z };
 
-  const STABILITY_DURATION = 3000; // 5 seconds
+  const STABILITY_DURATION = STABILITY_DURATION_MS;
   const STABILITY_THRESHOLD = 0.1; // Allowed range for position deviation
 
   // Reset on the first pass or if the position deviated significantly
@@ -453,7 +459,6 @@ export function recognizeAcceleration(
     // Creep if the accelerator was just released and has not yet returned to the brake position
     throttle = 0.05; // Slow forward movement
   }
-  console.log("Accel",isAccelPressed)
 
   return { throttle, isAccelPressed, updatedCalibration };
 }
@@ -636,8 +641,6 @@ export function processPedalRecognition(
     smoothedRightKnee,
     smoothedKneeAngle: smoothedKneeAngleDiff,
   };
-
-  console.log("kneeAngleDiff (raw/smoothed)", rawKneeAngleDiff.toFixed(3), "/", smoothedKneeAngleDiff.toFixed(3));
 
   // Accelerator recognition (using the smoothed calibration)
   const accelResult = recognizeAcceleration(landmarks, smoothedCalibration, previousState);

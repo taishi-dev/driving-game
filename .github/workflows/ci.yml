@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   quality:
-    name: Lint, Type-check & Unit tests
+    name: Lint & Type-check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
