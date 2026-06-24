@@ -13,6 +13,10 @@ import { decidePedalActions } from "@/lib/vision/pedalDecision";
 // needs to refresh a few times per second.
 const DEBUG_THROTTLE_MS = 150;
 
+// Object detection feeds only a debug overlay string, so run it a few times a
+// second instead of every frame (a full CNN inference pass each frame is wasteful).
+const OBJECT_DETECT_INTERVAL_MS = 300;
+
 export default function VisionController({ isPaused }: { isPaused: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -42,6 +46,10 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
   const lastVideoTimeRef = useRef<number>(-1);
   const requestRef = useRef<number>(0);
   const lastFrameTimeRef = useRef<number>(0);
+  // Throttle state for object detection (see OBJECT_DETECT_INTERVAL_MS): the
+  // last result is reused between runs since it only feeds a debug string.
+  const lastObjectDetectTimeRef = useRef<number>(0);
+  const lastObjectResultRef = useRef<ObjectDetectorResult | null>(null);
 
   // Reused DrawingUtils instance (created once) instead of allocating a new one
   // every frame. Tied to the canvas 2D context, which is stable.
@@ -357,10 +365,12 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
                 }
             }
 
-            // Object Detection
-            const objectResult = objectDetectorRef.current
-                ? objectDetectorRef.current.detectForVideo(video, startTimeMs)
-                : null;
+            // Object Detection (throttled — see OBJECT_DETECT_INTERVAL_MS)
+            if (objectDetectorRef.current && startTimeMs - lastObjectDetectTimeRef.current >= OBJECT_DETECT_INTERVAL_MS) {
+                lastObjectResultRef.current = objectDetectorRef.current.detectForVideo(video, startTimeMs);
+                lastObjectDetectTimeRef.current = startTimeMs;
+            }
+            const objectResult = lastObjectResultRef.current;
 
             // Hand Detection
             const handResult = handLandmarkerRef.current.detectForVideo(video, startTimeMs);

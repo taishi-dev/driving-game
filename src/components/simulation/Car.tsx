@@ -7,6 +7,18 @@ import { useDrivingStore, ReplayFrame } from "@/lib/store";
 import { checkMissionGoal } from "@/components/simulation/MissionController";
 import { getCoursePath } from "@/lib/course";
 
+// Reused scratch vectors for the per-frame camera/movement math so useFrame
+// never allocates. Module-level (not per-instance) is safe even though the
+// feedback screen mounts two Cars concurrently: useFrame callbacks are fully
+// synchronous with no await/yield, so they never interleave — each callback
+// overwrites (.set/.copy) and consumes every scratch before the next runs.
+const _camOffset = new Vector3();
+const _camPos = new Vector3();
+const _forward = new Vector3();
+const _movement = new Vector3();
+const _lookTarget = new Vector3();
+const _right = new Vector3();
+
 export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "ghost" }) {
   const groupRef = useRef<Group>(null);
   const ghostRef = useRef<Group>(null);
@@ -130,28 +142,27 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
          if (replayViewMode === "driver") {
             const targetGroup = cameraTarget === "ghost" ? ghostRef.current : groupRef.current;
             if (targetGroup) {
-                const camOffset = new Vector3(0.35, 1.28, 0.4);
-                camOffset.applyEuler(targetGroup.rotation);
-                const camPos = targetGroup.position.clone().add(camOffset);
-                camera.position.lerp(camPos, 0.5);
-                let baseLookTarget;
+                _camOffset.set(0.35, 1.28, 0.4).applyEuler(targetGroup.rotation);
+                _camPos.copy(targetGroup.position).add(_camOffset);
+                camera.position.lerp(_camPos, 0.5);
                 if (cameraTarget === "ghost") {
-                    const forward = new Vector3(0, 0, -1).applyEuler(targetGroup.rotation);
-                    baseLookTarget = targetGroup.position.clone().add(forward.multiplyScalar(10));
+                    _forward.set(0, 0, -1).applyEuler(targetGroup.rotation);
+                    _lookTarget.copy(targetGroup.position).add(_forward.multiplyScalar(10));
                 } else {
                     const recordedHead = frame.headRotation || { pitch: 0, yaw: 0, roll: 0 };
-                    const forward = new Vector3(0, 0, -1).applyEuler(targetGroup.rotation);
-                    baseLookTarget = targetGroup.position.clone().add(forward.multiplyScalar(10));
-                    const right = new Vector3(1, 0, 0).applyEuler(targetGroup.rotation);
-                    baseLookTarget.add(right.multiplyScalar(recordedHead.yaw * 5));
-                    baseLookTarget.y += recordedHead.pitch * 5;
+                    _forward.set(0, 0, -1).applyEuler(targetGroup.rotation);
+                    _lookTarget.copy(targetGroup.position).add(_forward.multiplyScalar(10));
+                    _right.set(1, 0, 0).applyEuler(targetGroup.rotation);
+                    _lookTarget.add(_right.multiplyScalar(recordedHead.yaw * 5));
+                    _lookTarget.y += recordedHead.pitch * 5;
                 }
-                camera.lookAt(baseLookTarget);
+                camera.lookAt(_lookTarget);
             }
          } else {
             const targetGroup = groupRef.current;
-            const camPos = targetGroup.position.clone().add(new Vector3(0, 4, 8).applyEuler(targetGroup.rotation));
-            camera.position.lerp(camPos, 0.1);
+            _camOffset.set(0, 4, 8).applyEuler(targetGroup.rotation);
+            _camPos.copy(targetGroup.position).add(_camOffset);
+            camera.position.lerp(_camPos, 0.1);
             camera.lookAt(targetGroup.position);
          }
          replayIndex.current++;
@@ -214,13 +225,10 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
       groupRef.current.rotation.y -= boostedSteering * turnSpeed * (speed.current / maxSpeed) * 3.0 * direction;
     }
 
-    const forward = new Vector3(0, 0, -1);
-    forward.applyEuler(groupRef.current.rotation);
-    // Apply direction here
-    // FIX: Do NOT modify 'forward' in place, as it is used later for camera lookAt!
-    // clone() is not needed if we just multiply a clone or create a new movement vector.
-    const movement = forward.clone().multiplyScalar(speed.current * direction);
-    groupRef.current.position.add(movement);
+    _forward.set(0, 0, -1).applyEuler(groupRef.current.rotation);
+    // Move along a copy so _forward is preserved for the camera lookAt below.
+    _movement.copy(_forward).multiplyScalar(speed.current * direction);
+    groupRef.current.position.add(_movement);
 
     if (!isFreeMode) {
       if (checkMissionGoal(currentLesson, groupRef.current.position)) {
@@ -308,23 +316,22 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     });
 
     // 5. Camera (First Person)
-    const camOffset = new Vector3(0.35, 1.28, 0.4);
-    camOffset.applyEuler(groupRef.current.rotation);
-    const camPos = groupRef.current.position.clone().add(camOffset);
+    _camOffset.set(0.35, 1.28, 0.4).applyEuler(groupRef.current.rotation);
+    _camPos.copy(groupRef.current.position).add(_camOffset);
 
-    camera.position.lerp(camPos, 0.5);
+    camera.position.lerp(_camPos, 0.5);
 
     const lookAtDist = 10;
     // Base Look Target: Always 10 units in FRONT of the car (local -Z)
     // Even when reversing, we look "Forward" relative to the driver's seat.
-    const baseLookTarget = groupRef.current.position.clone().add(forward.normalize().multiplyScalar(lookAtDist));
-    
-    // Add Head Rotation (Yaw/Pitch)
-    const right = new Vector3(1, 0, 0).applyEuler(groupRef.current.rotation);
-    baseLookTarget.add(right.multiplyScalar(headRotation.yaw * 5));
-    baseLookTarget.y += headRotation.pitch * 5;
+    _lookTarget.copy(groupRef.current.position).add(_forward.normalize().multiplyScalar(lookAtDist));
 
-    camera.lookAt(baseLookTarget);
+    // Add Head Rotation (Yaw/Pitch)
+    _right.set(1, 0, 0).applyEuler(groupRef.current.rotation);
+    _lookTarget.add(_right.multiplyScalar(headRotation.yaw * 5));
+    _lookTarget.y += headRotation.pitch * 5;
+
+    camera.lookAt(_lookTarget);
   });
 
   const showDriverView = !isReplaying || (isReplaying && replayViewMode === "driver");
