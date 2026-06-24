@@ -348,11 +348,15 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   resetClearedCheckpoints: () => set({ clearedCheckpointIds: [] }),
 }));
 
-// E2E/debug hook: expose the store on `window.__drivingStore` only when the URL
-// carries `?e2e`. Opt-in, so normal sessions are unaffected, and it is NOT a DOM
-// node, so it never causes re-renders. Used by the Playwright tests to read
-// state (e.g. steeringAngle) that has no visible UI element.
-if (typeof window !== "undefined") {
+// E2E/debug hook: expose the store on `window.__drivingStore`. The store holds
+// the authenticated Firebase user, so this is DOUBLE-gated to ensure it can never
+// reach a real production deploy:
+//   1. build-time: only when NEXT_PUBLIC_E2E === "1" (set by the CI e2e job, never
+//      by the production deploy), so the block is dead-code-eliminated from prod
+//      bundles entirely; and
+//   2. runtime: only when the URL carries `?e2e`.
+// Used by the Playwright tests to read state (e.g. steeringAngle) with no UI element.
+if (process.env.NEXT_PUBLIC_E2E === "1" && typeof window !== "undefined") {
   try {
     if (new URLSearchParams(window.location.search).has("e2e")) {
       (window as unknown as { __drivingStore?: typeof useDrivingStore }).__drivingStore =

@@ -84,7 +84,9 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
       return (
         <div className="z-50 p-10 text-red-500 bg-white absolute top-0 left-0 w-full h-full">
             <h1>Something went wrong.</h1>
-            <pre>{this.state.error}</pre>
+            <p>Please reload the page. If the problem persists, contact support.</p>
+            {/* Raw error only in development — never expose stacks/internals in production. */}
+            {process.env.NODE_ENV !== "production" && <pre>{this.state.error}</pre>}
         </div>
       );
     }
