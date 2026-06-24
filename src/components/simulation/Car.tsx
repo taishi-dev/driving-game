@@ -31,6 +31,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   const currentLesson = useDrivingStore((s) => s.currentLesson);
   const isReplaying = useDrivingStore((s) => s.isReplaying);
   const replayViewMode = useDrivingStore((s) => s.replayViewMode);
+  const missionState = useDrivingStore((s) => s.missionState);
 
   const isFreeMode = currentLesson === "free-mode";
 
@@ -44,6 +45,11 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
 
   // Recording state
   const recordedFrames = useRef<ReplayFrame[]>([]);
+
+  // Pending "clear driving feedback" timers, tracked so they can be cancelled on
+  // unmount — otherwise a timer from one run fires setDrivingFeedback(null) after
+  // the user navigates away and clobbers the next session's feedback.
+  const feedbackTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   // Last speed value pushed to the store (rounded km/h). Used to avoid writing
   // setSpeed on every frame — we only write when the displayed value changes.
@@ -87,6 +93,22 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
       }
     }
   }, [currentLesson]);
+
+  // A fresh run starts when the mission becomes "active". Clear the recording
+  // buffer here so a re-run of the SAME lesson (currentLesson unchanged, so the
+  // reset effect above does not fire) doesn't append onto the previous run's
+  // frames and corrupt replayData / scoring.
+  useEffect(() => {
+    if (missionState === "active") {
+      recordedFrames.current = [];
+    }
+  }, [missionState]);
+
+  // Cancel any pending feedback timers on unmount.
+  useEffect(() => () => {
+    feedbackTimeouts.current.forEach(clearTimeout);
+    feedbackTimeouts.current = [];
+  }, []);
 
   useFrame(() => {
     if (!groupRef.current) return;
@@ -262,7 +284,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
               useDrivingStore.getState().setDrivingFeedback(
                 useDrivingStore.getState().language === 'en' ? '🛑 Stop OK!' : `🛑 ${cp.label || '一時停止'} OK!`
               );
-              setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000);
+              feedbackTimeouts.current.push(setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000));
             }
           } 
           
@@ -281,7 +303,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
                     useDrivingStore.getState().language === 'en' ? '👀 Left-Right Check OK!' : `👀 ${cp.label || '安全確認'} OK!`
                   );
                   safetyCheckState.current = { lookedLeft: false, lookedRight: false };
-                  setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000);
+                  feedbackTimeouts.current.push(setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000));
                }
             } else {
                // Conventional mirror logic
@@ -292,7 +314,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
                  clearedCheckpoints.current.add(cp.id);
                  addClearedCheckpoint(cp.id); // Report to the store
                  useDrivingStore.getState().setDrivingFeedback(`👀 Check OK!`);
-                 setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000);
+                 feedbackTimeouts.current.push(setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000));
                }
             }
           }

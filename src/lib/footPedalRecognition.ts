@@ -532,8 +532,9 @@ export function recognizeBraking(
     // Accumulate the time the brake has been held
     brakePressDuration += deltaTime;
 
-    // Simple brake-strength calculation
-    brake = Math.max(0, Math.min(angleBasedBrake, 1.0)) * 1.5; // Up to 100% braking force
+    // Simple brake-strength calculation: 1.5x sensitivity so full tilt isn't
+    // required, capped at 1.0 (the documented brake range is 0.0 - 1.0).
+    brake = Math.min(Math.max(0, angleBasedBrake) * 1.5, 1.0);
 
   } else {
     // The brake was released
