@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "type-check": "tsc --noEmit",
+    "test:unit": "node --test \"tests/**/*.test.ts\"",
     "smoke": "start-server-and-test start http-get://127.0.0.1:3000 smoke:check",
     "smoke:check": "node scripts/smoke-check.mjs",
     "test:e2e": "playwright test",

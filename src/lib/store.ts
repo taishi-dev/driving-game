@@ -3,6 +3,7 @@ import { FootCalibration, PedalState } from "./footPedalRecognition";
 import * as THREE from "three";
 import { User } from "firebase/auth";
 import { MISSION_CHECKPOINTS } from "@/components/simulation/MissionController";
+import { calculateMissionScore } from "./scoring";
 
 export interface ReplayFrame {
   timestamp: number;
@@ -269,147 +270,28 @@ export const useDrivingStore = create<DrivingState>((set) => ({
     set((s) => ({ deviationPenalty: s.deviationPenalty + amount })),
 
   calculateMissionResult: (coursePath) => {
-    // free-mode is not scored
     const st = useDrivingStore.getState();
+    // free-mode is not scored
     if (st.currentLesson === "free-mode") return;
 
-    const frames = st.replayData;
-    const currentLesson = st.currentLesson;
-
-    let deviationPenalty = 0;
-    let speedViolations = 0;
-
-    const pathResolution = 100;
-    const PENALTY_DIST = 2.5;
-    const SPEED_LIMIT = currentLesson === "straight" ? 60 : 20;
-
-    const pathPoints: THREE.Vector3[] = [];
-    for (let i = 0; i <= pathResolution; i++) {
-      pathPoints.push(coursePath.getPointAt(i / pathResolution));
-    }
-
-    frames.forEach((frame) => {
-      const pos = new THREE.Vector3(frame.position[0], frame.position[1], frame.position[2]);
-
-      let minDist = 1000;
-      for (const p of pathPoints) {
-        const d = p.distanceTo(pos);
-        if (d < minDist) minDist = d;
-      }
-
-      if (minDist > PENALTY_DIST) {
-        deviationPenalty += 1.0 + (minDist - PENALTY_DIST) * 0.2;
-      }
-
-      if (frame.speed && frame.speed > SPEED_LIMIT + 5) {
-        speedViolations++;
-      }
+    // Scoring lives in the pure, unit-tested calculateMissionScore (scoring.ts);
+    // the store just supplies the run snapshot and applies the result.
+    const result = calculateMissionScore({
+      lesson: st.currentLesson,
+      frames: st.replayData,
+      coursePath,
+      signalStateLogs: st.signalStateLogs,
+      lessonCheckpoints: MISSION_CHECKPOINTS[st.currentLesson] || [],
+      activeCheckpoints: st.activeCheckpoints,
+      clearedCheckpointIds: st.clearedCheckpointIds,
+      language: st.language,
+      now: Date.now(),
     });
 
-    // --- Traffic signal stop-check before/at stop line ---
-    let signalViolations = 0;
-    try {
-      const checkpoints = MISSION_CHECKPOINTS[currentLesson] || [];
-      const STOP_SPEED_THRESHOLD = 5; // km/h
-
-      for (const cp of checkpoints) {
-        if (cp.type !== 'stop' || cp.visual !== 'traffic-light') continue;
-
-        const crossingIndex = frames.findIndex((frame) => {
-          const pos = new THREE.Vector3(frame.position[0], frame.position[1], frame.position[2]);
-          const cpPos = new THREE.Vector3(cp.position[0], cp.position[1], cp.position[2]);
-          return pos.distanceTo(cpPos) < cp.radius;
-        });
-
-        if (crossingIndex === -1) continue;
-
-        const hitTime = frames[crossingIndex].timestamp;
-        const logsForCp = st.signalStateLogs.filter((l) => l.checkpointId === cp.id && l.time <= hitTime);
-        const stateAtHit = logsForCp.length ? logsForCp[logsForCp.length - 1].state : 'green';
-
-        // Check whether the vehicle stopped for required duration before crossing
-        const minDur = cp.minDuration ?? 1000;
-        let stoppedDuration = 0;
-        let j = crossingIndex;
-        while (j > 0) {
-          const dt = frames[j].timestamp - frames[j - 1].timestamp;
-          if ((frames[j].speed || 0) <= STOP_SPEED_THRESHOLD) {
-            stoppedDuration += dt;
-            j--;
-          } else {
-            break;
-          }
-        }
-
-        if (stateAtHit === 'red' && stoppedDuration < minDur) {
-          signalViolations++;
-        }
-      }
-    } catch (e) {
-      // Be defensive - do not break scoring if anything goes wrong
-      console.error('Signal violation check failed', e);
-    }
-
-    // ▼▼▼ Added: detect uncleared checkpoints (dynamically registered ones) ▼▼▼
-    // Find entries that are in activeCheckpoints but not in clearedCheckpointIds
-    const missedCheckpoints = st.activeCheckpoints.filter(
-        cp => !st.clearedCheckpointIds.includes(cp.id)
-    );
-    // ▲▲▲ End of addition ▲▲▲
-
-    set((s) => {
-      const newLogs = [...s.feedbackLogs];
-      const lang = s.language; // KAIZEN messages are user-facing -> bilingual
-      if (speedViolations > 30) {
-        newLogs.push({
-          time: Date.now(),
-          type: "KAIZEN",
-          message: lang === 'en'
-            ? `Speeding detected (limit: ${SPEED_LIMIT} km/h)`
-            : `速度超過がありました (最大制限: ${SPEED_LIMIT}km/h)`,
-        });
-      }
-
-      if (typeof signalViolations !== 'undefined' && signalViolations > 0) {
-        newLogs.push({
-          time: Date.now(),
-          type: "KAIZEN",
-          message: lang === 'en'
-            ? `Failed to stop at a red light ${signalViolations} time(s)`
-            : `赤信号で停止しなかったチェックが ${signalViolations} 回ありました`,
-          meta: { penalty: 10 * signalViolations, signalViolations },
-        });
-      }
-
-      // ▼▼▼ Added: add logs for ignored checkpoints ▼▼▼
-      // English mode uses type-based wording; Japanese mode keeps the specific
-      // checkpoint label (which is the JA-mode display text).
-      missedCheckpoints.forEach(cp => {
-        let msg = "";
-        if (cp.type === 'stop') {
-          msg = lang === 'en' ? 'You ignored a required stop' : `${cp.label || '一時停止'}を無視しました`;
-        } else if (cp.type === 'safety-check') {
-          msg = lang === 'en' ? 'You skipped a safety check' : `${cp.label || '安全確認'}を行いませんでした`;
-        }
-
-        if (msg) {
-            newLogs.push({
-            time: Date.now(),
-            type: "KAIZEN",
-            message: msg
-            });
-        }
-      });
-      // ▲▲▲ End of addition ▲▲▲
-
-      // Add a penalty based on the number of uncleared checkpoints (e.g. 20 points each)
-      const missedPenalty = missedCheckpoints.length * 20;
-
-      return {
-        deviationPenalty: s.deviationPenalty + deviationPenalty + missedPenalty,
-        feedbackLogs: newLogs,
-      };
-    });
+    set((s) => ({
+      deviationPenalty: s.deviationPenalty + result.addedDeviationPenalty,
+      feedbackLogs: [...s.feedbackLogs, ...result.newFeedbackLogs],
+    }));
   },
 
   setOffTrack: (isOff) => set({ isOffTrack: isOff }),
