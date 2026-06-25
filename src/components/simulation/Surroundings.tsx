@@ -48,29 +48,34 @@ export function Surroundings() {
         <hemisphereLight args={["#bcd6f7", "#56673a", 0.5]} />
         {/* Low base fill so shadowed faces never crush to pure black. */}
         <ambientLight intensity={0.12} />
-        {/* Neutral sun key light — the only shadow caster. Kept fairly high for soft,
-            short midday shadows; the ortho frustum spans the course. */}
+        {/* Neutral sun key light — the only shadow caster. Low + to the side so shadows rake
+            across the road into view (a high/frontal sun threw them out of frame), but higher
+            than the cinematic variant for a brighter midday feel. */}
         <directionalLight
-            position={[60, 70, 50]}
-            intensity={2.6}
+            position={[80, 46, 28]}
+            intensity={2.8}
             castShadow
             // 1024 (not 2048) keeps the per-frame shadow pass cheap: the car physics is
-            // frame-rate dependent, and headless-CI software-GL is fill-bound, so a 4x
-            // smaller shadow map protects the drive-to-goal e2e timing. The blur radius
-            // hides the lower resolution; the car + buildings still ground cleanly.
+            // frame-rate dependent, and headless-CI software-GL is fill-bound. Shadow-camera
+            // bounds are props (a nested <orthographicCamera attach="shadow-camera"> did NOT
+            // reliably update the shadow projection, so shadows never rendered).
             shadow-mapSize={[1024, 1024]}
+            shadow-camera-near={1}
+            shadow-camera-far={300}
+            shadow-camera-left={-55}
+            shadow-camera-right={55}
+            shadow-camera-top={55}
+            shadow-camera-bottom={-55}
             shadow-bias={-0.0004}
             shadow-normalBias={0.03}
             shadow-radius={3}
-        >
-            <orthographicCamera attach="shadow-camera" args={[-120, 120, 120, -120, 1, 400]} />
-        </directionalLight>
+        />
         {/* Cool fill from the opposite side to open up the shadow side of objects. */}
         <directionalLight position={[-50, 40, -40]} intensity={0.35} color="#aecbe8" />
 
         {/* Procedural reflection environment for metal/glass (car body, windows, mirror).
             Pure GPU (Lightformers) — no network — and rendered once (frames={1}). */}
-        <Environment resolution={64} frames={1} environmentIntensity={0.4}>
+        <Environment resolution={64} frames={1} environmentIntensity={0.5}>
             <color attach="background" args={["#6f9fd8"]} />
             <Lightformer intensity={2.2} position={[0, 12, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[40, 40, 1]} color="#ffffff" />
             <Lightformer intensity={0.7} position={[0, 3, -14]} scale={[40, 10, 1]} color="#bcd6f7" />
