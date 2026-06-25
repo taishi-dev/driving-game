@@ -115,7 +115,7 @@ npm run dev
 ### `src/hooks`
 React カスタムフックです。
 *   `useDrivingFeedback.ts`: 走行データに基づいて、リアルタイムまたは終了後のアドバイスを生成するフック。
-*   `useRegisterCheckpoint.ts`: コース上のチェックポイント通過を判定・登録するロジック。
+*   `useMission.ts`: ミッションの採点（ゴール判定・チェックポイント通過・スコアリング）を毎フレーム行うフック。チェックポイント定義は `src/lib/mission/missions.ts` に集約。
 
 ## テストと CI
 

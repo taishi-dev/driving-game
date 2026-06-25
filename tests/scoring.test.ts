@@ -30,7 +30,6 @@ function baseInput(overrides: Partial<MissionScoreInput> = {}): MissionScoreInpu
     coursePath: originPath,
     signalStateLogs: [],
     lessonCheckpoints: [],
-    activeCheckpoints: [],
     clearedCheckpointIds: [],
     language: "en",
     now: 1000,
@@ -89,7 +88,7 @@ test("speeding log is localized to Japanese", () => {
 
 test("a missed required-stop checkpoint adds 20 points and a KAIZEN log", () => {
   const cp = { id: "cp1", type: "stop" as const, position: [0, 0, 0] as [number, number, number], radius: 1, label: "一時停止" };
-  const result = calculateMissionScore(baseInput({ activeCheckpoints: [cp], clearedCheckpointIds: [] }));
+  const result = calculateMissionScore(baseInput({ lessonCheckpoints: [cp], clearedCheckpointIds: [] }));
   assert.equal(result.addedDeviationPenalty, 20);
   const missed = result.newFeedbackLogs.find((l) => l.message === "You ignored a required stop");
   assert.ok(missed, "expected a missed-stop KAIZEN log");
@@ -97,16 +96,26 @@ test("a missed required-stop checkpoint adds 20 points and a KAIZEN log", () => 
 
 test("a cleared checkpoint is not penalized", () => {
   const cp = { id: "cp1", type: "stop" as const, position: [0, 0, 0] as [number, number, number], radius: 1, label: "一時停止" };
-  const result = calculateMissionScore(baseInput({ activeCheckpoints: [cp], clearedCheckpointIds: ["cp1"] }));
+  const result = calculateMissionScore(baseInput({ lessonCheckpoints: [cp], clearedCheckpointIds: ["cp1"] }));
   assert.equal(result.addedDeviationPenalty, 0);
   assert.deepEqual(result.newFeedbackLogs, []);
 });
 
 test("a missed safety-check checkpoint is localized to Japanese using its label", () => {
   const cp = { id: "sc1", type: "safety-check" as const, position: [0, 0, 0] as [number, number, number], radius: 1, label: "右後方確認" };
-  const result = calculateMissionScore(baseInput({ language: "ja", activeCheckpoints: [cp] }));
+  const result = calculateMissionScore(baseInput({ language: "ja", lessonCheckpoints: [cp] }));
   const missed = result.newFeedbackLogs.find((l) => l.message === "右後方確認を行いませんでした");
   assert.ok(missed, "expected a Japanese missed safety-check log");
+});
+
+test("a traffic-light table entry is never counted as a missed checkpoint", () => {
+  // visual:'traffic-light' is owned by the signal-violation path, so even though it
+  // would otherwise be "scored", it must be excluded from the missed set (else it
+  // would double-penalize on top of the 10-pt signal violation).
+  const tl = { id: "tl1", type: "stop" as const, visual: "traffic-light" as const, position: [0, 0, 0] as [number, number, number], radius: 4 };
+  const result = calculateMissionScore(baseInput({ lessonCheckpoints: [tl] }));
+  assert.equal(result.addedDeviationPenalty, 0);
+  assert.deepEqual(result.newFeedbackLogs, []);
 });
 
 test("crossing a red light without stopping long enough is a signal violation", () => {

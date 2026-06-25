@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useDrivingStore } from "@/lib/store";
-import { checkMissionGoal } from "@/lib/mission/missions";
+import { checkMissionGoal, MISSION_CHECKPOINTS } from "@/lib/mission/missions";
 import { carTransform } from "@/components/simulation/carTransform";
 import { evaluateCheckpoint, type SafetyCheckState } from "@/lib/mission/checkpointEval";
 
@@ -68,9 +68,11 @@ export function useMission(coursePath: THREE.CurvePath<THREE.Vector3>) {
       return;
     }
 
-    // Checkpoint clearing over the dynamic activeCheckpoints list.
+    // Checkpoint clearing over the lesson's SCORED checkpoints (single source of
+    // truth = MISSION_CHECKPOINTS; render-only entries are scored:false).
     const language = store.language;
-    for (const cp of store.activeCheckpoints) {
+    const scoredCheckpoints = (MISSION_CHECKPOINTS[currentLesson] ?? []).filter((c) => c.scored !== false);
+    for (const cp of scoredCheckpoints) {
       if (clearedCheckpoints.current.has(cp.id)) continue;
 
       const result = evaluateCheckpoint({

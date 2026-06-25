@@ -40,8 +40,8 @@ export interface SignalStateLog {
 }
 
 // The canonical checkpoint type now lives in the pure mission module. Re-export
-// it so existing importers (scoring, checkpointEval, useRegisterCheckpoint) that
-// import MissionCheckpoint from the store stay unchanged.
+// it so existing importers (scoring, checkpointEval) that import MissionCheckpoint
+// from the store stay unchanged.
 export type { MissionCheckpoint };
 
 export type LessonId =
@@ -148,11 +148,6 @@ export interface DrivingState {
   clearSignalStateLogs: () => void;
   setRecordedVideo: (url: string | null) => void;
   setGear: (gear: "P" | "D" | "R") => void;
-
-  // ✅ Added: type definitions for checkpoint management
-  activeCheckpoints: MissionCheckpoint[];
-  registerCheckpoint: (cp: MissionCheckpoint) => void;
-  unregisterCheckpoint: (id: string) => void;
 
   // ✅ Added: cleared-checkpoint management
   clearedCheckpointIds: string[];
@@ -282,7 +277,6 @@ export const useDrivingStore = create<DrivingState>((set) => ({
       coursePath,
       signalStateLogs: st.signalStateLogs,
       lessonCheckpoints: MISSION_CHECKPOINTS[st.currentLesson] || [],
-      activeCheckpoints: st.activeCheckpoints,
       clearedCheckpointIds: st.clearedCheckpointIds,
       language: st.language,
       now: Date.now(),
@@ -330,15 +324,6 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   clearSignalStateLogs: () => set({ signalStateLogs: [] }),
   setRecordedVideo: (url) => set({ recordedVideo: url }),
   setGear: (gear) => set({ gear }),
-
-  // ✅ Added: checkpoint management implementation (this was missing)
-  activeCheckpoints: [],
-  registerCheckpoint: (cp) => set((state) => ({ 
-    activeCheckpoints: [...state.activeCheckpoints, cp] 
-  })),
-  unregisterCheckpoint: (id) => set((state) => ({ 
-    activeCheckpoints: state.activeCheckpoints.filter((c) => c.id !== id) 
-  })),
 
   // ✅ Added: cleared-state management implementation
   clearedCheckpointIds: [],
