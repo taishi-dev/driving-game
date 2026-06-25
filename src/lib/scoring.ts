@@ -20,10 +20,12 @@ export interface MissionScoreInput {
   /** The ideal racing line; only `getPointAt` is needed. */
   coursePath: { getPointAt(t: number): THREE.Vector3 };
   signalStateLogs: SignalStateLog[];
-  /** The lesson's static checkpoint table (MISSION_CHECKPOINTS[lesson]). */
+  /**
+   * The lesson's checkpoint table (MISSION_CHECKPOINTS[lesson]). Drives BOTH the
+   * signal-violation check (visual:'traffic-light' entries) and the missed-checkpoint
+   * penalty (entries with scored !== false, excluding the traffic-light signal).
+   */
   lessonCheckpoints: MissionCheckpoint[];
-  /** Checkpoints registered during the run (used to detect misses). */
-  activeCheckpoints: MissionCheckpoint[];
   clearedCheckpointIds: string[];
   language: "ja" | "en";
   /** Timestamp stamped onto generated feedback logs (Date.now() in the store). */
@@ -130,8 +132,14 @@ export function calculateMissionScore(input: MissionScoreInput): MissionScoreRes
   }
 
   // --- Uncleared (missed) checkpoints ---
-  const missedCheckpoints = input.activeCheckpoints.filter(
-    (cp) => !input.clearedCheckpointIds.includes(cp.id),
+  // Scored entries only (scored !== false), excluding the traffic-light signal —
+  // its scoring is owned by the signal-violation path above, so counting it here
+  // too would double-penalize.
+  const missedCheckpoints = input.lessonCheckpoints.filter(
+    (cp) =>
+      cp.scored !== false &&
+      cp.visual !== "traffic-light" &&
+      !input.clearedCheckpointIds.includes(cp.id),
   );
 
   // --- Build feedback logs ---
