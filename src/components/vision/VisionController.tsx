@@ -208,7 +208,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
           minTrackingConfidence: 0.3
         });
 
-        poseLandmarkerRef.current = await PoseLandmarker.createFromOptions(filesetResolver, {
+        const poseLandmarker = await PoseLandmarker.createFromOptions(filesetResolver, {
           baseOptions: {
             // 'full' over 'lite': markedly better on distant / low-contrast
             // bodies (e.g. dark clothing) at a moderate GPU cost. Swap to
@@ -225,7 +225,7 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
           minTrackingConfidence: 0.3
         });
 
-        objectDetectorRef.current = await ObjectDetector.createFromOptions(filesetResolver, {
+        const objectDetector = await ObjectDetector.createFromOptions(filesetResolver, {
           baseOptions: {
             modelAssetPath: `https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite`,
             delegate: "GPU"
@@ -235,8 +235,14 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
         });
 
         if (isMounted) {
+            // Assign ALL four models to the shared refs only here. Doing this for
+            // pose/object before the isMounted check let a StrictMode remount's
+            // cleanup close the OTHER run's live models — so we keep them local
+            // until we know this run still owns the component.
             faceLandmarkerRef.current = faceLandmarker;
             handLandmarkerRef.current = handLandmarker;
+            poseLandmarkerRef.current = poseLandmarker;
+            objectDetectorRef.current = objectDetector;
             setVisionReady(true);
             setDebugInfo("Models Ready.");
 
@@ -245,13 +251,12 @@ export default function VisionController({ isPaused }: { isPaused: boolean }) {
             maybeStartLoop();
         } else {
             // Unmounted while models were still loading (e.g. React StrictMode's
-            // double mount in development) — release everything we created.
+            // double mount in development) — release the LOCALS we created here;
+            // never touch the shared refs (a concurrent remount may own them).
             faceLandmarker.close();
             handLandmarker.close();
-            poseLandmarkerRef.current?.close();
-            objectDetectorRef.current?.close();
-            poseLandmarkerRef.current = null;
-            objectDetectorRef.current = null;
+            poseLandmarker.close();
+            objectDetector.close();
         }
       } catch (error) {
         console.error(error);

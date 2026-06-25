@@ -3,7 +3,6 @@
 import { useGLTF } from "@react-three/drei";
 import { useState, useEffect, useMemo } from "react";
 import { ModelErrorBoundary } from "./ModelErrorBoundary";
-import { useRegisterCheckpoint } from "@/hooks/useRegisterCheckpoint";
 
 export function TrafficLight({ position, rotation = [0, 0, 0], interval = 5000 }: { position: [number, number, number], rotation?: [number, number, number], interval?: number }) {
   const Model = () => {
@@ -27,13 +26,11 @@ export function TrafficLight({ position, rotation = [0, 0, 0], interval = 5000 }
 
   const lightColor = state === 'green' ? '#00ff00' : state === 'yellow' ? '#ffff00' : '#ff0000';
 
-  // Added: register an automatic scoring area (stop within a radius of 4m)
-  useRegisterCheckpoint({
-    position: position,
-    radius: 4.0,
-    type: 'stop',
-    label: 'Traffic Light Stop'
-  });
+  // The traffic light is decorative scenery placed beside the road (x = +/-6),
+  // so it must NOT register a scored checkpoint: the car drives down x = 0 and
+  // could never reach an x = +/-6 stop zone, which made it count as a missed
+  // checkpoint on every run. Red-light running is scored on-path via the
+  // signal-violation check (MISSION_CHECKPOINTS['traffic-light']) instead.
 
   return (
     <group position={position} rotation={rotation as [number, number, number]}>

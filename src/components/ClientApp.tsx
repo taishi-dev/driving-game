@@ -6,11 +6,12 @@ import { Dashboard } from '@/components/ui/Dashboard';
 import { HomeScreen } from '@/components/ui/HomeScreen';
 import { FeedbackScreen } from '@/components/ui/FeedbackScreen';
 import dynamic from 'next/dynamic';
-import { Suspense, Component, ReactNode, ErrorInfo } from 'react';
+import { Suspense, Component, ReactNode, ErrorInfo, useEffect } from 'react';
 import { useDrivingFeedback } from '@/hooks/useDrivingFeedback';
 import { AuthScreen } from '@/components/auth/AuthScreen';
 import { HistoryScreen } from '@/components/ui/HistoryScreen';
 import { auth } from '@/lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { TutorialScreen } from '@/components/ui/TutorialScreen';
 import { LanguageScreen } from '@/components/ui/LanguageScreen';
 
@@ -200,6 +201,20 @@ export default function ClientApp() {
   const t = STRINGS[language];
 
   useDrivingFeedback(); // Activate Feedback Logic
+
+  // Restore the persisted Firebase auth session on load. Firebase keeps the
+  // session (browserLocalPersistence), but the store re-inits `user` to null on
+  // every page load — so without this the user is treated as a guest after a
+  // reload, history won't load, and completed runs silently aren't saved.
+  useEffect(() => {
+    if (!auth) return;
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      const store = useDrivingStore.getState();
+      store.setUser(u);
+      if (!u) store.setMissionHistory([]);
+    });
+    return unsubscribe;
+  }, []);
 
   const handleGoHome = () => {
     setIsPaused(false);

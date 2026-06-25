@@ -101,6 +101,12 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   useEffect(() => {
     if (missionState === "active") {
       recordedFrames.current = [];
+      // Same-lesson retry: the [currentLesson] effect doesn't fire, so reset the
+      // local checkpoint state here too, or run 2 treats run 1's checkpoints as
+      // already cleared and skips enforcing them. (The store side — clearedCheckpointIds
+      // — is reset in setMissionState('active').)
+      clearedCheckpoints.current.clear();
+      safetyCheckState.current = { lookedLeft: false, lookedRight: false };
     }
   }, [missionState]);
 
@@ -327,15 +333,18 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
       });
     }
 
-    // 4. Record Frame
-    recordedFrames.current.push({
-      timestamp: Date.now(),
-      position: groupRef.current.position.toArray() as [number, number, number],
-      rotation: groupRef.current.rotation.toArray() as [number, number, number],
-      steering: steeringInput,
-      speed: Math.abs(speed.current) * 100,
-      headRotation: { ...headRotation },
-    });
+    // 4. Record Frame — only for scored lessons. free-mode never reaches a goal
+    // and never replays, so recording there just grows unbounded for the session.
+    if (!isFreeMode) {
+      recordedFrames.current.push({
+        timestamp: Date.now(),
+        position: groupRef.current.position.toArray() as [number, number, number],
+        rotation: groupRef.current.rotation.toArray() as [number, number, number],
+        steering: steeringInput,
+        speed: Math.abs(speed.current) * 100,
+        headRotation: { ...headRotation },
+      });
+    }
 
     // 5. Camera (First Person)
     _camOffset.set(0.35, 1.28, 0.4).applyEuler(groupRef.current.rotation);
