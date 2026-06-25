@@ -9,7 +9,8 @@ import { RoadProps } from "./RoadProps";
 import { Surroundings } from "./Surroundings";
 import { ThreeModelLoader } from "./ThreeModelLoader";
 
-import { MISSION_GOALS, MissionController } from "./MissionController";
+import { MISSION_GOALS } from "@/lib/mission/missions";
+import { MissionController } from "./MissionController";
 import { useDrivingStore } from "@/lib/store";
 import { Text } from "@react-three/drei";
 import { TrafficSystem } from "./TrafficSystem";

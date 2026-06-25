@@ -1,0 +1,127 @@
+import { Vector3 } from "three";
+import type { LessonId } from "../store";
+
+// Mission goal definitions (position, size, rotation Y). Moved verbatim out of
+// MissionController so this is a pure lib module (no React / component import
+// cycle through the store).
+export const MISSION_GOALS: Record<
+  string,
+  { position: [number, number, number]; size: [number, number, number]; rotation: number }
+> = {
+  straight: {
+    position: [0, 0, -150],
+    size: [10, 5, 5],
+    rotation: 0,
+  },
+
+  "left-turn": {
+    // getCoursePath(): the exit keeps z=-38 while x goes -8 → -60, so -30 is OK
+    position: [-30, 0, -38],
+    size: [10, 5, 5],
+    rotation: Math.PI / 2,
+  },
+
+  "right-turn": {
+    // getCoursePath(): the exit keeps z=-38 while x goes 8 → 60, so 30 is OK
+    position: [30, 0, -38],
+    size: [10, 5, 5],
+    rotation: -Math.PI / 2,
+  },
+
+  "s-curve": {
+    position: [0, 0, -100],
+    size: [10, 5, 5],
+    rotation: 0,
+  },
+
+  crank: {
+    // getCoursePath(): ends with a straight at xL=-8, with ( -8,0,-100 ) as the endpoint
+    position: [-8, 0, -100],
+    size: [10, 5, 5],
+    rotation: 0,
+  },
+
+  "traffic-light": {
+    position: [0, 0, -100],
+    size: [10, 5, 5],
+    rotation: 0,
+  },
+
+  "crosswalk": {
+    position: [0, 0, -80],
+    size: [10, 5, 5],
+    rotation: 0,
+  },
+
+  "railroad-crossing": {
+    position: [0, 0, -100],
+    size: [10, 5, 5],
+    rotation: 0,
+  },
+};
+
+export type CheckpointType = "stop" | "mirror" | "speed-limit" | "safety-check";
+
+/**
+ * Canonical checkpoint type — the single merge of the former store `MissionCheckpoint`
+ * and MissionController `Checkpoint`. `orientation` and `yawTolerance` are load-bearing
+ * (RoadProps reads `orientation`; mirror grading uses `targetYaw`); `visual` is the
+ * tighter "traffic-light" literal.
+ */
+export interface MissionCheckpoint {
+  id: string;
+  type: CheckpointType;
+  position: [number, number, number];
+  radius: number;
+  visual?: "traffic-light";
+  orientation?: "z" | "x";
+  // For stop signs:
+  minDuration?: number; // How long to stop
+  // For mirrors:
+  targetYaw?: number; // Expected look direction (radians)
+  yawTolerance?: number;
+  // Label used for feedback display
+  label?: string;
+}
+
+export const MISSION_CHECKPOINTS: Partial<Record<LessonId, MissionCheckpoint[]>> = {
+  "left-turn": [
+    // Stop line before intersection
+    { id: "stop-1", type: "stop", position: [0, 0, -25], radius: 4, minDuration: 1000, label: "一時停止" },
+    // Curve Mirror check (Look Right/Forward-Right to check traffic)
+    { id: "mirror-1", type: "mirror", position: [0, 0, -28], radius: 6, targetYaw: -0.5, yawTolerance: 0.5, label: "安全確認" },
+  ],
+  "right-turn": [
+    { id: "stop-1", type: "stop", position: [0, 0, -25], radius: 4, label: "一時停止" },
+    // Mirror on Left Corner. Look Left.
+    { id: "mirror-1", type: "mirror", position: [0, 0, -28], radius: 6, targetYaw: 0.5, yawTolerance: 0.5, label: "安全確認" },
+  ],
+  "traffic-light": [
+    // Stop at the signal before entering (straight-ahead only)
+    { id: "signal-1", type: "stop", position: [0, 0, -18], radius: 4, minDuration: 1200, visual: "traffic-light", orientation: "z", label: "赤信号停止" },
+  ],
+  "crosswalk": [
+    // Stop just before the crosswalk
+    { id: "cw-stop-1", type: "stop", position: [0, 0, -25], radius: 5, minDuration: 1000, label: "横断歩道前停止" },
+  ],
+  "railroad-crossing": [
+    // Stop just before the railroad crossing
+    { id: "rr-stop-1", type: "stop", position: [0, 0, -50], radius: 5, minDuration: 2000, label: "踏切前一時停止" },
+  ],
+};
+
+export function checkMissionGoal(lesson: string, position: Vector3) {
+  const goal = MISSION_GOALS[lesson];
+  if (!goal) return false;
+
+  const dx = position.x - goal.position[0];
+  const dz = position.z - goal.position[2];
+  const dist = Math.sqrt(dx * dx + dz * dz);
+
+  // Within 4 units of the center
+  if (dist < 4) {
+    return true;
+  }
+
+  return false;
+}

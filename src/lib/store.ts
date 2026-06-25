@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { FootCalibration, PedalState } from "./footPedalRecognition";
 import * as THREE from "three";
 import { User } from "firebase/auth";
-import { MISSION_CHECKPOINTS } from "@/components/simulation/MissionController";
+import { MISSION_CHECKPOINTS, type MissionCheckpoint } from "@/lib/mission/missions";
 import { calculateMissionScore } from "./scoring";
 
 export interface ReplayFrame {
@@ -39,17 +39,10 @@ export interface SignalStateLog {
   state: SignalState;
 }
 
-// ✅ Added: checkpoint type definition (restored because other files reference it)
-export type MissionCheckpoint = {
-  id: string;
-  position: [number, number, number];
-  radius: number;
-  type: 'stop' | 'speed-limit' | 'mirror' | 'safety-check';
-  label?: string;
-  targetYaw?: number; 
-  visual?: string; // used for traffic-light detection
-  minDuration?: number; // used to judge stop duration
-};
+// The canonical checkpoint type now lives in the pure mission module. Re-export
+// it so existing importers (scoring, checkpointEval, useRegisterCheckpoint) that
+// import MissionCheckpoint from the store stay unchanged.
+export type { MissionCheckpoint };
 
 export type LessonId =
   | "free-mode"
