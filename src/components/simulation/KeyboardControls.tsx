@@ -43,16 +43,23 @@ export default function KeyboardControls() {
       setSteering(steer);
     };
 
+    // Normalize single-character keys to lowercase so WASD still works with Caps
+    // Lock or Shift (which report 'W'/'A'/'S'/'D'). Named keys like 'ArrowUp' are
+    // longer than one char and pass through unchanged.
+    const normalize = (key: string) => (key.length === 1 ? key.toLowerCase() : key);
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isTracked(e.key)) {
-        keys[e.key] = true;
+      const k = normalize(e.key);
+      if (isTracked(k)) {
+        keys[k] = true;
         apply();
       }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (isTracked(e.key)) {
-        keys[e.key] = false;
+      const k = normalize(e.key);
+      if (isTracked(k)) {
+        keys[k] = false;
         apply();
       }
     };

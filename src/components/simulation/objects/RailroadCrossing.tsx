@@ -13,9 +13,11 @@ export function RailroadCrossing({ position, rotation = [0, 0, 0], scale = 1 }: 
     return <primitive object={clonedScene} />;
   };
 
-  // Added: register a stop area in front of the railroad crossing (radius 5m)
+  // Register the scored stop ON the driving path (x = 0) at the crossing's depth.
+  // The crossing model sits beside the road, but the car drives down x = 0, so a
+  // checkpoint at the model's x would be unreachable and count as missed every run.
   useRegisterCheckpoint({
-    position: position,
+    position: [0, 0, position[2]],
     radius: 5.0,
     type: 'stop',
     label: 'Railroad Crossing Stop'

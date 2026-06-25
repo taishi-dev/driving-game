@@ -259,6 +259,13 @@ export const useDrivingStore = create<DrivingState>((set) => ({
       if (state === "active") {
         updates.missionStartTime = now;
         updates.missionEndTime = 0;
+        // Start-of-run reset: clear the previous run's per-run scoring state so a
+        // same-lesson retry (currentLesson unchanged, so Car's lesson-change reset
+        // never fires) doesn't stack onto it. Covers retry AND fresh-lesson starts.
+        updates.feedbackLogs = [];
+        updates.signalStateLogs = [];
+        updates.deviationPenalty = 0;
+        updates.clearedCheckpointIds = [];
       } else if (state === "success" || state === "failed") {
         updates.missionEndTime = now;
       }
