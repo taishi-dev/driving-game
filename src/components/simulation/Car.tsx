@@ -4,7 +4,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useRef, useEffect, useMemo } from "react";
 import { Vector3, Group } from "three";
 import { useDrivingStore, ReplayFrame } from "@/lib/store";
-import { checkMissionGoal } from "@/components/simulation/MissionController";
+import { carTransform } from "./carTransform";
 import { getCoursePath } from "@/lib/course";
 
 // Reused scratch vectors for the per-frame camera/movement math so useFrame
@@ -46,11 +46,6 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   // Recording state
   const recordedFrames = useRef<ReplayFrame[]>([]);
 
-  // Pending "clear driving feedback" timers, tracked so they can be cancelled on
-  // unmount — otherwise a timer from one run fires setDrivingFeedback(null) after
-  // the user navigates away and clobbers the next session's feedback.
-  const feedbackTimeouts = useRef<ReturnType<typeof setTimeout>[]>([]);
-
   // Last speed value pushed to the store (rounded km/h). Used to avoid writing
   // setSpeed on every frame — we only write when the displayed value changes.
   const lastDisplaySpeed = useRef(-1);
@@ -58,12 +53,6 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   // Replay state
   const replayIndex = useRef(0);
   const ghostDist = useRef(0);
-
-  // Checkpoint Logic (Local Ref)
-  const clearedCheckpoints = useRef<Set<string>>(new Set());
-  
-  // Added: holds the state of the left/right safety check
-  const safetyCheckState = useRef({ lookedLeft: false, lookedRight: false });
 
   // Get Course Path for Ghost Car
   const coursePath = useMemo(() => getCoursePath(currentLesson), [currentLesson]);
@@ -74,9 +63,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
 
   // Reset on lesson change
   useEffect(() => {
-    clearedCheckpoints.current.clear();
-    useDrivingStore.getState().resetClearedCheckpoints(); // Also reset the cleared list on the store side
-    safetyCheckState.current = { lookedLeft: false, lookedRight: false };
+    carTransform.valid = false;
 
     speed.current = 0;
     replayIndex.current = 0;
@@ -100,21 +87,11 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   // frames and corrupt replayData / scoring.
   useEffect(() => {
     if (missionState === "active") {
+      // Fresh run: clear the recording buffer (grading state now resets in useMission).
       recordedFrames.current = [];
-      // Same-lesson retry: the [currentLesson] effect doesn't fire, so reset the
-      // local checkpoint state here too, or run 2 treats run 1's checkpoints as
-      // already cleared and skips enforcing them. (The store side — clearedCheckpointIds
-      // — is reset in setMissionState('active').)
-      clearedCheckpoints.current.clear();
-      safetyCheckState.current = { lookedLeft: false, lookedRight: false };
+      carTransform.valid = false;
     }
   }, [missionState]);
-
-  // Cancel any pending feedback timers on unmount.
-  useEffect(() => () => {
-    feedbackTimeouts.current.forEach(clearTimeout);
-    feedbackTimeouts.current = [];
-  }, []);
 
   useFrame(() => {
     if (!groupRef.current) return;
@@ -133,12 +110,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
       replayData,
       replayViewMode,
       gear,
-      activeCheckpoints,
       setSpeed,
-      setMissionState,
-      setScreen,
-      addClearedCheckpoint,
-      calculateMissionResult,
     } = store;
 
     // Ensure camera is upright
@@ -258,81 +230,6 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     _movement.copy(_forward).multiplyScalar(speed.current * direction);
     groupRef.current.position.add(_movement);
 
-    if (!isFreeMode) {
-      if (checkMissionGoal(currentLesson, groupRef.current.position)) {
-        const frames = recordedFrames.current;
-        useDrivingStore.setState({ replayData: frames });
-
-        // Added: run scoring here when the goal is reached (uncleared checkpoints remain in the log)
-        calculateMissionResult(coursePath);
-
-        setMissionState("success");
-        setScreen("feedback");
-        return;
-      }
-
-      // Fixed: use activeCheckpoints (the dynamic list) for the check
-      activeCheckpoints.forEach((cp) => {
-        if (clearedCheckpoints.current.has(cp.id)) return;
-
-        const dx = groupRef.current!.position.x - cp.position[0];
-        const dz = groupRef.current!.position.z - cp.position[2];
-        const dist = Math.sqrt(dx * dx + dz * dz);
-
-        // When entering the range
-        if (dist < cp.radius) {
-
-          // [A] Stop
-          if (cp.type === "stop") {
-            if (Math.abs(speed.current) < 0.02) { // Speed check
-              clearedCheckpoints.current.add(cp.id);
-              addClearedCheckpoint(cp.id); // Report to the store
-              useDrivingStore.getState().setDrivingFeedback(
-                useDrivingStore.getState().language === 'en' ? '🛑 Stop OK!' : `🛑 ${cp.label || '一時停止'} OK!`
-              );
-              feedbackTimeouts.current.push(setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000));
-            }
-          } 
-          
-          // [B] Mirror check / left-right check (safety-check)
-          else if (cp.type === "mirror" || cp.type === "safety-check") {
-            if (cp.type === "safety-check") {
-               const yaw = headRotation.yaw;
-               // Count it as looked if it exceeds 0.3 radians (about 17 degrees)
-               if (yaw > 0.3) safetyCheckState.current.lookedLeft = true;
-               if (yaw < -0.3) safetyCheckState.current.lookedRight = true;
-
-               if (safetyCheckState.current.lookedLeft && safetyCheckState.current.lookedRight) {
-                  clearedCheckpoints.current.add(cp.id);
-                  addClearedCheckpoint(cp.id); // Report to the store
-                  useDrivingStore.getState().setDrivingFeedback(
-                    useDrivingStore.getState().language === 'en' ? '👀 Left-Right Check OK!' : `👀 ${cp.label || '安全確認'} OK!`
-                  );
-                  safetyCheckState.current = { lookedLeft: false, lookedRight: false };
-                  feedbackTimeouts.current.push(setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000));
-               }
-            } else {
-               // Conventional mirror logic
-               const needed = cp.targetYaw || 0;
-               const tolerance = 0.5;
-               const currentYaw = headRotation.yaw;
-               if (Math.abs(currentYaw - needed) < tolerance) {
-                 clearedCheckpoints.current.add(cp.id);
-                 addClearedCheckpoint(cp.id); // Report to the store
-                 useDrivingStore.getState().setDrivingFeedback(`👀 Check OK!`);
-                 feedbackTimeouts.current.push(setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000));
-               }
-            }
-          }
-        } else {
-            // Reset once the area is passed (safety-check only)
-            if (cp.type === 'safety-check' && dist > cp.radius + 2) {
-                 safetyCheckState.current = { lookedLeft: false, lookedRight: false };
-            }
-        }
-      });
-    }
-
     // 4. Record Frame — only for scored lessons. free-mode never reaches a goal
     // and never replays, so recording there just grows unbounded for the session.
     if (!isFreeMode) {
@@ -345,6 +242,17 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
         headRotation: { ...headRotation },
       });
     }
+
+    // Publish the post-physics transform for the mission grader (MissionController/
+    // useMission mounts after Car, so it reads this in the same tick). Plain ref
+    // mutation — no store writes.
+    const ct = carTransform;
+    ct.position.copy(groupRef.current.position);
+    ct.headYaw = headRotation.yaw;
+    ct.headPitch = headRotation.pitch;
+    ct.speed = speed.current;
+    ct.frames = recordedFrames.current;
+    ct.valid = !isFreeMode;
 
     // 5. Camera (First Person)
     _camOffset.set(0.35, 1.28, 0.4).applyEuler(groupRef.current.rotation);
