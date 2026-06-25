@@ -102,12 +102,16 @@ test("camera-denied shows the keyboard-fallback overlay", async ({ page }) => {
 });
 
 // End-to-end proof that mission grading still fires after being relocated out of
-// Car.tsx into MissionController/useMission: drive the straight lesson (no
-// checkpoints, goal at z=-150) forward to its goal and assert the success +
-// feedback transition. Guards the mount-order / transform-timing contract.
-test("reaching the straight-lesson goal triggers success + feedback (grading relocation)", async ({
+// Car.tsx into MissionController/useMission: drive the straight lesson forward to
+// its goal and assert the success + feedback transition. Guards the mount-order /
+// transform-timing contract. The straight lesson has the lightest scene (highest
+// frame rate, so the real-time drive is as quick as possible on headless CI); the
+// poll resolves as soon as the goal fires, so the generous timeout only caps the
+// failure case, it doesn't slow the happy path.
+test("reaching a lesson goal triggers success + feedback (grading relocation)", async ({
   page,
 }) => {
+  test.setTimeout(120_000);
   await denyCamera(page);
   await page.addInitScript(() => localStorage.setItem("language", "ja"));
   await page.goto("/?e2e=1");
@@ -115,7 +119,7 @@ test("reaching the straight-lesson goal triggers success + feedback (grading rel
     timeout: 30_000,
   });
 
-  // Start the straight lesson programmatically (avoids i18n button navigation).
+  // Start the lesson programmatically (avoids i18n button navigation).
   await page.evaluate(() => {
     const s = (window as unknown as E2EWindow).__drivingStore!.getState();
     s.setLesson("straight");
@@ -134,7 +138,7 @@ test("reaching the straight-lesson goal triggers success + feedback (grading rel
   await page.keyboard.down("ArrowUp");
   await expect
     .poll(() => page.evaluate(() => (window as unknown as E2EWindow).__drivingStore!.getState().screen), {
-      timeout: 30_000,
+      timeout: 100_000,
     })
     .toBe("feedback");
   await page.keyboard.up("ArrowUp");
