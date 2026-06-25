@@ -99,14 +99,13 @@ export interface MissionCheckpoint {
 // objects are pure decoration).
 export const MISSION_CHECKPOINTS: Partial<Record<LessonId, MissionCheckpoint[]>> = {
   "left-turn": [
-    // Visual only today (unenforced); rendered as a stop line + sign.
-    { id: "stop-1", type: "stop", position: [0, 0, -25], radius: 4, minDuration: 1000, label: "一時停止", scored: false },
-    // Visual only today; rendered as a curve mirror.
-    { id: "mirror-1", type: "mirror", position: [0, 0, -28], radius: 6, targetYaw: -0.5, yawTolerance: 0.5, label: "安全確認", scored: false },
+    // Enforced: stop at the line, then a mirror/safety check before turning.
+    { id: "stop-1", type: "stop", position: [0, 0, -25], radius: 4, minDuration: 1000, label: "一時停止", scored: true },
+    { id: "mirror-1", type: "mirror", position: [0, 0, -28], radius: 6, targetYaw: -0.5, yawTolerance: 0.5, label: "安全確認", scored: true },
   ],
   "right-turn": [
-    { id: "stop-1", type: "stop", position: [0, 0, -25], radius: 4, label: "一時停止", scored: false },
-    { id: "mirror-1", type: "mirror", position: [0, 0, -28], radius: 6, targetYaw: 0.5, yawTolerance: 0.5, label: "安全確認", scored: false },
+    { id: "stop-1", type: "stop", position: [0, 0, -25], radius: 4, label: "一時停止", scored: true },
+    { id: "mirror-1", type: "mirror", position: [0, 0, -28], radius: 6, targetYaw: 0.5, yawTolerance: 0.5, label: "安全確認", scored: true },
   ],
   "traffic-light": [
     // Rendered (signal-cycling light + signal logs) and scored via the signal-violation

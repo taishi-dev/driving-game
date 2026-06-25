@@ -118,6 +118,22 @@ test("a traffic-light table entry is never counted as a missed checkpoint", () =
   assert.deepEqual(result.newFeedbackLogs, []);
 });
 
+test("a missed mirror checkpoint adds 20 points and a KAIZEN log", () => {
+  const cp = { id: "mirror-1", type: "mirror" as const, position: [0, 0, 0] as [number, number, number], radius: 6, targetYaw: -0.5, label: "安全確認" };
+  const result = calculateMissionScore(baseInput({ lessonCheckpoints: [cp] }));
+  assert.equal(result.addedDeviationPenalty, 20);
+  const missed = result.newFeedbackLogs.find((l) => l.message === "You skipped a mirror safety check");
+  assert.ok(missed, "expected a missed-mirror KAIZEN log");
+});
+
+test("turn enforcement (Option A): missing both the stop and the mirror costs 40", () => {
+  const stop = { id: "stop-1", type: "stop" as const, position: [0, 0, -25] as [number, number, number], radius: 4, label: "一時停止" };
+  const mirror = { id: "mirror-1", type: "mirror" as const, position: [0, 0, -28] as [number, number, number], radius: 6, targetYaw: -0.5, label: "安全確認" };
+  const result = calculateMissionScore(baseInput({ lessonCheckpoints: [stop, mirror] }));
+  assert.equal(result.addedDeviationPenalty, 40);
+  assert.equal(result.newFeedbackLogs.length, 2);
+});
+
 test("crossing a red light without stopping long enough is a signal violation", () => {
   const tl = {
     id: "tl1",

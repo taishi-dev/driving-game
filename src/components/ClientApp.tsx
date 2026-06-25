@@ -119,8 +119,8 @@ const STRINGS = {
 // Mission Definitions
 const MISSION_INFO: Record<string, { title: { ja: string, en: string }, desc: { ja: string, en: string } }> = {
     'straight': { title: { ja: '直線走行', en: 'Straight Driving' }, desc: { ja: '基本の直線走行です。ハンドルを安定させ、一定の速度で走り抜けましょう。', en: 'Basic straight-line driving. Keep the wheel steady and drive through at a constant speed.' } },
-    'left-turn': { title: { ja: '左折', en: 'Left Turn' }, desc: { ja: '交差点を左折します。速度を十分に落とし、巻き込みに注意して曲がりましょう。', en: 'Turn left at the intersection. Slow down enough and watch for cyclists and pedestrians on the inside as you turn.' } },
-    'right-turn': { title: { ja: '右折', en: 'Right Turn' }, desc: { ja: '交差点を右折します。交差点の中心のすぐ内側を通るように意識しましょう。', en: 'Turn right at the intersection. Aim to pass just inside the center of the intersection.' } },
+    'left-turn': { title: { ja: '左折', en: 'Left Turn' }, desc: { ja: '交差点を左折します。停止線で一時停止し、ミラーで左右の安全を確認してから、巻き込みに注意して曲がりましょう。', en: 'Turn left at the intersection. Stop at the line and do a mirror safety check before turning, and watch for cyclists and pedestrians on the inside.' } },
+    'right-turn': { title: { ja: '右折', en: 'Right Turn' }, desc: { ja: '交差点を右折します。停止線で一時停止し、ミラーで左右の安全を確認してから、中心のすぐ内側を通るように曲がりましょう。', en: 'Turn right at the intersection. Stop at the line and do a mirror safety check before turning, aiming to pass just inside the center.' } },
     's-curve': { title: { ja: 'S字カーブ', en: 'S-Curve' }, desc: { ja: 'S字型の狭路です。内輪差・外輪差を考慮し、脱輪しないように慎重に進みましょう。', en: 'A narrow S-shaped lane. Account for the difference in the path of the inner and outer wheels and proceed carefully to avoid going off the track.' } },
     'crank': { title: { ja: 'クランク', en: 'Crank' }, desc: { ja: '直角に曲がる狭路です。車両感覚を研ぎ澄まし、適切なタイミングでハンドルを切りましょう。', en: 'A narrow lane with right-angle turns. Sharpen your sense of the vehicle and turn the wheel at the right moment.' } },
     'traffic-light': { title: { ja: '信号機', en: 'Traffic Light' }, desc: { ja: '信号のある交差点です。赤信号で停止し、青になったら発進しましょう。', en: 'An intersection with a traffic light. Stop on red and set off once it turns green.' } },
