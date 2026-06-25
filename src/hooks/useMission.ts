@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useDrivingStore } from "@/lib/store";
-import { checkMissionGoal } from "@/components/simulation/MissionController";
+import { checkMissionGoal } from "@/lib/mission/missions";
 import { carTransform } from "@/components/simulation/carTransform";
 import { evaluateCheckpoint, type SafetyCheckState } from "@/lib/mission/checkpointEval";
 

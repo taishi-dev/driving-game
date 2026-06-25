@@ -113,7 +113,7 @@ test("crossing a red light without stopping long enough is a signal violation", 
   const tl = {
     id: "tl1",
     type: "stop" as const,
-    visual: "traffic-light",
+    visual: "traffic-light" as const,
     position: [0, 0, 0] as [number, number, number],
     radius: 2,
     minDuration: 1000,
@@ -138,7 +138,7 @@ test("crossing on green is not a violation", () => {
   const tl = {
     id: "tl1",
     type: "stop" as const,
-    visual: "traffic-light",
+    visual: "traffic-light" as const,
     position: [0, 0, 0] as [number, number, number],
     radius: 2,
     minDuration: 1000,

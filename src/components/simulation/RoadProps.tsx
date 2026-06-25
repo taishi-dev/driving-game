@@ -1,5 +1,5 @@
 import { useDrivingStore } from "@/lib/store";
-import { MISSION_CHECKPOINTS } from "./MissionController";
+import { MISSION_CHECKPOINTS } from "@/lib/mission/missions";
 import { useEffect, useMemo, useState } from "react";
 
 type SignalState = "green" | "yellow" | "red";
