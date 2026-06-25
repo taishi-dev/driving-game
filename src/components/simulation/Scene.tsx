@@ -9,7 +9,7 @@ import { RoadProps } from "./RoadProps";
 import { Surroundings } from "./Surroundings";
 import { ThreeModelLoader } from "./ThreeModelLoader";
 
-import { MISSION_GOALS } from "./MissionController";
+import { MISSION_GOALS, MissionController } from "./MissionController";
 import { useDrivingStore } from "@/lib/store";
 import { Text } from "@react-three/drei";
 import { TrafficSystem } from "./TrafficSystem";
@@ -30,12 +30,15 @@ export function Scene({ cameraTarget = "player" }: { cameraTarget?: "player" | "
 
           <Car cameraTarget={cameraTarget} />
 
-          {/* Mission-related elements are not shown in free-mode */}
+          {/* Mission-related elements are not shown in free-mode. MissionController
+              MUST be mounted after <Car> (mount order) so its grading useFrame runs
+              after Car's physics + transform write within the same tick. */}
           {!isFreeMode && (
             <>
               <Road />
               <RoadProps />
               <GoalMarker />
+              <MissionController />
               <TrafficSystem />
             </>
           )}

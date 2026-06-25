@@ -2,7 +2,16 @@ import { test, expect, type Page } from "@playwright/test";
 
 // Shape of the opt-in debug hook exposed on `window.__drivingStore` when the
 // page is loaded with `?e2e` (see src/lib/store.ts).
-type E2EStore = { getState: () => { steeringAngle: number; screen: string } };
+type E2EState = {
+  steeringAngle: number;
+  screen: string;
+  missionState: string;
+  replayData: unknown[];
+  setLesson: (lesson: string) => void;
+  setScreen: (screen: string) => void;
+  setMissionState: (state: string) => void;
+};
+type E2EStore = { getState: () => E2EState };
 type E2EWindow = Window & { __drivingStore?: E2EStore };
 
 const STEER_AMOUNT = 0.6; // mirrors KeyboardControls.tsx
@@ -90,4 +99,50 @@ test("camera-denied shows the keyboard-fallback overlay", async ({ page }) => {
   await expect(
     page.getByText("Camera access was denied", { exact: false }),
   ).toBeVisible();
+});
+
+// End-to-end proof that mission grading still fires after being relocated out of
+// Car.tsx into MissionController/useMission: drive the straight lesson (no
+// checkpoints, goal at z=-150) forward to its goal and assert the success +
+// feedback transition. Guards the mount-order / transform-timing contract.
+test("reaching the straight-lesson goal triggers success + feedback (grading relocation)", async ({
+  page,
+}) => {
+  await denyCamera(page);
+  await page.addInitScript(() => localStorage.setItem("language", "ja"));
+  await page.goto("/?e2e=1");
+  await page.waitForFunction(() => Boolean((window as unknown as E2EWindow).__drivingStore), undefined, {
+    timeout: 30_000,
+  });
+
+  // Start the straight lesson programmatically (avoids i18n button navigation).
+  await page.evaluate(() => {
+    const s = (window as unknown as E2EWindow).__drivingStore!.getState();
+    s.setLesson("straight");
+    s.setScreen("driving");
+    s.setMissionState("active");
+  });
+  await page.waitForFunction(
+    () => (window as unknown as E2EWindow).__drivingStore!.getState().screen === "driving",
+    undefined,
+    { timeout: 30_000 },
+  );
+  // Let the Scene/Car mount and KeyboardControls attach its listeners.
+  await page.waitForTimeout(800);
+
+  // Drive forward (the car faces -z; ArrowUp = throttle) until the goal fires.
+  await page.keyboard.down("ArrowUp");
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as E2EWindow).__drivingStore!.getState().screen), {
+      timeout: 30_000,
+    })
+    .toBe("feedback");
+  await page.keyboard.up("ArrowUp");
+
+  const state = await page.evaluate(() => {
+    const s = (window as unknown as E2EWindow).__drivingStore!.getState();
+    return { missionState: s.missionState, frames: s.replayData.length };
+  });
+  expect(state.missionState).toBe("success");
+  expect(state.frames).toBeGreaterThan(0);
 });
