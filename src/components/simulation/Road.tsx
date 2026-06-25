@@ -80,7 +80,9 @@ export function Road() {
       {/* Ground (Grass) handled in Surroundings, but just in case of gaps */}
       {/* Road Asphalt */}
       <mesh geometry={roadGeo} receiveShadow>
-         <meshStandardMaterial color="#333333" roughness={0.8} side={THREE.DoubleSide} />
+         {/* Lower roughness gives asphalt a faint sheen that catches the sun/sky from the
+             scene environment, instead of reading as one flat matte grey. */}
+         <meshStandardMaterial color="#2f2f33" roughness={0.6} metalness={0.0} side={THREE.DoubleSide} />
       </mesh>
 
       {/* Curbs (Concrete) */}
