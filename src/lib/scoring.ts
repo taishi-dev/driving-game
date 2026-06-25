@@ -176,6 +176,8 @@ export function calculateMissionScore(input: MissionScoreInput): MissionScoreRes
       msg = language === "en" ? "You ignored a required stop" : `${cp.label || "一時停止"}を無視しました`;
     } else if (cp.type === "safety-check") {
       msg = language === "en" ? "You skipped a safety check" : `${cp.label || "安全確認"}を行いませんでした`;
+    } else if (cp.type === "mirror") {
+      msg = language === "en" ? "You skipped a mirror safety check" : `${cp.label || "安全確認"}を確認しませんでした`;
     }
     if (msg) {
       newFeedbackLogs.push({ time: now, type: "KAIZEN", message: msg });
