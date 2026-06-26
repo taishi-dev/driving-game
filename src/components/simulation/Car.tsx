@@ -13,6 +13,7 @@ import {
   dtScaleFromDelta,
   smoothingAlpha,
 } from "@/lib/carPhysics";
+import { sampleReplay } from "@/lib/replay";
 
 // Reused scratch vectors for the per-frame camera/movement math so useFrame
 // never allocates. Module-level (not per-instance) is safe even though the
@@ -53,8 +54,9 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
   // setSpeed on every frame — we only write when the displayed value changes.
   const lastDisplaySpeed = useRef(-1);
 
-  // Replay state
-  const replayIndex = useRef(0);
+  // Replay state. replayElapsedMs is real time since playback started; the recorded
+  // frames are sampled/interpolated at that elapsed time (see src/lib/replay.ts).
+  const replayElapsedMs = useRef(0);
   const ghostDist = useRef(0);
 
   // Get Course Path for Ghost Car
@@ -69,7 +71,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     carTransform.valid = false;
 
     speed.current = 0;
-    replayIndex.current = 0;
+    replayElapsedMs.current = 0;
     ghostDist.current = 0;
     recordedFrames.current = [];
 
@@ -129,60 +131,61 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     // --- REPLAY MODE ---
     if (isReplaying) {
       if (replayData.length === 0) return;
-      // Advance the playback cursor by real time (dtScale), not one recorded frame
-      // per render frame, so a recording plays back at a consistent wall-clock rate
-      // regardless of the playback frame rate. The cursor is fractional; floor it
-      // to pick the frame to show.
-      const replayFrameIndex = Math.floor(replayIndex.current);
-      if (replayFrameIndex < replayData.length) {
-         const frame = replayData[replayFrameIndex];
-         groupRef.current.position.set(frame.position[0], frame.position[1], frame.position[2]);
-         groupRef.current.rotation.set(frame.rotation[0], frame.rotation[1], frame.rotation[2]);
-         
-         if (!isFreeMode && ghostRef.current && courseLength > 0) {
-             let targetSpeed = 0.25;
-             if (currentLesson === "left-turn" || currentLesson === "right-turn") {
-               if (ghostDist.current > 45 && ghostDist.current < 70) targetSpeed = 0.1;
-             } else if (currentLesson === "s-curve" || currentLesson === "crank") {
-               targetSpeed = 0.08;
+      // Drive playback by REAL elapsed time and interpolate between recorded
+      // frames, so a recording plays back in the same wall-clock duration it was
+      // recorded in — independent of both the recording and the playback frame
+      // rate (raw delta, not dtScale, since this is real time not a 60fps step).
+      replayElapsedMs.current += delta * 1000;
+      const sample = sampleReplay(replayData, replayElapsedMs.current);
+      if (!sample) return;
+      groupRef.current.position.set(sample.position[0], sample.position[1], sample.position[2]);
+      groupRef.current.rotation.set(sample.rotation[0], sample.rotation[1], sample.rotation[2]);
+
+      if (!isFreeMode && ghostRef.current && courseLength > 0) {
+          let targetSpeed = 0.25;
+          if (currentLesson === "left-turn" || currentLesson === "right-turn") {
+            if (ghostDist.current > 45 && ghostDist.current < 70) targetSpeed = 0.1;
+          } else if (currentLesson === "s-curve" || currentLesson === "crank") {
+            targetSpeed = 0.08;
+          }
+          ghostDist.current += targetSpeed * dtScale;
+          const t = Math.min(ghostDist.current / courseLength, 1);
+          const point = coursePath.getPointAt(t);
+          const tangent = coursePath.getTangentAt(t);
+          ghostRef.current.position.set(point.x, point.y, point.z);
+          ghostRef.current.rotation.set(0, Math.atan2(tangent.x, tangent.z) + Math.PI, 0);
+      }
+
+      if (replayViewMode === "driver") {
+         const targetGroup = cameraTarget === "ghost" ? ghostRef.current : groupRef.current;
+         if (targetGroup) {
+             _camOffset.set(0.35, 1.28, 0.4).applyEuler(targetGroup.rotation);
+             _camPos.copy(targetGroup.position).add(_camOffset);
+             camera.position.lerp(_camPos, smoothingAlpha(0.5, dtScale));
+             if (cameraTarget === "ghost") {
+                 _forward.set(0, 0, -1).applyEuler(targetGroup.rotation);
+                 _lookTarget.copy(targetGroup.position).add(_forward.multiplyScalar(10));
+             } else {
+                 const recordedHead = sample.headRotation;
+                 _forward.set(0, 0, -1).applyEuler(targetGroup.rotation);
+                 _lookTarget.copy(targetGroup.position).add(_forward.multiplyScalar(10));
+                 _right.set(1, 0, 0).applyEuler(targetGroup.rotation);
+                 _lookTarget.add(_right.multiplyScalar(recordedHead.yaw * 5));
+                 _lookTarget.y += recordedHead.pitch * 5;
              }
-             ghostDist.current += targetSpeed * dtScale;
-             const t = Math.min(ghostDist.current / courseLength, 1);
-             const point = coursePath.getPointAt(t);
-             const tangent = coursePath.getTangentAt(t);
-             ghostRef.current.position.set(point.x, point.y, point.z);
-             ghostRef.current.rotation.set(0, Math.atan2(tangent.x, tangent.z) + Math.PI, 0);
+             camera.lookAt(_lookTarget);
          }
-         
-         if (replayViewMode === "driver") {
-            const targetGroup = cameraTarget === "ghost" ? ghostRef.current : groupRef.current;
-            if (targetGroup) {
-                _camOffset.set(0.35, 1.28, 0.4).applyEuler(targetGroup.rotation);
-                _camPos.copy(targetGroup.position).add(_camOffset);
-                camera.position.lerp(_camPos, smoothingAlpha(0.5, dtScale));
-                if (cameraTarget === "ghost") {
-                    _forward.set(0, 0, -1).applyEuler(targetGroup.rotation);
-                    _lookTarget.copy(targetGroup.position).add(_forward.multiplyScalar(10));
-                } else {
-                    const recordedHead = frame.headRotation || { pitch: 0, yaw: 0, roll: 0 };
-                    _forward.set(0, 0, -1).applyEuler(targetGroup.rotation);
-                    _lookTarget.copy(targetGroup.position).add(_forward.multiplyScalar(10));
-                    _right.set(1, 0, 0).applyEuler(targetGroup.rotation);
-                    _lookTarget.add(_right.multiplyScalar(recordedHead.yaw * 5));
-                    _lookTarget.y += recordedHead.pitch * 5;
-                }
-                camera.lookAt(_lookTarget);
-            }
-         } else {
-            const targetGroup = groupRef.current;
-            _camOffset.set(0, 4, 8).applyEuler(targetGroup.rotation);
-            _camPos.copy(targetGroup.position).add(_camOffset);
-            camera.position.lerp(_camPos, smoothingAlpha(0.1, dtScale));
-            camera.lookAt(targetGroup.position);
-         }
-         replayIndex.current += dtScale;
       } else {
-        replayIndex.current = 0;
+         const targetGroup = groupRef.current;
+         _camOffset.set(0, 4, 8).applyEuler(targetGroup.rotation);
+         _camPos.copy(targetGroup.position).add(_camOffset);
+         camera.position.lerp(_camPos, smoothingAlpha(0.1, dtScale));
+         camera.lookAt(targetGroup.position);
+      }
+
+      // Loop the replay once it reaches the end of the recording.
+      if (sample.done) {
+        replayElapsedMs.current = 0;
         ghostDist.current = 0;
       }
       return;
