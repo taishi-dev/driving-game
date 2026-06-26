@@ -6,6 +6,12 @@ import { Vector3, Group } from "three";
 import { useDrivingStore, ReplayFrame } from "@/lib/store";
 import { carTransform } from "./carTransform";
 import { getCoursePath } from "@/lib/course";
+import {
+  stepSpeed,
+  steeringYawDelta,
+  forwardStep,
+  dtScaleFromDelta,
+} from "@/lib/carPhysics";
 
 // Reused scratch vectors for the per-frame camera/movement math so useFrame
 // never allocates. Module-level (not per-instance) is safe even though the
@@ -35,13 +41,9 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
 
   const isFreeMode = currentLesson === "free-mode";
 
-  // Physics state
+  // Physics state. Tuning constants live in CAR_PHYSICS (src/lib/carPhysics.ts),
+  // alongside the pure, frame-rate-independent integration used below.
   const speed = useRef(0);
-  const maxSpeed = 1.5;
-  const acceleration = 0.01;
-  const friction = 0.005;
-  const turnSpeed = 0.05;
-  const creepSpeed = 0.15;
 
   // Recording state
   const recordedFrames = useRef<ReplayFrame[]>([]);
@@ -93,8 +95,15 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     }
   }, [missionState]);
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!groupRef.current) return;
+
+    // Per-frame time step normalized to a 60fps baseline (1.0 at 60fps). Physics
+    // advances by real time, not per frame, so the car covers the same ground per
+    // wall-clock second on any hardware (e.g. headless CI's slow software GPU).
+    // Clamp so a long stall (GC pause, backgrounded tab) can't teleport the car
+    // through a goal or wall in one giant step.
+    const dtScale = Math.min(dtScaleFromDelta(delta), 4);
 
     // Read the latest store state directly (no React subscription) so that
     // per-frame input writes don't re-render Car.
@@ -174,19 +183,11 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     }
 
     // --- DRIVING MODE ---
-    if (throttleInput > 0) {
-      speed.current += (maxSpeed * throttleInput - speed.current) * acceleration;
-    } else if (brakeInput > 0) {
-      speed.current -= brakeInput * 0.05;
-      if (speed.current < 0) speed.current = 0;
-    } else {
-      if (speed.current < creepSpeed) {
-        speed.current += 0.001;
-      } else {
-        speed.current -= friction;
-        if (speed.current < creepSpeed) speed.current = creepSpeed;
-      }
-    }
+    speed.current = stepSpeed(
+      speed.current,
+      { throttle: throttleInput, brake: brakeInput },
+      dtScale,
+    );
     // Telemetry: only write to the store when the displayed (rounded) km/h
     // actually changes, instead of every frame. The speedometer reads a rounded
     // value anyway, so this avoids waking up speed subscribers on every frame.
@@ -199,35 +200,19 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     // Gear Direction Logic
     const direction = gear === "R" ? -1 : 1;
 
-    // 2. Steering
-    if (Math.abs(speed.current) > 0.001) {
-      const curvePower = 1.8;
-      const curvedInput = Math.sign(steeringInput) * Math.pow(Math.abs(steeringInput), curvePower);
-      const boostedSteering = curvedInput * 8.0;
-      // In reverse, steering feel is often inverted (or just feels different), 
-      // but physically if you turn wheels right, car goes 'back-right', which rotates body 'left' relative to forward.
-      // Standard car physics: Yaw change ~ Speed * curvature * direction.
-      // If speed is positive magnitude, and we move backwards, the yaw change reverses sign?
-      // Let's stick to simple physics: Rotate body by steering * speed.
-      // If moving backward (direction = -1), steering effects are reversed?
-      // Actually usually steering angle defines circle. 
-      // Let's invert turn direction if reversing for natural feel (or keep it and rely on users brain).
-      // Usually: Backing up + Steering Left -> Rear goes Left -> Car rotates CCW (same as forward left).
-      // Wait. Forward + Left -> Front goes Left -> CCW.
-      // Backward + Left -> Rear goes Left -> CW?  
-      // Let's try reversing rotation sign when reversing.
-      
-      // Standard car physics: Yaw change ~ Speed * curvature * direction.
-      // Actually, regardless of gear, if you turn wheels LEFT, the car rotates LEFT (CCW).
-      // (Forward -> Left Turn, Backward -> Tail swings Left -> Car rotates Left/CCW).
-      // So we do NOT invert rotation based on gear.
-      
-      groupRef.current.rotation.y -= boostedSteering * turnSpeed * (speed.current / maxSpeed) * 3.0 * direction;
-    }
+    // 2. Steering. Regardless of gear, turning the wheel left rotates the car
+    // left (CCW): forward-left turns the front in, reverse-left swings the tail
+    // out — both yaw the body the same way — so direction is NOT inverted here.
+    groupRef.current.rotation.y += steeringYawDelta(
+      speed.current,
+      steeringInput,
+      direction,
+      dtScale,
+    );
 
     _forward.set(0, 0, -1).applyEuler(groupRef.current.rotation);
     // Move along a copy so _forward is preserved for the camera lookAt below.
-    _movement.copy(_forward).multiplyScalar(speed.current * direction);
+    _movement.copy(_forward).multiplyScalar(forwardStep(speed.current, direction, dtScale));
     groupRef.current.position.add(_movement);
 
     // 4. Record Frame — only for scored lessons. free-mode never reaches a goal
