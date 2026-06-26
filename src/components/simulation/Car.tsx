@@ -11,6 +11,7 @@ import {
   steeringYawDelta,
   forwardStep,
   dtScaleFromDelta,
+  smoothingAlpha,
 } from "@/lib/carPhysics";
 
 // Reused scratch vectors for the per-frame camera/movement math so useFrame
@@ -128,8 +129,13 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     // --- REPLAY MODE ---
     if (isReplaying) {
       if (replayData.length === 0) return;
-      if (replayIndex.current < replayData.length) {
-         const frame = replayData[replayIndex.current];
+      // Advance the playback cursor by real time (dtScale), not one recorded frame
+      // per render frame, so a recording plays back at a consistent wall-clock rate
+      // regardless of the playback frame rate. The cursor is fractional; floor it
+      // to pick the frame to show.
+      const replayFrameIndex = Math.floor(replayIndex.current);
+      if (replayFrameIndex < replayData.length) {
+         const frame = replayData[replayFrameIndex];
          groupRef.current.position.set(frame.position[0], frame.position[1], frame.position[2]);
          groupRef.current.rotation.set(frame.rotation[0], frame.rotation[1], frame.rotation[2]);
          
@@ -140,7 +146,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
              } else if (currentLesson === "s-curve" || currentLesson === "crank") {
                targetSpeed = 0.08;
              }
-             ghostDist.current += targetSpeed;
+             ghostDist.current += targetSpeed * dtScale;
              const t = Math.min(ghostDist.current / courseLength, 1);
              const point = coursePath.getPointAt(t);
              const tangent = coursePath.getTangentAt(t);
@@ -153,7 +159,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
             if (targetGroup) {
                 _camOffset.set(0.35, 1.28, 0.4).applyEuler(targetGroup.rotation);
                 _camPos.copy(targetGroup.position).add(_camOffset);
-                camera.position.lerp(_camPos, 0.5);
+                camera.position.lerp(_camPos, smoothingAlpha(0.5, dtScale));
                 if (cameraTarget === "ghost") {
                     _forward.set(0, 0, -1).applyEuler(targetGroup.rotation);
                     _lookTarget.copy(targetGroup.position).add(_forward.multiplyScalar(10));
@@ -171,10 +177,10 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
             const targetGroup = groupRef.current;
             _camOffset.set(0, 4, 8).applyEuler(targetGroup.rotation);
             _camPos.copy(targetGroup.position).add(_camOffset);
-            camera.position.lerp(_camPos, 0.1);
+            camera.position.lerp(_camPos, smoothingAlpha(0.1, dtScale));
             camera.lookAt(targetGroup.position);
          }
-         replayIndex.current++;
+         replayIndex.current += dtScale;
       } else {
         replayIndex.current = 0;
         ghostDist.current = 0;
@@ -243,7 +249,7 @@ export function Car({ cameraTarget = "player" }: { cameraTarget?: "player" | "gh
     _camOffset.set(0.35, 1.28, 0.4).applyEuler(groupRef.current.rotation);
     _camPos.copy(groupRef.current.position).add(_camOffset);
 
-    camera.position.lerp(_camPos, 0.5);
+    camera.position.lerp(_camPos, smoothingAlpha(0.5, dtScale));
 
     const lookAtDist = 10;
     // Base Look Target: Always 10 units in FRONT of the car (local -Z)
