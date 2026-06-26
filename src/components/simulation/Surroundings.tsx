@@ -1,6 +1,6 @@
 "use client";
 
-import { Sky } from "@react-three/drei";
+import { Sky, Environment, Lightformer } from "@react-three/drei";
 import { useMemo } from "react";
 import * as THREE from "three";
 import { getCoursePath } from "@/lib/course";
@@ -40,9 +40,49 @@ export function Surroundings() {
 
   return (
     <group>
-        <Sky sunPosition={[100, 40, 100]} turbidity={0.5} rayleigh={0.5} />
-        <ambientLight intensity={0.7} />
-        <directionalLight position={[50, 100, 50]} intensity={1.5} castShadow />
+        {/* GOLDEN HOUR: sun near the horizon for an orange sunset sky + warm glow. */}
+        <Sky sunPosition={[80, 7, 50]} turbidity={12} rayleigh={3.5} mieCoefficient={0.03} mieDirectionalG={0.95} />
+
+        {/* --- Single light rig (Scene.tsx no longer adds its own lights) --- */}
+        {/* Warm sky / dark ground bounce — pushes the whole scene amber. */}
+        <hemisphereLight args={["#ffb27a", "#3a2e1f", 0.35]} />
+        {/* Minimal base fill so deep shadows stay rich without crushing to pure black. */}
+        <ambientLight intensity={0.04} />
+        {/* Strong ORANGE sun key light — the only shadow caster. Very low + to the side so
+            shadows are long and rake across the road toward the camera. */}
+        <directionalLight
+            position={[90, 16, 35]}
+            intensity={3.6}
+            color="#ff7e2e"
+            castShadow
+            // 1024 (not 2048) keeps the per-frame shadow pass cheap: the car physics is
+            // frame-rate dependent, and headless-CI software-GL is fill-bound, so a 4x
+            // smaller shadow map protects the drive-to-goal e2e timing. The blur radius
+            // hides the lower resolution. Shadow-camera bounds are set as props (a nested
+            // <orthographicCamera attach="shadow-camera"> did NOT reliably update the
+            // light's shadow projection, so shadows never rendered).
+            shadow-mapSize={[1024, 1024]}
+            shadow-camera-near={1}
+            shadow-camera-far={300}
+            shadow-camera-left={-55}
+            shadow-camera-right={55}
+            shadow-camera-top={55}
+            shadow-camera-bottom={-55}
+            shadow-bias={-0.0004}
+            shadow-normalBias={0.03}
+            shadow-radius={2.5}
+        />
+        {/* Cool blue fill from the opposite side — complements the orange key for a strong
+            warm/cool split on the shadow side. */}
+        <directionalLight position={[-50, 40, -40]} intensity={0.18} color="#5b7fae" />
+
+        {/* Procedural reflection environment for metal/glass (car body, windows, mirror).
+            Pure GPU (Lightformers) — no network — and rendered once (frames={1}). */}
+        <Environment resolution={64} frames={1} environmentIntensity={0.5}>
+            <color attach="background" args={["#c97a3a"]} />
+            <Lightformer intensity={2.2} position={[0, 12, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[40, 40, 1]} color="#ffdcb0" />
+            <Lightformer intensity={0.9} position={[0, 3, -14]} scale={[40, 10, 1]} color="#ff9a4d" />
+        </Environment>
 
         {/* Large Ground (Manicured Grass) */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.21, 0]} receiveShadow>
@@ -82,7 +122,7 @@ export function Surroundings() {
         
         {/* Another Building (Garage/Storage) */}
         <group position={[-40, 0, -40]}>
-             <mesh position={[0, 4, 0]} castShadow>
+             <mesh position={[0, 4, 0]} castShadow receiveShadow>
                 <boxGeometry args={[20, 8, 30]} />
                 <meshStandardMaterial color="#d0d0d0" />
             </mesh>
@@ -96,7 +136,7 @@ export function Surroundings() {
         {surroundings.map((item, i) => (
              <group key={i} position={item.position as [number, number, number]}>
                  {/* Pole Base */}
-                 <mesh position={[0, 1, 0]}>
+                 <mesh position={[0, 1, 0]} castShadow>
                      <cylinderGeometry args={[0.05, 0.05, 2, 8]} />
                      <meshStandardMaterial color="#ffff00" />
                  </mesh>
