@@ -38,6 +38,39 @@ export function Surroundings() {
      return data;
   }, [currentLesson]);
 
+  // Subtle procedural mottling so the huge flat grass plane is not one flat green.
+  // Canvas-generated (no asset to ship) and tiled across the ground.
+  const grassTexture = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const size = 256;
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.fillStyle = "#5c8a45";
+    ctx.fillRect(0, 0, size, size);
+    // Deterministic sine-hash PRNG: pure (no Math.random, which the React Compiler
+    // forbids during render), so the texture is stable across renders.
+    const rand = (n: number) => {
+      const s = Math.sin(n * 127.1) * 43758.5453;
+      return s - Math.floor(s);
+    };
+    for (let i = 0; i < 7000; i++) {
+      const x = rand(i + 1) * size;
+      const y = rand(i + 7.3) * size;
+      const r = rand(i + 3.1) * 2 + 0.4;
+      ctx.fillStyle = rand(i + 5.7) < 0.5 ? "rgba(72,108,56,0.35)" : "rgba(104,142,74,0.3)";
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(64, 64);
+    tex.anisotropy = 4;
+    return tex;
+  }, []);
+
   return (
     <group>
         {/* GOLDEN HOUR: sun near the horizon for an orange sunset sky + warm glow. */}
@@ -87,7 +120,7 @@ export function Surroundings() {
         {/* Large Ground (Manicured Grass) */}
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.21, 0]} receiveShadow>
             <planeGeometry args={[1000, 1000]} />
-            <meshStandardMaterial color="#5c8a45" roughness={0.9} />
+            <meshStandardMaterial map={grassTexture ?? undefined} color={grassTexture ? "#ffffff" : "#5c8a45"} roughness={0.95} />
         </mesh>
 
         {/* Administration Building (School Building) */}
