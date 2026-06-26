@@ -29,8 +29,8 @@ export function Scene({ cameraTarget = "player" }: { cameraTarget?: "player" | "
         style={{ width: "100%", height: "100%", display: "block" }}
       >
         <Suspense fallback={null}>
-          {/* Distance haze for depth; tuned far so near gameplay + the GOAL stay clear. */}
-          <fog attach="fog" args={["#dbe4ea", 100, 470]} />
+          {/* Warm sunset haze for golden-hour depth; near gameplay + the GOAL stay clear. */}
+          <fog attach="fog" args={["#e8a86a", 70, 360]} />
 
           {/* Sky, the light rig, and the reflection environment all live in <Surroundings>
               so there is a single source of truth for scene lighting. */}
