@@ -7,6 +7,7 @@ import {
   steeringYawDelta,
   forwardStep,
   dtScaleFromDelta,
+  smoothingAlpha,
 } from "../src/lib/carPhysics.ts";
 
 // Helper: simulate holding the throttle from a given starting speed for `seconds`
@@ -80,4 +81,47 @@ test("steering yaw delta scales with dt and is zero below the speed threshold", 
   const oneStep60 = steeringYawDelta(CAR_PHYSICS.maxSpeed, 1, 1, 1);
   const oneStep20 = steeringYawDelta(CAR_PHYSICS.maxSpeed, 1, 1, 3);
   assert.ok(Math.abs(oneStep20 - oneStep60 * 3) < 1e-12);
+});
+
+// Camera/ghost/replay smoothing used to lerp by a CONSTANT factor every frame, so
+// at a higher frame rate the camera converged on its target faster (snappier) and
+// at a lower frame rate it lagged — frame-rate-dependent feel, the same class of
+// bug as the per-frame physics. smoothingAlpha corrects a per-frame lerp factor
+// for the real time step so the camera converges the same amount per wall-clock
+// second at any frame rate.
+
+// Simulate lerping a scalar from 0 toward 1 for `seconds` at `fps` and return the
+// remaining gap to the target (1 - value).
+function smoothToTarget({ fps, seconds, base }: { fps: number; seconds: number; base: number }): number {
+  const dt = dtScaleFromDelta(1 / fps);
+  const steps = Math.round(fps * seconds);
+  let v = 0;
+  for (let i = 0; i < steps; i++) {
+    v += (1 - v) * smoothingAlpha(base, dt);
+  }
+  return 1 - v;
+}
+
+test("smoothingAlpha is the identity at 60fps (feel unchanged)", () => {
+  // dtScale === 1 must return the base factor (within float noise) so 60fps feel
+  // is unchanged from the legacy constant-lerp behavior.
+  assert.ok(Math.abs(smoothingAlpha(0.5, 1) - 0.5) < 1e-12);
+  assert.ok(Math.abs(smoothingAlpha(0.1, 1) - 0.1) < 1e-12);
+});
+
+test("smoothed convergence over fixed simulated time is frame-rate independent", () => {
+  const fast = smoothToTarget({ fps: 60, seconds: 1, base: 0.5 });
+  const slow = smoothToTarget({ fps: 20, seconds: 1, base: 0.5 });
+  assert.ok(
+    Math.abs(fast - slow) < 1e-9,
+    `remaining gap should match across frame rates: 60fps=${fast} 20fps=${slow}`,
+  );
+});
+
+test("smoothingAlpha stays within [0,1] for sane inputs", () => {
+  // dtScale up to the Car.tsx clamp of 4; alpha must remain a valid lerp factor.
+  for (const dt of [1, 2, 3, 4]) {
+    const a = smoothingAlpha(0.5, dt);
+    assert.ok(a >= 0 && a <= 1, `alpha out of range at dt=${dt}: ${a}`);
+  }
 });

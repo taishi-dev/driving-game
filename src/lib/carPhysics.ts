@@ -68,3 +68,14 @@ export function steeringYawDelta(
 export function forwardStep(speed: number, direction: number, dtScale: number): number {
   return speed * direction * dtScale;
 }
+
+/**
+ * Frame-rate-corrected lerp factor for exponential smoothing (camera follow,
+ * ghost/replay easing). `perFrameAlpha` is the legacy constant tuned for 60fps;
+ * this returns the equivalent factor for the actual time step so the same
+ * fraction of the gap closes per wall-clock second at any frame rate. Returns
+ * `perFrameAlpha` exactly at dtScale === 1, so 60fps feel is unchanged.
+ */
+export function smoothingAlpha(perFrameAlpha: number, dtScale: number): number {
+  return 1 - Math.pow(1 - perFrameAlpha, dtScale);
+}
