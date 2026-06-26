@@ -40,20 +40,20 @@ export function Surroundings() {
 
   return (
     <group>
-        {/* Clear daytime sky with the sun fairly high for an even, neutral midday look. */}
-        <Sky sunPosition={[80, 32, 70]} turbidity={6} rayleigh={1.2} mieCoefficient={0.005} mieDirectionalG={0.85} />
+        {/* BRIGHT NOON: high sun, clear pale-blue sky, minimal haze. */}
+        <Sky sunPosition={[35, 95, 35]} turbidity={2.5} rayleigh={0.7} mieCoefficient={0.003} mieDirectionalG={0.8} />
 
         {/* --- Single light rig (Scene.tsx no longer adds its own lights) --- */}
-        {/* Sky/ground bounce gives surfaces natural color while keeping it bright. */}
-        <hemisphereLight args={["#bcd6f7", "#56673a", 0.5]} />
-        {/* Low base fill so shadowed faces never crush to pure black. */}
-        <ambientLight intensity={0.12} />
-        {/* Neutral sun key light — the only shadow caster. Low + to the side so shadows rake
-            across the road into view (a high/frontal sun threw them out of frame), but higher
-            than the cinematic variant for a brighter midday feel. */}
+        {/* Bright cool sky / green ground bounce — keeps the whole scene light and airy. */}
+        <hemisphereLight args={["#cfe4ff", "#6a8a4a", 0.7]} />
+        {/* Higher base fill for an even, well-lit midday. */}
+        <ambientLight intensity={0.2} />
+        {/* Cool-white sun key light — the only shadow caster. Kept high for short midday
+            shadows, but slightly to the side so the car still grounds with a visible shadow. */}
         <directionalLight
-            position={[80, 46, 28]}
-            intensity={2.8}
+            position={[45, 85, 35]}
+            intensity={3.0}
+            color="#f2f7ff"
             castShadow
             // 1024 (not 2048) keeps the per-frame shadow pass cheap: the car physics is
             // frame-rate dependent, and headless-CI software-GL is fill-bound. Shadow-camera
@@ -70,15 +70,15 @@ export function Surroundings() {
             shadow-normalBias={0.03}
             shadow-radius={3}
         />
-        {/* Cool fill from the opposite side to open up the shadow side of objects. */}
-        <directionalLight position={[-50, 40, -40]} intensity={0.35} color="#aecbe8" />
+        {/* Bright cool fill from the opposite side for an even, airy midday. */}
+        <directionalLight position={[-50, 40, -40]} intensity={0.45} color="#cfe0ff" />
 
         {/* Procedural reflection environment for metal/glass (car body, windows, mirror).
             Pure GPU (Lightformers) — no network — and rendered once (frames={1}). */}
-        <Environment resolution={64} frames={1} environmentIntensity={0.5}>
-            <color attach="background" args={["#6f9fd8"]} />
-            <Lightformer intensity={2.2} position={[0, 12, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[40, 40, 1]} color="#ffffff" />
-            <Lightformer intensity={0.7} position={[0, 3, -14]} scale={[40, 10, 1]} color="#bcd6f7" />
+        <Environment resolution={64} frames={1} environmentIntensity={0.7}>
+            <color attach="background" args={["#9cc4ef"]} />
+            <Lightformer intensity={2.6} position={[0, 12, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[40, 40, 1]} color="#ffffff" />
+            <Lightformer intensity={0.8} position={[0, 3, -14]} scale={[40, 10, 1]} color="#dbeaff" />
         </Environment>
 
         {/* Large Ground (Manicured Grass) */}

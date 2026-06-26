@@ -25,12 +25,12 @@ export function Scene({ cameraTarget = "player" }: { cameraTarget?: "player" | "
         shadows
         dpr={[1, 1.5]}
         camera={{ position: [0, 1.2, 0.5], fov: 75 }}
-        gl={{ antialias: true, toneMappingExposure: 1.1 }}
+        gl={{ antialias: true, toneMappingExposure: 1.25 }}
         style={{ width: "100%", height: "100%", display: "block" }}
       >
         <Suspense fallback={null}>
-          {/* Distance haze for depth; tuned far so near gameplay + the GOAL stay clear. */}
-          <fog attach="fog" args={["#cfe1f2", 90, 430]} />
+          {/* Light, distant haze — keeps the bright midday air clear up close. */}
+          <fog attach="fog" args={["#dceaf8", 130, 520]} />
 
           {/* Sky, the light rig, and the reflection environment all live in <Surroundings>
               so there is a single source of truth for scene lighting. */}
