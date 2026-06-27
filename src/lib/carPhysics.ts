@@ -21,11 +21,13 @@ export const CAR_PHYSICS = {
 /** Steering response knobs, lifted from inline literals so each variant tunes
  * them cleanly. `curveExponent` shapes input response (higher = more progressive,
  * lower = twitchier); `boost` scales overall turn authority; `rateMultiplier` is
- * the legacy *3 term. */
+ * the legacy *3 term. `highSpeedDamping` (0..1) reduces turn authority as speed
+ * approaches maxSpeed for high-speed stability — Grid sets this high. */
 export const STEERING = {
   curveExponent: 2.4,
   boost: 6.0,
   rateMultiplier: 3.0,
+  highSpeedDamping: 0.5,
 } as const;
 
 export interface SpeedInputs {
@@ -70,10 +72,15 @@ export function steeringYawDelta(
 ): number {
   if (Math.abs(speed) <= 0.001) return 0;
   const { maxSpeed, turnSpeed } = CAR_PHYSICS;
-  const { curveExponent, boost, rateMultiplier } = STEERING;
+  const { curveExponent, boost, rateMultiplier, highSpeedDamping } = STEERING;
   const curved = Math.sign(steering) * Math.pow(Math.abs(steering), curveExponent);
   const boosted = curved * boost;
-  return -(boosted * turnSpeed * (speed / maxSpeed) * rateMultiplier * direction) * dtScale;
+  // Speed-sensitive steering: reduce turn authority as speed approaches maxSpeed
+  // for high-speed stability. Depends only on speed (not dtScale), so the per-frame
+  // dt scaling — and frame-rate independence — is unchanged.
+  const speedFrac = Math.min(Math.abs(speed) / maxSpeed, 1);
+  const damp = 1 - highSpeedDamping * speedFrac;
+  return -(boosted * turnSpeed * (speed / maxSpeed) * rateMultiplier * direction) * damp * dtScale;
 }
 
 /** Forward distance (world units) to move along the heading this step. */
