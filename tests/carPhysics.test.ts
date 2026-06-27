@@ -11,16 +11,27 @@ import {
   smoothingAlpha,
 } from "../src/lib/carPhysics.ts";
 
-test("steeringYawDelta is defined by the exported STEERING constants", () => {
+test("steeringYawDelta is defined by the exported STEERING constants (incl. high-speed damping)", () => {
   const { maxSpeed, turnSpeed } = CAR_PHYSICS;
-  const { curveExponent, boost, rateMultiplier } = STEERING;
+  const { curveExponent, boost, rateMultiplier, highSpeedDamping } = STEERING;
   const speed = maxSpeed, steering = 0.5, dir = 1, dt = 1;
   const curved = Math.sign(steering) * Math.pow(Math.abs(steering), curveExponent);
-  const expected = -(curved * boost * turnSpeed * (speed / maxSpeed) * rateMultiplier * dir) * dt;
+  const speedFrac = Math.min(Math.abs(speed) / maxSpeed, 1);
+  const damp = 1 - highSpeedDamping * speedFrac;
+  const expected = -(curved * boost * turnSpeed * (speed / maxSpeed) * rateMultiplier * dir) * damp * dt;
   assert.ok(
     Math.abs(steeringYawDelta(speed, steering, dir, dt) - expected) < 1e-12,
-    "steeringYawDelta must be computed from the exported STEERING constants",
+    "steeringYawDelta must be computed from the exported STEERING constants incl. damping",
   );
+});
+
+test("high-speed steering is damped below low-speed turn authority", () => {
+  assert.ok(STEERING.highSpeedDamping > 0 && STEERING.highSpeedDamping < 1);
+  const hi = CAR_PHYSICS.maxSpeed;        // speedFrac 1   -> damp = 1 - k
+  const lo = CAR_PHYSICS.maxSpeed * 0.1;  // speedFrac 0.1 -> damp ~ 1 - 0.1k
+  const yawHiPerFrac = Math.abs(steeringYawDelta(hi, 1, 1, 1)) / 1.0;
+  const yawLoPerFrac = Math.abs(steeringYawDelta(lo, 1, 1, 1)) / 0.1;
+  assert.ok(yawHiPerFrac < yawLoPerFrac, "high-speed turn authority must be damped below low-speed");
 });
 
 test("stepSpeed braking uses CAR_PHYSICS.brakeRate", () => {
