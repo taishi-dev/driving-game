@@ -10,11 +10,11 @@
  */
 
 export const CAR_PHYSICS = {
-  maxSpeed: 1.5,
-  acceleration: 0.01,
-  friction: 0.005,
+  maxSpeed: 1.8,
+  acceleration: 0.012,
+  friction: 0.0025,
   creepSpeed: 0.15,
-  turnSpeed: 0.05,
+  turnSpeed: 0.06,
   brakeRate: 0.05,
 } as const;
 
@@ -23,8 +23,8 @@ export const CAR_PHYSICS = {
  * lower = twitchier); `boost` scales overall turn authority; `rateMultiplier` is
  * the legacy *3 term. */
 export const STEERING = {
-  curveExponent: 1.8,
-  boost: 8.0,
+  curveExponent: 1.5,
+  boost: 11.0,
   rateMultiplier: 3.0,
 } as const;
 

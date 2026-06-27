@@ -29,6 +29,13 @@ test("stepSpeed braking uses CAR_PHYSICS.brakeRate", () => {
   assert.equal(stepSpeed(speed, { throttle: 0, brake: 1 }, 1), speed - brakeRate);
 });
 
+test("nfs feel: low friction + eager turn-in vs the 0.005/8.0/1.8 baseline", () => {
+  assert.ok(CAR_PHYSICS.friction < 0.005, "friction should be below baseline (slidey)");
+  assert.ok(STEERING.boost > 8.0, "turn authority should exceed baseline (eager turn-in)");
+  assert.ok(STEERING.curveExponent < 1.8, "curve should bias toward oversteer/eager response");
+  assert.ok(CAR_PHYSICS.maxSpeed > 1.5 && CAR_PHYSICS.maxSpeed < 2.2, "mid top speed");
+});
+
 // Helper: simulate holding the throttle from a given starting speed for `seconds`
 // of SIMULATED time at a given frame rate, accumulating forward distance the same
 // way Car.tsx does (update speed, then move by the post-update speed).
