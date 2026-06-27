@@ -1,3 +1,5 @@
+"use client";
+
 import { useDrivingStore } from "@/lib/store";
 import { GarageScene } from "../simulation/GarageScene";
 
@@ -54,10 +56,10 @@ export function HomeScreen() {
         {/* Top Bar */}
         <div className="w-full p-8 flex justify-between items-start pointer-events-auto bg-gradient-to-b from-black/85 to-transparent">
           <div>
-            <h1 className="text-6xl font-black italic tracking-tighter text-white drop-shadow-[0_0_18px_rgba(0,0,0,0.7)]">
+            <h1 className="text-6xl font-black italic tracking-tighter text-white drop-shadow-[0_0_18px_rgba(0,0,0,0.7)]" style={{ animation: "titleIn 0.5s ease-out both" }}>
               VIRTUAL{" "}
               <span className="text-amber-400 drop-shadow-[0_0_25px_rgba(251,191,36,0.85)]">DRIVING</span>{" "}
-              SCHOOL
+              <span className="text-blue-500 drop-shadow-[0_0_22px_rgba(59,130,246,0.8)]">SCHOOL</span>
             </h1>
             <p className="text-sm font-black italic text-amber-300/80 tracking-[0.35em] mt-2">NITRO SIMULATION v2.0</p>
 
@@ -77,49 +79,64 @@ export function HomeScreen() {
         <div className="w-full p-8 pb-12 pointer-events-auto bg-gradient-to-t from-black/90 via-black/50 to-transparent flex flex-col justify-end">
           <div className="mb-4 flex items-end gap-4 border-b border-amber-400/30 pb-2 max-w-4xl">
             <h2 className="text-2xl font-black italic tracking-wider text-white">SELECT COURSE</h2>
-            <span className="text-sm text-amber-400 font-mono mb-1 animate-pulse">/ ALL SYSTEMS READY</span>
+            <span className="text-sm text-blue-400 font-mono mb-1 animate-pulse">/ ALL SYSTEMS READY</span>
           </div>
 
           <div className="flex items-end gap-6 overflow-x-auto pb-4 pt-2 snap-x scrollbar-hide">
             {LESSONS.map((lesson, index) => (
-              <button
+              <div
                 key={lesson.id}
-                onClick={() => handleSelectLesson(lesson.id)}
-                className="group relative flex-shrink-0 w-72 h-48 bg-slate-900/80 border-t-4 border-amber-500/60 hover:border-amber-400 transition-all duration-200 transform hover:-translate-y-3 hover:scale-[1.03] hover:shadow-[0_0_45px_rgba(251,191,36,0.5)] snap-center overflow-hidden"
-                style={{ clipPath: "polygon(0 0, 100% 0, 100% 85%, 90% 100%, 0 100%)" }}
+                className="flex-shrink-0"
+                style={{ animation: "cardIn 0.4s ease-out both", animationDelay: `${index * 50}ms` }}
               >
-                <div className="absolute inset-0 bg-gradient-to-b from-amber-900/0 to-amber-600/25 opacity-60 group-hover:opacity-100 transition-all duration-200" />
+                <button
+                  onClick={() => handleSelectLesson(lesson.id)}
+                  className="group relative flex-shrink-0 w-72 h-48 bg-slate-900/80 border-t-4 border-amber-500/60 hover:border-amber-400 transition-all duration-200 transform hover:-translate-y-3 hover:scale-[1.03] hover:shadow-[0_0_45px_rgba(251,191,36,0.5)] snap-center overflow-hidden"
+                  style={{ clipPath: "polygon(0 0, 100% 0, 100% 85%, 90% 100%, 0 100%)" }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-b from-amber-900/0 to-amber-600/25 opacity-60 group-hover:opacity-100 transition-all duration-200" />
 
-                <div className="absolute inset-0 p-6 flex flex-col justify-between text-left">
-                  <div className="flex justify-between items-start">
-                    <span className="text-xs font-black text-amber-200/70 bg-slate-950 px-2 py-1 rounded border border-amber-500/30 group-hover:text-amber-300 group-hover:border-amber-400/60 transition-colors">
-                      {lesson.sub}
-                    </span>
-                    <div className={`w-3 h-3 rounded-full ${index === 0 ? "bg-amber-400 shadow-[0_0_12px_#fbbf24]" : "bg-slate-700"}`} />
-                  </div>
-
-                  <div>
-                    <h3 className="text-2xl font-black italic text-white group-hover:text-amber-300 mb-1">{lesson.label[language]}</h3>
-                    <p className="text-xs text-amber-200/60 font-mono">{lesson.desc}</p>
-                  </div>
-
-                  <div className="flex justify-between items-end">
-                    <div className="text-4xl font-black italic text-slate-800 group-hover:text-amber-500/40 select-none">
-                      0{index + 1}
+                  <div className="absolute inset-0 p-6 flex flex-col justify-between text-left">
+                    <div className="flex justify-between items-start">
+                      <span className="text-xs font-black text-amber-200/70 bg-slate-950 px-2 py-1 rounded border border-amber-500/30 group-hover:text-amber-300 group-hover:border-amber-400/60 transition-colors">
+                        {lesson.sub}
+                      </span>
+                      <div className={`w-3 h-3 rounded-full ${index === 0 ? "bg-amber-400 shadow-[0_0_12px_#fbbf24]" : "bg-slate-700"}`} />
                     </div>
 
-                    <span className="text-sm font-black italic text-amber-400 flex items-center gap-1 opacity-0 group-hover:opacity-100 transform translate-x-4 group-hover:translate-x-0 transition-all duration-200">
-                      START <span className="text-lg">»</span>
-                    </span>
+                    <div>
+                      <h3 className="text-2xl font-black italic text-white group-hover:text-amber-300 mb-1">{lesson.label[language]}</h3>
+                      <p className="text-xs text-amber-200/60 font-mono">{lesson.desc}</p>
+                    </div>
+
+                    <div className="flex justify-between items-end">
+                      <div className="text-4xl font-black italic text-slate-800 group-hover:text-amber-500/40 select-none">
+                        0{index + 1}
+                      </div>
+
+                      <span className="text-sm font-black italic text-amber-400 flex items-center gap-1 opacity-0 group-hover:opacity-100 transform translate-x-4 group-hover:translate-x-0 transition-all duration-200">
+                        START <span className="text-lg">»</span>
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+              </div>
             ))}
 
             <div className="w-12 flex-shrink-0" />
           </div>
         </div>
       </div>
+      <style jsx>{`
+        @keyframes cardIn {
+          from { opacity: 0; transform: translateY(28px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes titleIn {
+          from { opacity: 0; transform: translateY(-12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }
