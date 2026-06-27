@@ -11,10 +11,23 @@
 
 export const CAR_PHYSICS = {
   maxSpeed: 1.5,
-  acceleration: 0.01,
-  friction: 0.005,
+  acceleration: 0.006,
+  friction: 0.012,
   creepSpeed: 0.15,
-  turnSpeed: 0.05,
+  turnSpeed: 0.045,
+  brakeRate: 0.05,
+} as const;
+
+/** Steering response knobs, lifted from inline literals so each variant tunes
+ * them cleanly. `curveExponent` shapes input response (higher = more progressive,
+ * lower = twitchier); `boost` scales overall turn authority; `rateMultiplier` is
+ * the legacy *3 term. `highSpeedDamping` (0..1) reduces turn authority as speed
+ * approaches maxSpeed for high-speed stability — Grid sets this high. */
+export const STEERING = {
+  curveExponent: 2.4,
+  boost: 6.0,
+  rateMultiplier: 3.0,
+  highSpeedDamping: 0.5,
 } as const;
 
 export interface SpeedInputs {
@@ -36,7 +49,7 @@ export function stepSpeed(speed: number, inputs: SpeedInputs, dtScale: number): 
     return speed + (maxSpeed * inputs.throttle - speed) * acceleration * dtScale;
   }
   if (inputs.brake > 0) {
-    const next = speed - inputs.brake * 0.05 * dtScale;
+    const next = speed - inputs.brake * CAR_PHYSICS.brakeRate * dtScale;
     return next < 0 ? 0 : next;
   }
   // Coast: idle-creep up to creepSpeed, otherwise decay by friction down to creep.
@@ -59,9 +72,15 @@ export function steeringYawDelta(
 ): number {
   if (Math.abs(speed) <= 0.001) return 0;
   const { maxSpeed, turnSpeed } = CAR_PHYSICS;
-  const curved = Math.sign(steering) * Math.pow(Math.abs(steering), 1.8);
-  const boosted = curved * 8.0;
-  return -(boosted * turnSpeed * (speed / maxSpeed) * 3.0 * direction) * dtScale;
+  const { curveExponent, boost, rateMultiplier, highSpeedDamping } = STEERING;
+  const curved = Math.sign(steering) * Math.pow(Math.abs(steering), curveExponent);
+  const boosted = curved * boost;
+  // Speed-sensitive steering: reduce turn authority as speed approaches maxSpeed
+  // for high-speed stability. Depends only on speed (not dtScale), so the per-frame
+  // dt scaling — and frame-rate independence — is unchanged.
+  const speedFrac = Math.min(Math.abs(speed) / maxSpeed, 1);
+  const damp = 1 - highSpeedDamping * speedFrac;
+  return -(boosted * turnSpeed * (speed / maxSpeed) * rateMultiplier * direction) * damp * dtScale;
 }
 
 /** Forward distance (world units) to move along the heading this step. */
