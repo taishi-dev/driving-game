@@ -4,9 +4,14 @@ import { useDrivingStore } from "@/lib/store";
 
 export function Dashboard() {
   const isOffTrack = useDrivingStore(state => state.isOffTrack);
-  
+
   // Added: get the message from the store
   const drivingFeedback = useDrivingStore(state => state.drivingFeedback);
+
+  const speed = useDrivingStore(state => state.speed);
+  const gear = useDrivingStore(state => state.gear);
+  const throttle = useDrivingStore(state => state.throttle);
+  const brake = useDrivingStore(state => state.brake);
 
   return (
     <div style={{
@@ -71,6 +76,22 @@ export function Dashboard() {
               <div style={{ fontSize: '13px', marginTop: '4px', color: '#a3a3a3', letterSpacing: '2px' }}>OFF TRACK</div>
           </div>
       )}
+
+      {/* In-drive HUD: telemetry strip (Grid) */}
+      <div style={{ position: 'absolute', bottom: '28px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '1px', background: '#dc2626', padding: '1px', borderRadius: '2px' }}>
+        <div style={{ background: 'rgba(15,15,15,0.92)', padding: '8px 16px', minWidth: '120px', textAlign: 'center' }}>
+          <div style={{ fontSize: '11px', letterSpacing: '2px', color: '#a3a3a3' }}>SPEED</div>
+          <div style={{ fontSize: '30px', fontWeight: 700, color: '#f5f5f5' }}>{speed}<span style={{ fontSize: '12px', color: '#a3a3a3', marginLeft: '4px' }}>KM/H</span></div>
+        </div>
+        <div style={{ background: 'rgba(15,15,15,0.92)', padding: '8px 16px', minWidth: '72px', textAlign: 'center' }}>
+          <div style={{ fontSize: '11px', letterSpacing: '2px', color: '#a3a3a3' }}>GEAR</div>
+          <div style={{ fontSize: '30px', fontWeight: 700, color: '#dc2626' }}>{gear}</div>
+        </div>
+        <div style={{ background: 'rgba(15,15,15,0.92)', padding: '8px 16px', minWidth: '120px', textAlign: 'center' }}>
+          <div style={{ fontSize: '11px', letterSpacing: '2px', color: '#a3a3a3' }}>THROTTLE</div>
+          <div style={{ fontSize: '30px', fontWeight: 700, color: brake > 0 ? '#dc2626' : '#f5f5f5' }}>{Math.round(throttle * 100)}<span style={{ fontSize: '12px', color: '#a3a3a3' }}>%</span></div>
+        </div>
+      </div>
 
       <style jsx>{`
         @keyframes blink {
