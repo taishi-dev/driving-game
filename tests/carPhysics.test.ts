@@ -145,3 +145,10 @@ test("stepSpeed braking uses CAR_PHYSICS.brakeRate", () => {
   // throttle 0, brake 1, dt 1 -> speed - brakeRate
   assert.equal(stepSpeed(speed, { throttle: 0, brake: 1 }, 1), speed - brakeRate);
 });
+
+test("asphalt feel: faster, glidier, twitchier than the 1.5/0.01/0.005/1.8 baseline", () => {
+  assert.ok(CAR_PHYSICS.maxSpeed > 1.5, "top speed should exceed baseline");
+  assert.ok(CAR_PHYSICS.acceleration > 0.01, "acceleration should exceed baseline");
+  assert.ok(CAR_PHYSICS.friction < 0.005, "friction should be below baseline (glidey)");
+  assert.ok(STEERING.curveExponent < 1.8, "steering curve should be sharper/twitchier");
+});
