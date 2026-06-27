@@ -1,3 +1,5 @@
+"use client";
+
 import { useDrivingStore } from "@/lib/store";
 import { GarageScene } from "../simulation/GarageScene";
 
@@ -54,7 +56,7 @@ export function HomeScreen() {
         {/* Top Bar */}
         <div className="w-full p-8 flex justify-between items-start pointer-events-auto bg-gradient-to-b from-neutral-950/90 to-transparent">
           <div>
-            <h1 className="text-5xl font-semibold not-italic tracking-tight text-neutral-100">
+            <h1 className="text-5xl font-semibold not-italic tracking-tight text-neutral-100" style={{ animation: "titleIn 0.4s ease-out both" }}>
               VIRTUAL <span className="text-red-600">DRIVING</span> SCHOOL
             </h1>
             <p className="text-xs font-mono text-neutral-500 tracking-[0.3em] mt-2 tabular-nums">TELEMETRY SYSTEM · v2.0</p>
@@ -80,43 +82,59 @@ export function HomeScreen() {
 
           <div className="flex items-end gap-4 overflow-x-auto pb-4 pt-2 snap-x scrollbar-hide">
             {LESSONS.map((lesson, index) => (
-              <button
+              <div
                 key={lesson.id}
-                onClick={() => handleSelectLesson(lesson.id)}
-                className="group relative flex-shrink-0 w-72 h-48 bg-neutral-900/80 rounded-sm border border-neutral-700 hover:border-red-600 transition-all duration-200 transform hover:-translate-y-1 snap-center overflow-hidden"
+                className="flex-shrink-0"
+                style={{ animation: "cardIn 0.3s ease-out both", animationDelay: `${index * 40}ms` }}
               >
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-red-950/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                <button
+                  onClick={() => handleSelectLesson(lesson.id)}
+                  className="group relative flex-shrink-0 w-72 h-48 bg-neutral-900/80 rounded-sm border border-neutral-700 hover:border-red-600 transition-all duration-200 transform hover:-translate-y-1 snap-center overflow-hidden"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-red-950/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
 
-                <div className="absolute inset-0 p-6 flex flex-col justify-between text-left">
-                  <div className="flex justify-between items-start">
-                    <span className="text-[11px] font-mono tabular-nums text-neutral-400 bg-neutral-950 px-2 py-1 rounded-sm border border-neutral-800 group-hover:text-neutral-200 group-hover:border-neutral-600 transition-colors">
-                      {lesson.sub}
-                    </span>
-                    <div className={`w-2.5 h-2.5 rounded-full ${index === 0 ? "bg-red-600" : "bg-neutral-700"}`} />
-                  </div>
-
-                  <div>
-                    <h3 className="text-2xl font-semibold not-italic text-neutral-100 group-hover:text-white mb-1">{lesson.label[language]}</h3>
-                    <p className="text-xs text-neutral-500 font-mono">{lesson.desc}</p>
-                  </div>
-
-                  <div className="flex justify-between items-end">
-                    <div className="text-4xl font-mono tabular-nums font-bold text-neutral-800 group-hover:text-neutral-700 select-none">
-                      0{index + 1}
+                  <div className="absolute inset-0 p-6 flex flex-col justify-between text-left">
+                    <div className="flex justify-between items-start">
+                      <span className="text-[11px] font-mono tabular-nums text-neutral-400 bg-neutral-950 px-2 py-1 rounded-sm border border-neutral-800 group-hover:text-neutral-200 group-hover:border-neutral-600 transition-colors">
+                        {lesson.sub}
+                      </span>
+                      <div className={`w-2.5 h-2.5 rounded-full ${index === 0 ? "bg-red-600" : "bg-neutral-700"}`} />
                     </div>
 
-                    <span className="text-sm font-semibold text-red-500 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      START <span className="text-lg">›</span>
-                    </span>
+                    <div>
+                      <h3 className="text-2xl font-semibold not-italic text-neutral-100 group-hover:text-white mb-1">{lesson.label[language]}</h3>
+                      <p className="text-xs text-neutral-500 font-mono">{lesson.desc}</p>
+                    </div>
+
+                    <div className="flex justify-between items-end">
+                      <div className="text-4xl font-mono tabular-nums font-bold text-neutral-800 group-hover:text-neutral-700 select-none">
+                        0{index + 1}
+                      </div>
+
+                      <span className="text-sm font-semibold text-red-500 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        START <span className="text-lg">›</span>
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+              </div>
             ))}
 
             <div className="w-12 flex-shrink-0" />
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes cardIn {
+          from { opacity: 0; transform: translateY(12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes titleIn {
+          from { opacity: 0; transform: translateY(-8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }
