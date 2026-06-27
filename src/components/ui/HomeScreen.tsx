@@ -1,3 +1,5 @@
+"use client";
+
 import { useDrivingStore } from "@/lib/store";
 import { GarageScene } from "../simulation/GarageScene";
 
@@ -54,7 +56,7 @@ export function HomeScreen() {
         {/* Top Bar */}
         <div className="w-full p-8 flex justify-between items-start pointer-events-auto bg-gradient-to-b from-[#05050a]/90 to-transparent">
           <div>
-            <h1 className="text-6xl font-black italic tracking-tighter text-white drop-shadow-[0_0_18px_rgba(0,0,0,0.8)]">
+            <h1 className="text-6xl font-black italic tracking-tighter text-white drop-shadow-[0_0_18px_rgba(0,0,0,0.8)]" style={{ animation: "titleIn 0.5s ease-out both" }}>
               VIRTUAL{" "}
               <span className="text-cyan-400 drop-shadow-[0_0_28px_rgba(34,211,238,0.85)]">DRIVING</span>{" "}
               <span className="text-fuchsia-500 drop-shadow-[0_0_28px_rgba(217,70,239,0.7)]">SCHOOL</span>
@@ -82,44 +84,60 @@ export function HomeScreen() {
 
           <div className="flex items-end gap-6 overflow-x-auto pb-4 pt-2 snap-x scrollbar-hide">
             {LESSONS.map((lesson, index) => (
-              <button
+              <div
                 key={lesson.id}
-                onClick={() => handleSelectLesson(lesson.id)}
-                className="group relative flex-shrink-0 w-72 h-48 bg-slate-900/70 border-l-4 border-cyan-500/60 hover:border-fuchsia-500 transition-all duration-200 transform hover:-translate-y-2 hover:shadow-[0_0_42px_rgba(217,70,239,0.45)] snap-center overflow-hidden"
-                style={{ clipPath: "polygon(0 0, 100% 0, 100% 100%, 8% 100%, 0 80%)" }}
+                className="flex-shrink-0"
+                style={{ animation: "cardIn 0.45s ease-out both", animationDelay: `${index * 60}ms` }}
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-cyan-900/0 to-fuchsia-900/30 opacity-60 group-hover:opacity-100 transition-all duration-200" />
+                <button
+                  onClick={() => handleSelectLesson(lesson.id)}
+                  className="group relative flex-shrink-0 w-72 h-48 bg-slate-900/70 border-l-4 border-cyan-500/60 hover:border-fuchsia-500 transition-all duration-200 transform hover:-translate-y-2 hover:shadow-[0_0_42px_rgba(217,70,239,0.45)] snap-center overflow-hidden"
+                  style={{ clipPath: "polygon(0 0, 100% 0, 100% 100%, 8% 100%, 0 80%)" }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-cyan-900/0 to-fuchsia-900/30 opacity-60 group-hover:opacity-100 transition-all duration-200" />
 
-                <div className="absolute inset-0 p-6 flex flex-col justify-between text-left">
-                  <div className="flex justify-between items-start">
-                    <span className="text-xs font-black text-cyan-200/70 bg-[#0a0a14] px-2 py-1 rounded border border-cyan-500/30 group-hover:text-fuchsia-300 group-hover:border-fuchsia-400/60 transition-colors">
-                      {lesson.sub}
-                    </span>
-                    <div className={`w-3 h-3 rounded-full ${index === 0 ? "bg-cyan-400 shadow-[0_0_12px_#22d3ee]" : "bg-slate-700"}`} />
-                  </div>
-
-                  <div>
-                    <h3 className="text-2xl font-black italic text-white group-hover:text-cyan-300 mb-1">{lesson.label[language]}</h3>
-                    <p className="text-xs text-fuchsia-200/60 font-mono">{lesson.desc}</p>
-                  </div>
-
-                  <div className="flex justify-between items-end">
-                    <div className="text-4xl font-black italic text-slate-800 group-hover:text-fuchsia-500/40 select-none">
-                      0{index + 1}
+                  <div className="absolute inset-0 p-6 flex flex-col justify-between text-left">
+                    <div className="flex justify-between items-start">
+                      <span className="text-xs font-black text-cyan-200/70 bg-[#0a0a14] px-2 py-1 rounded border border-cyan-500/30 group-hover:text-fuchsia-300 group-hover:border-fuchsia-400/60 transition-colors">
+                        {lesson.sub}
+                      </span>
+                      <div className={`w-3 h-3 rounded-full ${index === 0 ? "bg-cyan-400 shadow-[0_0_12px_#22d3ee]" : "bg-slate-700"}`} />
                     </div>
 
-                    <span className="text-sm font-black italic text-fuchsia-400 flex items-center gap-1 opacity-0 group-hover:opacity-100 transform translate-x-4 group-hover:translate-x-0 transition-all duration-200">
-                      START <span className="text-lg">»</span>
-                    </span>
+                    <div>
+                      <h3 className="text-2xl font-black italic text-white group-hover:text-cyan-300 mb-1">{lesson.label[language]}</h3>
+                      <p className="text-xs text-fuchsia-200/60 font-mono">{lesson.desc}</p>
+                    </div>
+
+                    <div className="flex justify-between items-end">
+                      <div className="text-4xl font-black italic text-slate-800 group-hover:text-fuchsia-500/40 select-none">
+                        0{index + 1}
+                      </div>
+
+                      <span className="text-sm font-black italic text-fuchsia-400 flex items-center gap-1 opacity-0 group-hover:opacity-100 transform translate-x-4 group-hover:translate-x-0 transition-all duration-200">
+                        START <span className="text-lg">»</span>
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+              </div>
             ))}
 
             <div className="w-12 flex-shrink-0" />
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes cardIn {
+          from { opacity: 0; transform: translateY(28px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes titleIn {
+          from { opacity: 0; transform: translateY(-12px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }
