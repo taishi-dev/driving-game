@@ -36,14 +36,16 @@ export function Dashboard() {
               animation: 'popIn 0.3s ease-out forwards'
           }}>
               <div style={{
-                  backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                  border: '2px solid #4ade80', // bright green
-                  borderRadius: '12px',
+                  backgroundColor: 'rgba(0, 0, 0, 0.82)',
+                  border: '2px solid #fbbf24',
+                  borderRadius: '10px',
                   padding: '16px 32px',
-                  color: '#4ade80',
-                  fontSize: '24px',
-                  fontWeight: 'bold',
-                  boxShadow: '0 0 20px rgba(74, 222, 128, 0.3)',
+                  color: '#fbbf24',
+                  fontSize: '26px',
+                  fontWeight: 900,
+                  fontStyle: 'italic',
+                  letterSpacing: '1px',
+                  boxShadow: '0 0 28px rgba(251, 191, 36, 0.45)',
                   whiteSpace: 'nowrap'
               }}>
                   {drivingFeedback}
@@ -62,7 +64,7 @@ export function Dashboard() {
               textAlign: 'center',
               animation: 'blink 0.5s infinite'
           }}>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', letterSpacing: '4px', border: '2px solid #ef4444', padding: '10px 20px', borderRadius: '4px', backgroundColor: 'rgba(50,0,0,0.5)' }}>
+              <div style={{ fontSize: '26px', fontWeight: 900, fontStyle: 'italic', letterSpacing: '4px', border: '2px solid #ef4444', padding: '10px 22px', borderRadius: '6px', backgroundColor: 'rgba(50,0,0,0.55)', boxShadow: '0 0 26px rgba(239,68,68,0.5)' }}>
                   WARNING
               </div>
               <div style={{ fontSize: '14px', marginTop: '4px' }}>OFF TRACK</div>
