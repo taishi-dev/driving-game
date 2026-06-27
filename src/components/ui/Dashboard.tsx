@@ -17,7 +17,8 @@ export function Dashboard() {
         height: '100%',
         pointerEvents: 'none',
         userSelect: 'none',
-        fontFamily: "'Segoe UI', Roboto, sans-serif",
+        fontFamily: "'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontVariantNumeric: 'tabular-nums',
         overflow: 'hidden',
         zIndex: 50
     }}>
@@ -36,14 +37,16 @@ export function Dashboard() {
               animation: 'popIn 0.3s ease-out forwards'
           }}>
               <div style={{
-                  backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                  border: '2px solid #4ade80', // bright green
-                  borderRadius: '12px',
-                  padding: '16px 32px',
-                  color: '#4ade80',
-                  fontSize: '24px',
-                  fontWeight: 'bold',
-                  boxShadow: '0 0 20px rgba(74, 222, 128, 0.3)',
+                  backgroundColor: 'rgba(10, 10, 10, 0.88)',
+                  border: '1px solid #e5e5e5',
+                  borderLeft: '4px solid #dc2626',
+                  borderRadius: '2px',
+                  padding: '14px 28px',
+                  color: '#f5f5f5',
+                  fontSize: '18px',
+                  fontWeight: 600,
+                  letterSpacing: '2px',
+                  textTransform: 'uppercase',
                   whiteSpace: 'nowrap'
               }}>
                   {drivingFeedback}
@@ -58,14 +61,14 @@ export function Dashboard() {
               top: '30%',
               left: '50%',
               transform: 'translateX(-50%)',
-              color: '#ef4444',
+              color: '#dc2626',
               textAlign: 'center',
               animation: 'blink 0.5s infinite'
           }}>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', letterSpacing: '4px', border: '2px solid #ef4444', padding: '10px 20px', borderRadius: '4px', backgroundColor: 'rgba(50,0,0,0.5)' }}>
+              <div style={{ fontSize: '20px', fontWeight: 700, letterSpacing: '4px', border: '1px solid #dc2626', borderRadius: '2px', padding: '8px 18px', backgroundColor: 'rgba(20,20,20,0.7)', color: '#dc2626' }}>
                   WARNING
               </div>
-              <div style={{ fontSize: '14px', marginTop: '4px' }}>OFF TRACK</div>
+              <div style={{ fontSize: '13px', marginTop: '4px', color: '#a3a3a3', letterSpacing: '2px' }}>OFF TRACK</div>
           </div>
       )}
 
