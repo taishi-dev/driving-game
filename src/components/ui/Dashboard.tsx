@@ -24,7 +24,7 @@ export function Dashboard() {
     }}>
       
       {/* Added: display area for scoring feedback (OK messages)
-        Shown in green at the top center of the screen.
+        Shown at the top center of the screen.
       */}
       {drivingFeedback && (
           <div style={{
