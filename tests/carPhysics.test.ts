@@ -3,12 +3,31 @@ import assert from "node:assert/strict";
 
 import {
   CAR_PHYSICS,
+  STEERING,
   stepSpeed,
   steeringYawDelta,
   forwardStep,
   dtScaleFromDelta,
   smoothingAlpha,
 } from "../src/lib/carPhysics.ts";
+
+test("steeringYawDelta is defined by the exported STEERING constants", () => {
+  const { maxSpeed, turnSpeed } = CAR_PHYSICS;
+  const { curveExponent, boost, rateMultiplier } = STEERING;
+  const speed = maxSpeed, steering = 0.5, dir = 1, dt = 1;
+  const curved = Math.sign(steering) * Math.pow(Math.abs(steering), curveExponent);
+  const expected = -(curved * boost * turnSpeed * (speed / maxSpeed) * rateMultiplier * dir) * dt;
+  assert.ok(
+    Math.abs(steeringYawDelta(speed, steering, dir, dt) - expected) < 1e-12,
+    "steeringYawDelta must be computed from the exported STEERING constants",
+  );
+});
+
+test("stepSpeed braking uses CAR_PHYSICS.brakeRate", () => {
+  const { brakeRate } = CAR_PHYSICS;
+  const speed = 1;
+  assert.equal(stepSpeed(speed, { throttle: 0, brake: 1 }, 1), speed - brakeRate);
+});
 
 // Helper: simulate holding the throttle from a given starting speed for `seconds`
 // of SIMULATED time at a given frame rate, accumulating forward distance the same
