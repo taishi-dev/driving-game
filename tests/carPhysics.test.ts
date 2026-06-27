@@ -144,3 +144,10 @@ test("stepSpeed braking uses CAR_PHYSICS.brakeRate", () => {
   const speed = 1;
   assert.equal(stepSpeed(speed, { throttle: 0, brake: 1 }, 1), speed - brakeRate);
 });
+
+test("grid feel: slower build, grippier, more progressive than the 0.01/0.005/1.8 baseline", () => {
+  assert.ok(CAR_PHYSICS.acceleration < 0.01, "acceleration should be below baseline (slower build)");
+  assert.ok(CAR_PHYSICS.friction > 0.005, "friction should exceed baseline (engine-brake)");
+  assert.ok(STEERING.curveExponent > 1.8, "steering curve should be more progressive/less twitchy");
+  assert.ok(CAR_PHYSICS.maxSpeed <= 1.6, "top speed stays moderate");
+});
