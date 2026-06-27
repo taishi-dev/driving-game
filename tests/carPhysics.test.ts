@@ -3,12 +3,49 @@ import assert from "node:assert/strict";
 
 import {
   CAR_PHYSICS,
+  STEERING,
   stepSpeed,
   steeringYawDelta,
   forwardStep,
   dtScaleFromDelta,
   smoothingAlpha,
 } from "../src/lib/carPhysics.ts";
+
+test("steeringYawDelta is defined by the exported STEERING constants (incl. high-speed damping)", () => {
+  const { maxSpeed, turnSpeed } = CAR_PHYSICS;
+  const { curveExponent, boost, rateMultiplier, highSpeedDamping } = STEERING;
+  const speed = maxSpeed, steering = 0.5, dir = 1, dt = 1;
+  const curved = Math.sign(steering) * Math.pow(Math.abs(steering), curveExponent);
+  const speedFrac = Math.min(Math.abs(speed) / maxSpeed, 1);
+  const damp = 1 - highSpeedDamping * speedFrac;
+  const expected = -(curved * boost * turnSpeed * (speed / maxSpeed) * rateMultiplier * dir) * damp * dt;
+  assert.ok(
+    Math.abs(steeringYawDelta(speed, steering, dir, dt) - expected) < 1e-12,
+    "steeringYawDelta must be computed from the exported STEERING constants incl. damping",
+  );
+});
+
+test("high-speed steering is damped below low-speed turn authority", () => {
+  assert.ok(STEERING.highSpeedDamping > 0 && STEERING.highSpeedDamping < 1);
+  const hi = CAR_PHYSICS.maxSpeed;        // speedFrac 1   -> damp = 1 - k
+  const lo = CAR_PHYSICS.maxSpeed * 0.1;  // speedFrac 0.1 -> damp ~ 1 - 0.1k
+  const yawHiPerFrac = Math.abs(steeringYawDelta(hi, 1, 1, 1)) / 1.0;
+  const yawLoPerFrac = Math.abs(steeringYawDelta(lo, 1, 1, 1)) / 0.1;
+  assert.ok(yawHiPerFrac < yawLoPerFrac, "high-speed turn authority must be damped below low-speed");
+});
+
+test("stepSpeed braking uses CAR_PHYSICS.brakeRate", () => {
+  const { brakeRate } = CAR_PHYSICS;
+  const speed = 1;
+  assert.equal(stepSpeed(speed, { throttle: 0, brake: 1 }, 1), speed - brakeRate);
+});
+
+test("nfs feel: low friction + eager turn-in vs the 0.005/8.0/1.8 baseline", () => {
+  assert.ok(CAR_PHYSICS.friction < 0.005, "friction should be below baseline (slidey)");
+  assert.ok(STEERING.boost > 8.0, "turn authority should exceed baseline (eager turn-in)");
+  assert.ok(STEERING.curveExponent < 1.8, "curve should bias toward oversteer/eager response");
+  assert.ok(CAR_PHYSICS.maxSpeed > 1.5 && CAR_PHYSICS.maxSpeed < 2.2, "mid top speed");
+});
 
 // Helper: simulate holding the throttle from a given starting speed for `seconds`
 // of SIMULATED time at a given frame rate, accumulating forward distance the same

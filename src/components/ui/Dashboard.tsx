@@ -4,9 +4,14 @@ import { useDrivingStore } from "@/lib/store";
 
 export function Dashboard() {
   const isOffTrack = useDrivingStore(state => state.isOffTrack);
-  
+
   // Added: get the message from the store
   const drivingFeedback = useDrivingStore(state => state.drivingFeedback);
+
+  const speed = useDrivingStore(state => state.speed);
+  const gear = useDrivingStore(state => state.gear);
+  const throttle = useDrivingStore(state => state.throttle);
+  const brake = useDrivingStore(state => state.brake);
 
   return (
     <div style={{
@@ -23,7 +28,7 @@ export function Dashboard() {
     }}>
       
       {/* Added: display area for scoring feedback (OK messages)
-        Shown in green at the top center of the screen.
+        Shown at the top center of the screen.
       */}
       {drivingFeedback && (
           <div style={{
@@ -36,14 +41,16 @@ export function Dashboard() {
               animation: 'popIn 0.3s ease-out forwards'
           }}>
               <div style={{
-                  backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                  border: '2px solid #4ade80', // bright green
-                  borderRadius: '12px',
+                  backgroundColor: 'rgba(5, 5, 10, 0.82)',
+                  border: '2px solid #22d3ee',
+                  borderRadius: '10px',
                   padding: '16px 32px',
-                  color: '#4ade80',
-                  fontSize: '24px',
-                  fontWeight: 'bold',
-                  boxShadow: '0 0 20px rgba(74, 222, 128, 0.3)',
+                  color: '#22d3ee',
+                  fontSize: '26px',
+                  fontWeight: 900,
+                  fontStyle: 'italic',
+                  letterSpacing: '1px',
+                  boxShadow: '0 0 30px rgba(34, 211, 238, 0.5)',
                   whiteSpace: 'nowrap'
               }}>
                   {drivingFeedback}
@@ -58,16 +65,30 @@ export function Dashboard() {
               top: '30%',
               left: '50%',
               transform: 'translateX(-50%)',
-              color: '#ef4444',
+              color: '#d946ef',
               textAlign: 'center',
               animation: 'blink 0.5s infinite'
           }}>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', letterSpacing: '4px', border: '2px solid #ef4444', padding: '10px 20px', borderRadius: '4px', backgroundColor: 'rgba(50,0,0,0.5)' }}>
+              <div style={{ fontSize: '26px', fontWeight: 900, fontStyle: 'italic', letterSpacing: '4px', border: '2px solid #d946ef', padding: '10px 22px', borderRadius: '6px', backgroundColor: 'rgba(30,0,30,0.55)', boxShadow: '0 0 30px rgba(217,70,239,0.55)', color: '#d946ef' }}>
                   WARNING
               </div>
               <div style={{ fontSize: '14px', marginTop: '4px' }}>OFF TRACK</div>
           </div>
       )}
+
+      {/* In-drive HUD: gear + speed + throttle (NFS neon) */}
+      <div style={{ position: 'absolute', bottom: '32px', left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'flex-end', gap: '24px' }}>
+        <div style={{ fontStyle: 'italic', fontWeight: 900, fontSize: '28px', color: '#d946ef', textShadow: '0 0 18px rgba(217,70,239,0.7)', border: '2px solid #d946ef', borderRadius: '8px', padding: '4px 14px', background: 'rgba(5,5,10,0.5)' }}>
+          {gear}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+          <span style={{ fontStyle: 'italic', fontWeight: 900, fontSize: '64px', lineHeight: 1, color: '#22d3ee', textShadow: '0 0 26px rgba(34,211,238,0.8)' }}>{speed}</span>
+          <span style={{ fontStyle: 'italic', fontWeight: 800, fontSize: '18px', color: '#d946ef', letterSpacing: '2px' }}>KM/H</span>
+        </div>
+        <div style={{ width: '120px', height: '10px', background: 'rgba(255,255,255,0.12)', borderRadius: '6px', overflow: 'hidden', alignSelf: 'center' }}>
+          <div style={{ width: `${Math.round(throttle * 100)}%`, height: '100%', background: brake > 0 ? '#d946ef' : '#22d3ee', boxShadow: '0 0 14px rgba(34,211,238,0.7)', transition: 'width 0.08s linear' }} />
+        </div>
+      </div>
 
       <style jsx>{`
         @keyframes blink {
