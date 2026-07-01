@@ -60,3 +60,7 @@ next-env.d.ts
 
 # superpowers worktrees
 /.worktrees/
+
+# engine-trial: source assets (large EXR, zip packs, raw GLBs — kept for
+# reproducibility but not shipped in the build or tracked in git)
+/assets/source/
