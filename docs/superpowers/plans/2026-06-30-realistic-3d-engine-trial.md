@@ -23,7 +23,7 @@
 
 ## Proposed Architecture Decision Record
 
-Create `docs/adr/0001-replace-renderer-via-three-engine-trial.md` capturing: the decision to replace Three.js/React Three Fiber with a new engine chosen through a three-engine full-port trial; the alternatives (stay in R3F and rebuild visuals, single-engine port, evaluation-slice-then-port); the trade-off accepted (three full ports is large; only the winner ships); and the falsification condition (a properly rebuilt Three.js scene, as the reference sites prove possible, could reach the same quality at lower cost). This qualifies for an ADR: hard to reverse, surprising without context, real trade-off.
+Create `docs/adr/0002-replace-renderer-via-three-engine-trial.md` capturing: the decision to replace Three.js/React Three Fiber with a new engine chosen through a three-engine full-port trial; the alternatives (stay in R3F and rebuild visuals, single-engine port, evaluation-slice-then-port); the trade-off accepted (three full ports is large; only the winner ships); and the falsification condition (a properly rebuilt Three.js scene, as the reference sites prove possible, could reach the same quality at lower cost). This qualifies for an ADR: hard to reverse, surprising without context, real trade-off.
 
 ---
 
