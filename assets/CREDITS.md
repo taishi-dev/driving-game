@@ -66,11 +66,53 @@ These ZIPs are stored in `assets/source/textures/` (not shipped raw). Extracted 
 
 ## World Kit
 
-The plan called for a CC0/CC-BY road/building kit. Status: **open sub-task; does not block A3–A5.**
+Two complementary Kenney kits ship together: one covers all road tile types; the other covers commercial buildings and skyscrapers. Both are **CC0 — no attribution required**.
 
-- `public/models/city.glb` is the existing world geometry but has no recorded license or provenance in the repository; it is treated as unlicensed and off-limits for redistribution.
-- No clean-licensed road/building kit was identified in the available time. Candidates for Phase B sourcing: Poly Haven surfaces (CC0, https://polyhaven.com/models), Kenney.nl assets (CC0, https://kenney.nl/assets), or KhronosGroup glTF-Sample-Assets city/road models if any exist with CC-BY.
-- **Action for Phase B (B5):** each engine branch must either source a CC0/CC-BY world kit (recording it here) or build procedural geometry. No unlicensed geometry ships.
+### Roads — Kenney City Kit (Roads) 2.0
+
+| Field | Value |
+|---|---|
+| Asset name | City Kit (Roads) |
+| Version | 2.0 |
+| Source URL | https://kenney.nl/assets/city-kit-roads |
+| Download URL (used) | https://kenney.nl/media/pages/assets/city-kit-roads/74288c9459-1741864740/kenney_city-kit-roads.zip |
+| License | CC0 1.0 Universal |
+| License URL | https://creativecommons.org/publicdomain/zero/1.0/ |
+| License verified from | `License.txt` inside the downloaded ZIP (text: "License: (Creative Commons Zero, CC0) http://creativecommons.org/publicdomain/zero/1.0/") |
+| Attribution required | No (CC0) |
+| Creator | Kenney (www.kenney.nl) |
+| GLB count | 72 GLBs |
+| Source ZIP size | 1.7 MB |
+| Source GLB total | ~1.3 MB |
+| Shipped as | `public/models3d/world/roads/*.glb` (Draco + WebP, one file per tile) |
+| Shipped size | **0.30 MB** (all 72 tiles combined) |
+
+Content: straight, bend, crossroad, intersection, roundabout, bridge, driveway, side-road, slant, barriers, light posts, construction cones, highway signs, terrain tiles.
+
+### Buildings — Kenney City Kit (Commercial) 2.1
+
+| Field | Value |
+|---|---|
+| Asset name | City Kit (Commercial) |
+| Version | 2.1 |
+| Source URL | https://kenney.nl/assets/city-kit-commercial |
+| Download URL (used) | https://kenney.nl/media/pages/assets/city-kit-commercial/a742d900eb-1753115042/kenney_city-kit-commercial_2.1.zip |
+| License | CC0 1.0 Universal |
+| License URL | https://creativecommons.org/publicdomain/zero/1.0/ |
+| License verified from | `License.txt` inside the downloaded ZIP (text: "License: (Creative Commons Zero, CC0) http://creativecommons.org/publicdomain/zero/1.0/") |
+| Attribution required | No (CC0) |
+| Creator | Kenney (www.kenney.nl) |
+| GLB count | 41 GLBs |
+| Source ZIP size | 4.0 MB |
+| Source GLB total | ~3.7 MB |
+| Shipped as | `public/models3d/world/buildings/*.glb` (Draco + WebP, one file per building) |
+| Shipped size | **0.29 MB** (all 41 buildings combined) |
+
+Content: 14 commercial buildings (a–n), 5 skyscrapers (a–e), 20 low-detail buildings (a–n, wide a–b), awnings, overhang details, parasols.
+
+### Visual Style Note
+
+Both kits are **stylized low-poly** with flat-shaded or lightly textured surfaces. They are cohesive with each other (same Kenney city series). However, they do **not match the photoreal quality of the hero car** (CarConcept, CC-BY 4.0). This is expected for a mid-fidelity driving world: the car is the hero asset; the world provides recognizable urban context without competing with it.
 
 ---
 
@@ -101,8 +143,10 @@ https://gltf-transform.dev/).
 |---|---|---|
 | `CarConcept-draco.glb` | `gltf-transform draco` | **4.00 MB** |
 | `CarConcept-draco-webp.glb` | `gltf-transform optimize --compress draco --texture-compress webp` | **1.26 MB** |
+| `world/roads/*.glb` (72 files) | `gltf-transform optimize --compress draco --texture-compress webp` | **0.30 MB** total |
+| `world/buildings/*.glb` (41 files) | `gltf-transform optimize --compress draco --texture-compress webp` | **0.29 MB** total |
 
-Total shipped models in `public/models3d/`: **5.25 MB** (well within the ≤ 50 MB interactive budget).
+Total shipped models in `public/models3d/`: **5.84 MB** (car: 5.26 MB + world: 0.59 MB — well within the ≤ 50 MB interactive budget).
 
 ### KTX2 note
 
