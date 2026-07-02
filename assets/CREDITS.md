@@ -66,53 +66,35 @@ These ZIPs are stored in `assets/source/textures/` (not shipped raw). Extracted 
 
 ## World Kit
 
-Two complementary Kenney kits ship together: one covers all road tile types; the other covers commercial buildings and skyscrapers. Both are **CC0 — no attribution required**.
-
-### Roads — Kenney City Kit (Roads) 2.0
+### Downtown City MegaKit — Quaternius (Standard, FREE)
 
 | Field | Value |
 |---|---|
-| Asset name | City Kit (Roads) |
-| Version | 2.0 |
-| Source URL | https://kenney.nl/assets/city-kit-roads |
-| Download URL (used) | https://kenney.nl/media/pages/assets/city-kit-roads/74288c9459-1741864740/kenney_city-kit-roads.zip |
+| Asset name | Downtown City MegaKit |
+| Edition | Standard (FREE) |
+| Source URL | https://quaternius.itch.io/downtown-city-megakit |
 | License | CC0 1.0 Universal |
 | License URL | https://creativecommons.org/publicdomain/zero/1.0/ |
-| License verified from | `License.txt` inside the downloaded ZIP (text: "License: (Creative Commons Zero, CC0) http://creativecommons.org/publicdomain/zero/1.0/") |
-| Attribution required | No (CC0) |
-| Creator | Kenney (www.kenney.nl) |
-| GLB count | 72 GLBs |
-| Source ZIP size | 1.7 MB |
-| Source GLB total | ~1.3 MB |
-| Shipped as | `public/models3d/world/roads/*.glb` (Draco + WebP, one file per tile) |
-| Shipped size | **0.30 MB** (all 72 tiles combined) |
+| License verified from | `License_Standard.txt` inside the downloaded ZIP (text states CC0 1.0 Universal) |
+| Attribution required | No (CC0 — attribution appreciated: "Models by @Quaternius") |
+| Creator | @Quaternius |
+| glTF piece count | 153 .gltf files (Godot glTF export, each with a paired .bin buffer) |
+| Texture count | 29 unique PNGs (co-located in `glTF/` folder so relative URI paths resolve) |
+| Source archive | `Downtown City MegaKit[Standard].zip` (234 MB; stored locally, not in git) |
+| Source format used | `Exports/glTF (Godot)/` — 153 .gltf + .bin pairs |
+| Textures folder | `Textures/` — 29 PNG textures (BaseColor, Normal, ORM/roughness sets) |
+| Extracted to | `assets/source/world/quaternius/` (gitignored) |
+| Shipped as | `public/models3d/world/quaternius/*.glb` — Draco + WebP, 1024px texture cap |
+| Shipped size | **44.40 MB** (all 153 pieces combined) |
 
-Content: straight, bend, crossroad, intersection, roundabout, bridge, driveway, side-road, slant, barriers, light posts, construction cones, highway signs, terrain tiles.
+Content: modular brick building components (columns, walls, windows, cornices, trims), 3 pre-assembled buildings (large/medium/small), street decals, road pieces (straight, curve, intersection, T-junction, sidewalks), props (bollards, planters, AC units, drains, manhole covers), doors, entrances, floor tiles, roof pieces, stairs.
 
-### Buildings — Kenney City Kit (Commercial) 2.1
+Texture sets (29 unique PNGs, all at 2048×2048 in source, capped at 1024px in shipped GLBs):
+`T_Concrete_*`, `T_RedBrick_*`, `T_MetalConcrete_*`, `T_Ornaments_*`, `T_RoofSlate_*`, `T_Trim_*`, `T_MarbleFloor_*`, `T_Dirt_*`, `T_Street_Decals`, `T_dark_interior`, `T_lit_interior_1/2`
 
-| Field | Value |
-|---|---|
-| Asset name | City Kit (Commercial) |
-| Version | 2.1 |
-| Source URL | https://kenney.nl/assets/city-kit-commercial |
-| Download URL (used) | https://kenney.nl/media/pages/assets/city-kit-commercial/a742d900eb-1753115042/kenney_city-kit-commercial_2.1.zip |
-| License | CC0 1.0 Universal |
-| License URL | https://creativecommons.org/publicdomain/zero/1.0/ |
-| License verified from | `License.txt` inside the downloaded ZIP (text: "License: (Creative Commons Zero, CC0) http://creativecommons.org/publicdomain/zero/1.0/") |
-| Attribution required | No (CC0) |
-| Creator | Kenney (www.kenney.nl) |
-| GLB count | 41 GLBs |
-| Source ZIP size | 4.0 MB |
-| Source GLB total | ~3.7 MB |
-| Shipped as | `public/models3d/world/buildings/*.glb` (Draco + WebP, one file per building) |
-| Shipped size | **0.29 MB** (all 41 buildings combined) |
+### Stylized Fallback Note
 
-Content: 14 commercial buildings (a–n), 5 skyscrapers (a–e), 20 low-detail buildings (a–n, wide a–b), awnings, overhang details, parasols.
-
-### Visual Style Note
-
-Both kits are **stylized low-poly** with flat-shaded or lightly textured surfaces. They are cohesive with each other (same Kenney city series). However, they do **not match the photoreal quality of the hero car** (CarConcept, CC-BY 4.0). This is expected for a mid-fidelity driving world: the car is the hero asset; the world provides recognizable urban context without competing with it.
+Kenney City Kit (CC0, https://kenney.nl/assets) remains available as a stylized low-poly fallback if a simpler visual style is needed. The Kenney source files are retained in `assets/source/world/` (gitignored). The Kenney compressed outputs (`public/models3d/world/roads/` and `public/models3d/world/buildings/`) have been removed from this branch as Quaternius is now the primary world kit.
 
 ---
 
@@ -143,10 +125,11 @@ https://gltf-transform.dev/).
 |---|---|---|
 | `CarConcept-draco.glb` | `gltf-transform draco` | **4.00 MB** |
 | `CarConcept-draco-webp.glb` | `gltf-transform optimize --compress draco --texture-compress webp` | **1.26 MB** |
-| `world/roads/*.glb` (72 files) | `gltf-transform optimize --compress draco --texture-compress webp` | **0.30 MB** total |
-| `world/buildings/*.glb` (41 files) | `gltf-transform optimize --compress draco --texture-compress webp` | **0.29 MB** total |
+| `world/quaternius/*.glb` (153 files) | `gltf-transform optimize --compress draco --texture-compress webp --texture-size 1024` | **44.40 MB** total |
 
-Total shipped models in `public/models3d/`: **5.84 MB** (car: 5.26 MB + world: 0.59 MB — well within the ≤ 50 MB interactive budget).
+Total shipped models in `public/models3d/`: **49.66 MB** (car: 5.26 MB + world: 44.40 MB — within the ≤ 50 MB interactive budget).
+
+Note: The 153 Quaternius GLBs each embed their own copy of the shared textures (this is the standard Godot glTF export pattern). With 1024px WebP compression, the total just fits within budget. If tighter compression is needed, lower `QUATERNIUS_TEXTURE_SIZE` to 512 in `scripts/assets-build.mjs` (estimated ~12 MB total at 512px).
 
 ### KTX2 note
 
