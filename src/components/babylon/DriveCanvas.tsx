@@ -104,6 +104,12 @@ export default function DriveCanvas() {
         });
       })
       .catch((err) => {
+        // Under React strict-mode the first mount is torn down while its async
+        // scene build (GLB loads) is still in flight; that build then rejects
+        // with "Scene has been disposed". That is expected teardown noise for an
+        // aborted mount, not a real failure — only surface errors from the live
+        // mount so the console stays clean.
+        if (disposed) return;
         console.error("[DriveCanvas] scene init failed:", err);
       });
 

@@ -6,23 +6,37 @@
  *
  *   X = right, Z = depth (course runs toward -Z), Y = up.
  *   Road surface flat at Y = 0.
- *   car spawns at (0, ~1, 0) facing +Z, drives toward -Z.
+ *   car spawns at (0, ~1, +10) facing -Z, drives toward -Z (down the course).
  *
- * Tile dimensions (pre-derived, verified against actual GLB assets):
- *   Street_2Lane:  6 m (X) × 12 m (Z), road runs along the 12 m (Z) axis.
- *   Street_Curve_2Lane: 6×6 m turning piece.
+ * Tile dimensions (verified against the actual GLB assets — see the offline
+ * GLB dump and the live scene probe used during the B5 fix):
+ *   Street_2Lane:  6 m (X) × 12 m (Z), road runs along the 12 m (Z) axis,
+ *                  geometry centred at origin, driving surface at Y ≈ 0.
+ *   Street_Curve_2Lane: a quarter-turn piece whose geometry occupies one
+ *                  quadrant (roughly X ∈ [-12, 0], Z ∈ [0, 12] after import).
  *
  * Layout covers the "straight" lesson (z ≈ +24 → -204) and first half of
  * left/right-turn lessons. Buildings and props are placed alongside the road.
  *
- * Performance: road tiles use thin-instances so the GPU draws them in one call.
+ * IMPORTANT (B5 fix): road tiles are placed by CLONING the loaded glTF root
+ * hierarchy at each transform — NOT by thin-instancing. The glTF loader returns
+ * the empty `__root__` mesh (0 vertices) as meshes[0]; the real geometry lives
+ * in child meshes. Thin-instancing the empty root replicates nothing, so the
+ * earlier implementation drew a single overlapping pile of tiles at the origin.
+ * Cloning the root moves the whole child hierarchy, which is the pattern the
+ * showroom scene uses for its single hero mesh.
+ *
+ * Also: Quaternius GLBs carry baked vertex colors (COLOR_0). Babylon's glTF
+ * loader multiplies those into the PBR base color, which tints every surface a
+ * strong red. The source textures already carry the correct concrete/asphalt
+ * color, so we disable vertex-color usage on every loaded mesh.
  *
  * Returns:
- *   roadMeshNames — set of mesh names that wheel rays should treat as ground.
- *   dispose()     — cleanup.
+ *   isRoadMesh(mesh) — predicate: is this mesh (or an ancestor) driveable ground.
+ *   dispose()        — cleanup.
  */
 
-import { Vector3, Matrix, Quaternion } from "@babylonjs/core/Maths/math.vector";
+import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -31,6 +45,7 @@ import { PhysicsShapeBox } from "@babylonjs/core/Physics/v2/physicsShape";
 import { PhysicsMotionType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin";
 import type { Scene } from "@babylonjs/core/scene";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import type { Node } from "@babylonjs/core/node";
 
 // Side-effects: register glTF loader + physics component.
 import { registerBuiltInLoaders } from "@babylonjs/loaders/dynamic";
@@ -96,8 +111,24 @@ export interface DriveWorldResult {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
+ * Disable baked vertex-color tinting on a mesh and all its descendants.
+ * Quaternius tiles carry COLOR_0 data that the glTF loader multiplies into the
+ * PBR base color, washing everything red; the textures already carry the right
+ * color, so we turn vertex colors off.
+ */
+function disableVertexColors(root: AbstractMesh): void {
+  root.useVertexColors = false;
+  for (const child of root.getChildMeshes()) {
+    child.useVertexColors = false;
+  }
+}
+
+/**
  * Load a GLB asset and return the root mesh (which holds all child meshes).
- * The root mesh is placed at origin; caller repositions it.
+ * The root mesh is placed at origin; caller repositions/clones it.
+ *
+ * The returned mesh is the glTF `__root__` (0 vertices); the real geometry is in
+ * its child meshes. Moving/cloning the root moves the whole hierarchy.
  */
 async function loadGlb(
   scene: Scene,
@@ -107,45 +138,14 @@ async function loadGlb(
   const result = await ImportMeshAsync(GLB_BASE + filename, scene, {
     pluginExtension: ".glb",
   });
-  // The first entry in meshes is the root "__root__" TransformNode/Mesh from
-  // the glTF container. We give it a deterministic name for the ground predicate.
   const root = result.meshes[0] as Mesh;
   root.name = meshName;
   for (const m of result.meshes) {
     m.isPickable = true;
     m.receiveShadows = true;
+    m.useVertexColors = false; // kill the baked red vertex-color tint
   }
   return root;
-}
-
-/**
- * Clone a loaded root mesh into `count` thin instances at the given transforms.
- * Returns the thin-instanced base mesh so caller can track it.
- *
- * Note: Babylon thin instances require the base to be a Mesh (not
- * AbstractMesh). We mark the source invisible and let thin instances render.
- */
-function thinInstance(
-  base: Mesh,
-  transforms: Matrix[],
-): Mesh {
-  base.isVisible = false; // base is never drawn; instances are
-  for (const mat of transforms) {
-    base.thinInstanceAdd(mat, false); // false = don't refresh until last
-  }
-  // Commit all instance data in one GPU upload.
-  base.thinInstanceRefreshBoundingInfo();
-  return base;
-}
-
-/**
- * Build a Matrix placing a tile centred at (x, y, z) with an optional Y-axis
- * rotation in radians.
- */
-function tileMat(x: number, y: number, z: number, rotY = 0): Matrix {
-  const t = Matrix.Translation(x, y, z);
-  if (rotY === 0) return t;
-  return Matrix.RotationY(rotY).multiply(t);
 }
 
 // ─── Main builder ─────────────────────────────────────────────────────────────
@@ -162,111 +162,81 @@ export async function buildDriveWorld(scene: Scene): Promise<DriveWorldResult> {
     `${coord.checkZ}) is inside road strip |X|<${TILE_W / 2}, Z∈[-204,24].`,
   );
 
-  const disposables: Mesh[] = [];
-  const roadMeshRoots = new Set<Mesh>();
+  const disposables: AbstractMesh[] = [];
+  /** Root nodes whose subtree is driveable ground (identity membership). */
+  const roadRoots = new Set<Node>();
 
-  // ── Helper: load + register a road tile (its name goes into roadMeshRoots) ──
-  async function loadRoadTile(filename: string, name: string): Promise<Mesh> {
+  // ── Load a tile TEMPLATE. It is hidden (disabled) and only cloned. ───────────
+  async function loadTemplate(filename: string, name: string): Promise<Mesh> {
     const m = await loadGlb(scene, filename, name);
-    roadMeshRoots.add(m);
+    m.setEnabled(false); // template never renders; clones do
     disposables.push(m);
     return m;
   }
 
-  // ── 2. Load road tile templates ──────────────────────────────────────────────
-  // We load one of each type, then thin-instance them at multiple transforms.
+  /**
+   * Clone a loaded template root at a world transform. Mirrors the showroom
+   * pattern (position/rotate the glTF root). The template's coordinate-system
+   * conversion lives in its scaling and is preserved by clone(); we only set
+   * translation (and rotation for turn pieces), exactly as the building
+   * placement below does.
+   */
+  function placeTile(
+    template: Mesh,
+    name: string,
+    x: number,
+    y: number,
+    z: number,
+    rotY = 0,
+  ): Mesh {
+    const clone = template.clone(name);
+    if (!clone) throw new Error(`[B5] clone failed for ${name}`);
+    clone.setEnabled(true);
+    clone.position.set(x, y, z);
+    if (rotY !== 0) {
+      clone.rotationQuaternion = Quaternion.RotationAxis(Vector3.Up(), rotY);
+    }
+    disableVertexColors(clone);
+    roadRoots.add(clone);
+    disposables.push(clone);
+    return clone;
+  }
+
+  // ── 2. Load road tile templates (hidden; cloned into place below). ───────────
   const [street2L, street2LNosw, streetCurve2L, streetCurve2LCurb] =
     await Promise.all([
-      loadRoadTile("Street_2Lane.glb", "road_straight"),
-      loadRoadTile("Street_2Lane_noSidewalk.glb", "road_straight_nosw"),
-      loadRoadTile("Street_Curve_2Lane.glb", "road_curve"),
-      loadRoadTile("Street_Curve_2Lane_Curb.glb", "road_curve_curb"),
+      loadTemplate("Street_2Lane.glb", "road_straight_tpl"),
+      loadTemplate("Street_2Lane_noSidewalk.glb", "road_straight_nosw_tpl"),
+      loadTemplate("Street_Curve_2Lane.glb", "road_curve_tpl"),
+      loadTemplate("Street_Curve_2Lane_Curb.glb", "road_curve_curb_tpl"),
     ]);
 
   // ── 3. Straight road: Z from +24 down to -204 ────────────────────────────────
-  // Tile is 12 m long (Z axis), 6 m wide (X), centered at its origin.
-  // We need tiles at Z = 24-6 = 18, 6, -6, -18, ..., down to -198.
-  // Total range: 24 to -204 = 228 m. 228/12 = 19 tiles.
-  // Tile centres: starting at z=18 (covers 12..24), step -12 each.
-  // Last tile centre: z = 18 - 12*18 = 18 - 216 = -198 (covers -204..-192).
-  const STRAIGHT_START_Z = 18;   // first tile centre
+  // Tile is 12 m long (Z axis), 6 m wide (X), centred at its origin.
+  // Tile centres: starting at z=18 (covers 12..24), step -12 each, 19 tiles.
+  // Last tile centre: z = 18 - 12*18 = -198 (covers -204..-192).
+  const STRAIGHT_START_Z = 18;
   const STRAIGHT_TILE_COUNT = 19;
-  const straightMats: Matrix[] = [];
   for (let i = 0; i < STRAIGHT_TILE_COUNT; i++) {
     const tz = STRAIGHT_START_Z - i * TILE_L;
-    straightMats.push(tileMat(0, ROAD_Y, tz));
+    placeTile(street2L, `road_straight_${i}`, 0, ROAD_Y, tz);
   }
-  thinInstance(street2L, straightMats);
 
-  // ── 4. Left-turn branch: Z from +20 to -30 is already covered by straight.
-  //       Curve piece from (0,-30) turning left → heading -X, ending near (-8,-38).
-  //       Then short straight heading -X from X=-8 to X=-60.
-  //
-  //  Street_Curve_2Lane is a 6×6 m piece. Its default orientation has the road
-  //  entering from +Z and exiting toward +X. To make it enter from +Z and exit
-  //  toward -X (left turn), rotate 90° around Y (π/2 → exits -X direction).
-  //  Actually: default exits +X, rotate 180° (π) = exits -X. Let's think:
-  //    Default: enter bottom (+Z face), exit right (+X face).
-  //    Rotate Y +90°: enter from -X, exit top (-Z) — wrong.
-  //    Rotate Y -90° (or 270°): enter from +X, exit bottom (+Z) — wrong.
-  //    Rotate Y 180°: enter top (-Z), exit left (-X) — correct for our left turn
-  //    BUT we approach from +Z (coming from +Z side), so we need enter +Z side...
-  //
-  //  Correct rotation for "enter +Z, exit -X (left turn)":
-  //    Original: enter +Z, exit +X → rotate 90° CCW (Y π/2) → enter -X, exit +Z — no
-  //    Original: enter +Z, exit +X → rotate 90° CW  (Y -π/2 = 3π/2) → enter +X, exit -Z — no
-  //    Let's use: rotate Y by -π (180°) flips both → enter -Z, exit -X — no
-  //    Correct: reflect / use specific angle.
-  //    Quaternius curve: entering from the -Z side (bottom), exiting +X side (right).
-  //    So the "entry" face is the -Z face. Our approach is from +Z (car going -Z).
-  //    We need entry from +Z, which is -Z face of the tile → rotate Y by π (180°).
-  //    After 180° rotation: old -Z face is now +Z face (entry ✓), old +X face is now -X face (exit ✓).
-  //    So rotate Y = Math.PI for a LEFT turn.
-
-  const leftCurveMat = tileMat(-3, ROAD_Y, -33, Math.PI); // 3 m left, centred between Z=-30 and -36
-  thinInstance(streetCurve2L, [leftCurveMat]);
-
-  // Left-turn horizontal segment: from X=-8 to X=-60, at Z=-38, running along X.
-  // Tiles face horizontally (+X axis as road direction) → rotate Y by π/2.
-  // Tile length=12 m along its local Z, after π/2 rotation its length is along X.
-  // Centres along X from -8-6=-14 to -60+6=-54, step -12.
-  // X centres: -14, -26, -38, -50 (4 tiles covering X -8 to -60).
-  const leftStraightMats: Matrix[] = [];
+  // ── 4. Left / right turn stubs (per commit 392b20d layout) ───────────────────
+  // These are approximate connector stubs off the straight near Z ≈ -33; the
+  // straight road (above) is the surface the "straight" lesson checkpoint rides.
+  placeTile(streetCurve2L, "road_curve_left", -3, ROAD_Y, -33, Math.PI);
   for (let i = 0; i < 4; i++) {
-    const tx = -14 - i * TILE_L;
-    leftStraightMats.push(tileMat(tx, ROAD_Y, -38, Math.PI / 2));
+    placeTile(street2LNosw, `road_left_${i}`, -14 - i * TILE_L, ROAD_Y, -38, Math.PI / 2);
   }
-  thinInstance(street2LNosw, leftStraightMats);
-
-  // Right-turn branch (mirror of left, exits toward +X):
-  // Original curve: enter -Z face, exit +X face.
-  // We want enter +Z face, exit +X → rotate Y by 0 (no rotation needed? let's check):
-  //   Original entry = -Z side. To make -Z side become +Z side: rotate Y by π.
-  //   But then exit +X face also flips to -X — wrong.
-  // Actually: enter +Z, exit +X:
-  //   Original enter -Z, exit +X. Rotate Y by 0: entry -Z (approach from +Z still hits +Z face).
-  //   The car approaches from north (+Z), hits the -Z face of the curve.
-  //   That means no rotation needed — entry is the -Z face, we approach from +Z = car enters the -Z face.
-  //   Exit = +X face → the car exits toward +X direction. That IS a right turn ✓.
-  const rightCurveMat = tileMat(3, ROAD_Y, -33, 0); // no rotation: enter -Z, exit +X
-  thinInstance(streetCurve2LCurb, [rightCurveMat]);
-
-  // Right-turn horizontal segment: from X=+8 to X=+60, at Z=-38, running along X.
-  // Same π/2 rotation but mirrored (road goes +X direction, π/2 rotates road from Z→X).
-  // Actually π/2 rotation makes tiles run along +X.
-  // Centres: +14, +26, +38, +50
-  const rightStraightMats: Matrix[] = [];
+  placeTile(streetCurve2LCurb, "road_curve_right", 3, ROAD_Y, -33, 0);
   for (let i = 0; i < 4; i++) {
-    const tx = 14 + i * TILE_L;
-    rightStraightMats.push(tileMat(tx, ROAD_Y, -38, Math.PI / 2));
+    placeTile(street2LNosw, `road_right_${i}`, 14 + i * TILE_L, ROAD_Y, -38, Math.PI / 2);
   }
-  thinInstance(street2LNosw, rightStraightMats);
 
   // ── 5. Road collider boxes for physics (car chassis fallback) ─────────────────
-  // The wheel rays do the real ground detection; these static boxes stop the
-  // chassis from falling through if a ray misses. One large box per segment.
-  const roadColliders: Mesh[] = [];
-
+  // The wheel rays do the real ground detection against the visible tiles above;
+  // these static boxes stop the chassis from falling through if a ray misses.
   function addRoadCollider(cx: number, cy: number, cz: number, sx: number, sy: number, sz: number) {
     const box = MeshBuilder.CreateBox("roadCollider", { width: sx, height: sy, depth: sz }, scene);
     box.position.set(cx, cy - sy / 2 - 0.05, cz); // top face at Y=0-ε
@@ -279,7 +249,6 @@ export async function buildDriveWorld(scene: Scene): Promise<DriveWorldResult> {
       new Vector3(sx, sy, sz),
       scene,
     );
-    roadColliders.push(box);
     disposables.push(box);
   }
 
@@ -291,8 +260,6 @@ export async function buildDriveWorld(scene: Scene): Promise<DriveWorldResult> {
   addRoadCollider(34, 0, -38, 52, 0.5, TILE_W);
 
   // ── 6. Buildings alongside the straight ───────────────────────────────────────
-  // Load building GLBs (not road meshes — no ground predicate).
-  // Place a few on either side of the road.
   const buildingData: Array<[string, string, number, number, number, number]> = [
     ["Building_Large_2.glb", "bldg_L_0", -18, 0, -30, 0],
     ["Building_Medium_2_001.glb", "bldg_L_1", -18, 0, -80, 0],
@@ -308,6 +275,7 @@ export async function buildDriveWorld(scene: Scene): Promise<DriveWorldResult> {
       m.position.set(x, y, z);
       m.rotationQuaternion = Quaternion.RotationAxis(Vector3.Up(), rotY);
       m.isPickable = false;
+      disableVertexColors(m);
       disposables.push(m);
     }),
   );
@@ -329,14 +297,15 @@ export async function buildDriveWorld(scene: Scene): Promise<DriveWorldResult> {
       const m = await loadGlb(scene, file, name);
       m.position.set(x, y, z);
       m.isPickable = false;
+      disableVertexColors(m);
       disposables.push(m);
     }),
   );
 
-  // ── 8. Asphalt filler for intersection / turn areas ────────────────────────────
+  // ── 8. Asphalt filler for the turn-join areas ──────────────────────────────────
   const asphaltData: Array<[string, string, number, number, number, number]> = [
-    ["Street_Asphalt_6x6.glb", "asphalt_lt", -3, 0, -33, 0],  // left-turn join
-    ["Street_Asphalt_6x6.glb", "asphalt_rt", 3, 0, -33, 0],   // right-turn join
+    ["Street_Asphalt_6x6.glb", "road_asphalt_lt", -3, 0, -33, 0],
+    ["Street_Asphalt_6x6.glb", "road_asphalt_rt", 3, 0, -33, 0],
   ];
 
   await Promise.all(
@@ -344,27 +313,19 @@ export async function buildDriveWorld(scene: Scene): Promise<DriveWorldResult> {
       const m = await loadGlb(scene, file, name);
       m.position.set(x, y, z);
       if (rotY !== 0) m.rotationQuaternion = Quaternion.RotationAxis(Vector3.Up(), rotY);
-      roadMeshRoots.add(m as Mesh);
-      disposables.push(m as Mesh);
+      disableVertexColors(m);
+      roadRoots.add(m);
+      disposables.push(m);
     }),
   );
 
   // ── 9. Ground predicate ────────────────────────────────────────────────────────
-  // A mesh is "road" if its name matches a road root prefix or "roadCollider".
-  const roadRootNames = new Set<string>();
-  for (const r of roadMeshRoots) {
-    roadRootNames.add(r.name);
-  }
-
+  // A mesh is "road" if it (or any ancestor) is one of the road root nodes.
   const isRoadMesh = (mesh: AbstractMesh): boolean => {
-    // Direct name match (root mesh or child mesh inheriting road name).
-    if (roadRootNames.has(mesh.name)) return true;
-    // Child meshes have auto-generated names like "road_straight_primitive0".
-    // Walk up the parent chain.
-    let p = mesh.parent;
-    while (p) {
-      if (roadRootNames.has(p.name)) return true;
-      p = p.parent;
+    let n: Node | null = mesh;
+    while (n) {
+      if (roadRoots.has(n)) return true;
+      n = n.parent;
     }
     return false;
   };

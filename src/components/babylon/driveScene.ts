@@ -5,6 +5,7 @@ import { FollowCamera } from "@babylonjs/core/Cameras/followCamera";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
+import { HDRCubeTexture } from "@babylonjs/core/Materials/Textures/hdrCubeTexture";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
@@ -18,6 +19,8 @@ import type { Engine } from "@babylonjs/core/Engines/engine";
 
 // Side-effect: shadow generator scene component (tree-shaken ES6 build).
 import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
+// Side-effect: HDR (.hdr) texture loader for the image-based lighting below.
+import "@babylonjs/core/Materials/Textures/Loaders/hdrTextureLoader";
 // Side-effect: patches `Scene.prototype.enablePhysics` and registers the
 // physics scene component. Without this, `scene.enablePhysics` is undefined and
 // PhysicsBody construction throws "No Physics Engine available".
@@ -74,14 +77,36 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
   scene.imageProcessingConfiguration.toneMappingEnabled = true;
   scene.imageProcessingConfiguration.toneMappingType =
     ImageProcessingConfiguration.TONEMAPPING_ACES;
+  scene.imageProcessingConfiguration.exposure = 1.0;
+
+  // --- HDRI environment (image-based lighting), matching the showroom scene. ---
+  // Provides the diffuse + specular IBL the Quaternius PBR materials expect, plus
+  // a real sky backdrop. prefilterOnLoad builds the roughness-convolved cubemap.
+  const hdr = await new Promise<HDRCubeTexture>((resolve, reject) => {
+    const tex = new HDRCubeTexture(
+      "/env/kloofendal_48d_partly_cloudy_puresky_2k.hdr",
+      scene,
+      256,
+      false, // noMipmap
+      true, // generateHarmonics (diffuse IBL)
+      false, // gammaSpace — HDR is linear
+      true, // prefilterOnLoad — specular IBL
+      () => resolve(tex),
+      (msg) => reject(new Error(`HDRI load failed: ${msg ?? "unknown"}`)),
+    );
+    scene.environmentTexture = tex;
+  });
+  scene.createDefaultSkybox(hdr, true, 2000, 0.2);
 
   // --- Enable Havok physics (async WASM must be ready first). ---
   const havok = await getHavokPlugin();
   scene.enablePhysics(new Vector3(0, -9.81, 0), havok);
 
   // --- Lights + shadows ---
+  // The HDRI supplies most ambient light now, so the hemispheric fill is gentle;
+  // the directional sun stays strong to cast the car's shadow on the road.
   const ambient = new HemisphericLight("ambient", new Vector3(0, 1, 0), scene);
-  ambient.intensity = 0.6;
+  ambient.intensity = 0.25;
   const sun = new DirectionalLight("sun", new Vector3(-0.5, -1, -0.3), scene);
   sun.position = new Vector3(30, 60, 30);
   sun.intensity = 2.0;
@@ -125,9 +150,12 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
     { width: CHASSIS.hw * 2, height: CHASSIS.hh * 2, depth: CHASSIS.hl * 2 },
     scene,
   );
-  // Spawn on the straight at Z=+10 (well within the first straight tile).
+  // Spawn on the straight at Z=+10 (well within the first straight tile),
+  // facing -Z so the car drives DOWN the course (course.ts straight runs
+  // +20 → -200) and the follow camera looks along the long road ahead.
+  const SPAWN_ROT = Quaternion.RotationAxis(Vector3.Up(), Math.PI);
   chassisMesh.position = new Vector3(0, 1.2, 10);
-  chassisMesh.rotationQuaternion = Quaternion.Identity();
+  chassisMesh.rotationQuaternion = SPAWN_ROT.clone();
   const chassisMat = new PBRMaterial("chassisMat", scene);
   chassisMat.albedoColor = new Color3(0.75, 0.1, 0.12);
   chassisMat.metallic = 0.3;
@@ -179,11 +207,13 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
   });
 
   // --- Follow camera behind the car. ---
-  const camera = new FollowCamera("follow", new Vector3(0, 5, -12), scene);
+  // Car faces -Z, so "behind" is the +Z side; start the camera there so it does
+  // not swing around on the first frames.
+  const camera = new FollowCamera("follow", new Vector3(0, 5, 22), scene);
   camera.lockedTarget = chassisMesh;
   camera.radius = 12;
   camera.heightOffset = 4;
-  camera.rotationOffset = 180; // behind the car (car faces +Z, cam looks +Z)
+  camera.rotationOffset = 180; // behind the car (car faces -Z ⇒ camera on +Z, looks -Z)
   camera.cameraAcceleration = 0.05;
   camera.maxCameraSpeed = 20;
   camera.minZ = 0.1;
@@ -196,7 +226,7 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
     chassisBody.setAngularVelocity(Vector3.Zero());
     chassisMesh.position.copyFrom(spawn);
     if (chassisMesh.rotationQuaternion) {
-      chassisMesh.rotationQuaternion.copyFrom(Quaternion.Identity());
+      chassisMesh.rotationQuaternion.copyFrom(SPAWN_ROT);
     }
     chassisBody.disablePreStep = false;
   };
