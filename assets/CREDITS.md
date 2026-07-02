@@ -47,6 +47,7 @@ The `KHR_materials_*` extension names and Khronos/3D Commerce logos embedded in 
 | Authors | Greg Zaal (original); sky edits by Jarod Guest |
 | Source size | 19.13 MB (2K EXR) |
 | Shipped? | Source EXR is in `assets/source/hdri/` (not shipped). Per-engine Phase B: each engine branch will prefilter to its own IBL format (Babylon: .env; PlayCanvas: prefiltered cubemap; Cocos: native) during that branch's B2 task. The EXR itself is not part of the web build. |
+| Babylon branch runtime file | `public/env/kloofendal_48d_partly_cloudy_puresky_2k.hdr` — **5.20 MB** (2K Radiance .hdr, CC0). Downloaded from https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/kloofendal_48d_partly_cloudy_puresky_2k.hdr and set as `scene.environmentTexture` via Babylon `HDRCubeTexture` (prefiltered on load). B2 of the E1-babylon full port. |
 
 ---
 
