@@ -85,6 +85,7 @@ export default function DriveCanvas() {
               y: p.y,
               z: p.z,
               grounded: h.vehicle.isGrounded(),
+              offTrack: h.isOffTrack(),
               debug: { ...h.vehicle.debug },
             };
           },

@@ -30,11 +30,18 @@ import {
   VEHICLE_TUNING,
   type VehicleInput,
 } from "./raycastVehicle";
+import { buildDriveWorld } from "./driveWorld";
 
 /** Chassis half-extents (m): a compact test box car. */
 const CHASSIS = { hw: 0.9, hh: 0.4, hl: 2.0 } as const;
 const WHEEL_RADIUS = 0.4;
-const GROUND_SIZE = 400;
+
+/**
+ * B5: off-track detection — car is considered "off track" when more than
+ * OFF_TRACK_DIST metres away from the nearest road centreline in the XZ plane.
+ * This is a simple radial check; B12 will use the proper course path.
+ */
+const OFF_TRACK_DIST = 8; // metres from X=0 on the straight
 
 /**
  * Handle returned to the canvas: lets the input layer push controls each frame,
@@ -46,19 +53,19 @@ export interface DriveSceneHandle {
   setInput: (input: VehicleInput) => void;
   /** Reset the chassis to spawn (used if it ever tips over in testing). */
   reset: () => void;
+  /** True when the car is not on any road surface (off-track). */
+  isOffTrack: () => boolean;
 }
 
 /**
- * B4: a temporary drivable test scene.
+ * B5: Quaternius driveable world on Havok.
  *
- *  - A large flat ground plane with a STATIC box physics collider (the real
- *    Quaternius world is B5; this is only a surface to drive on).
- *  - A dynamic box chassis (proxy for the hero car) as a Havok rigid body.
- *  - A hand-built raycast vehicle (see raycastVehicle.ts) driving that chassis.
- *  - A follow camera behind the car.
+ *  - Road tiles loaded from public/models3d/world/quaternius/ via B5 driveWorld.
+ *  - Wheel rays hit road tile meshes + a low-Y safety net plane.
+ *  - Off-track detection exposed for the UI and test hook.
+ *  - Follow camera behind the car.
  *
- * Physics is stepped by Havok on the scene's own loop; the vehicle applies its
- * per-wheel forces in a `beforePhysics` observer so they land in the same step.
+ * Physics stepped by Havok; vehicle forces applied in beforePhysics observer.
  */
 export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle> {
   const scene = new Scene(engine);
@@ -82,43 +89,35 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
   shadow.useBlurExponentialShadowMap = true;
   shadow.blurKernel = 16;
 
-  // --- Ground plane + static collider ---
-  const ground = MeshBuilder.CreateGround(
-    "ground",
-    { width: GROUND_SIZE, height: GROUND_SIZE, subdivisions: 2 },
+  // --- Safety-net ground plane (low Y so it only catches the car if it
+  //     completely misses the road surface — e.g. driving off the edge).
+  //     Rendered invisible; the Quaternius road tiles provide the visible surface.
+  const SAFETY_Y = -0.5; // 0.5 m below road surface
+  const SAFETY_SIZE = 500;
+  const safetyGround = MeshBuilder.CreateGround(
+    "safetyGround",
+    { width: SAFETY_SIZE, height: SAFETY_SIZE, subdivisions: 1 },
     scene,
   );
-  const groundMat = new StandardMaterial("groundMat", scene);
-  groundMat.diffuseColor = new Color3(0.28, 0.32, 0.28);
-  groundMat.specularColor = new Color3(0.05, 0.05, 0.05);
-  ground.material = groundMat;
-  ground.receiveShadows = true;
+  safetyGround.position.y = SAFETY_Y;
+  safetyGround.isVisible = false;
+  safetyGround.isPickable = true;
 
-  // A thin static box collider under the ground surface. We use a box (not a
-  // mesh shape) because the vehicle probes the ground with visual-mesh raycasts;
-  // the physics collider only needs to stop the chassis if it ever bottoms out.
-  const groundBody = new PhysicsBody(ground, PhysicsMotionType.STATIC, false, scene);
-  groundBody.shape = new PhysicsShapeBox(
-    new Vector3(0, -0.5, 0),
+  // Physics collider for safety net.
+  const safetyBody = new PhysicsBody(safetyGround, PhysicsMotionType.STATIC, false, scene);
+  safetyBody.shape = new PhysicsShapeBox(
+    new Vector3(0, -0.25, 0),
     Quaternion.Identity(),
-    new Vector3(GROUND_SIZE, 1, GROUND_SIZE),
+    new Vector3(SAFETY_SIZE, 0.5, SAFETY_SIZE),
     scene,
   );
 
-  // Grid markers so motion is visible (headless + human): stripes every 20 m.
-  for (let i = -GROUND_SIZE / 2 + 20; i < GROUND_SIZE / 2; i += 20) {
-    const line = MeshBuilder.CreateBox(
-      `mark_${i}`,
-      { width: GROUND_SIZE, height: 0.02, depth: 0.3 },
-      scene,
-    );
-    line.position = new Vector3(0, 0.02, i);
-    const m = new StandardMaterial(`markMat_${i}`, scene);
-    m.diffuseColor = new Color3(0.9, 0.9, 0.85);
-    m.specularColor = Color3.Black();
-    line.material = m;
-    line.receiveShadows = true;
-  }
+  // --- Load the Quaternius world ---
+  const world = await buildDriveWorld(scene);
+
+  // Ground predicate: wheel rays hit road tiles OR the safety net.
+  const isGround = (mesh: AbstractMesh) =>
+    mesh.name === "safetyGround" || world.isRoadMesh(mesh);
 
   // --- Chassis (dynamic box rigid body). ---
   const chassisMesh = MeshBuilder.CreateBox(
@@ -126,7 +125,8 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
     { width: CHASSIS.hw * 2, height: CHASSIS.hh * 2, depth: CHASSIS.hl * 2 },
     scene,
   );
-  chassisMesh.position = new Vector3(0, 1.2, 0);
+  // Spawn on the straight at Z=+10 (well within the first straight tile).
+  chassisMesh.position = new Vector3(0, 1.2, 10);
   chassisMesh.rotationQuaternion = Quaternion.Identity();
   const chassisMat = new PBRMaterial("chassisMat", scene);
   chassisMat.albedoColor = new Color3(0.75, 0.1, 0.12);
@@ -148,8 +148,6 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
     scene,
   );
   chassisBody.setMassProperties({ mass: VEHICLE_TUNING.chassisMass });
-  // Light damping so residual jitter dies down; the vehicle model supplies the
-  // real forces. Angular damping keeps the box from spinning up freely.
   chassisBody.setLinearDamping(0.1);
   chassisBody.setAngularDamping(0.6);
 
@@ -161,7 +159,6 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
       { diameter: WHEEL_RADIUS * 2, height: 0.3, tessellation: 18 },
       scene,
     );
-    // Cylinder axis is Y; rotate so it lies along X (the axle) — parent handles world.
     w.rotation.z = Math.PI / 2;
     w.bakeCurrentTransformIntoVertices();
     const wm = new StandardMaterial(`wheelMat_${i}`, scene);
@@ -171,12 +168,6 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
     shadow.addShadowCaster(w);
     return w;
   });
-
-  // Ground predicate: the wheel rays should only hit the ground surface + marks,
-  // never the chassis or wheels themselves.
-  const groundNames = new Set<string>(["ground"]);
-  const isGround = (mesh: AbstractMesh) =>
-    groundNames.has(mesh.name) || mesh.name.startsWith("mark_");
 
   const vehicle = new RaycastVehicle(scene, chassisBody, wheelConfigs, isGround);
   vehicle.attachWheelMeshes(wheelMeshes);
@@ -199,7 +190,7 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
   camera.maxZ = 2000;
   scene.activeCamera = camera;
 
-  const spawn = new Vector3(0, 1.2, 0);
+  const spawn = new Vector3(0, 1.2, 10);
   const reset = () => {
     chassisBody.setLinearVelocity(Vector3.Zero());
     chassisBody.setAngularVelocity(Vector3.Zero());
@@ -210,10 +201,29 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
     chassisBody.disablePreStep = false;
   };
 
+  /**
+   * Off-track detection: the car is off the road when its position is
+   * more than OFF_TRACK_DIST metres from X=0 in the straight zone,
+   * or more than OFF_TRACK_DIST from Z=-38 in the turn zone.
+   */
+  const isOffTrack = (): boolean => {
+    const pos = vehicle.getChassisPosition();
+    // In the straight zone (Z > -30) check X distance from road centreline.
+    if (pos.z > -30) {
+      return Math.abs(pos.x) > OFF_TRACK_DIST;
+    }
+    // In the turn zone check combined XZ distance from nearest road axis.
+    const distFromStraight = Math.abs(pos.x);
+    const distFromLeftTurn = Math.sqrt((pos.x + 34) ** 2 + (pos.z + 38) ** 2);
+    const distFromRightTurn = Math.sqrt((pos.x - 34) ** 2 + (pos.z + 38) ** 2);
+    return Math.min(distFromStraight, distFromLeftTurn, distFromRightTurn) > OFF_TRACK_DIST;
+  };
+
   return {
     scene,
     vehicle,
     setInput: (input) => vehicle.setInput(input),
     reset,
+    isOffTrack,
   };
 }
