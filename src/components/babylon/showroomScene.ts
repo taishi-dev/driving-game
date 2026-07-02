@@ -15,10 +15,17 @@ import type { Engine } from "@babylonjs/core/Engines/engine";
 import type { ShadowGenerator as ShadowGeneratorType } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
 
 // Side-effect registrations required for ES6 tree-shaken imports:
-// shadow generation shader support, HDR texture loading, and the glTF importer.
+// shadow generation shader support and HDR texture loading.
 import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
 import "@babylonjs/core/Materials/Textures/Loaders/hdrTextureLoader";
-import "@babylonjs/loaders/glTF/2.0";
+
+// Register the glTF loader via the DYNAMIC registration API. Under Next/Turbopack
+// the bare `import "@babylonjs/loaders/glTF"` side-effect gets tree-shaken away,
+// leaving SceneLoader with "No plugin or fallback" for .glb. registerBuiltInLoaders
+// installs async plugin factories imported on demand — the robust path in Babylon 9
+// (@babylonjs/loaders/dynamic, verified against installed 9.15).
+import { registerBuiltInLoaders } from "@babylonjs/loaders/dynamic";
+registerBuiltInLoaders();
 
 // Serve the Draco decoder locally (no CDN dependency). Files copied from
 // @babylonjs/core/assets/Draco into public/draco (~758 KB). Must be set before
@@ -128,7 +135,13 @@ export async function createShowroomScene(engine: Engine): Promise<Scene> {
   backdrop.receiveShadows = true;
 
   // --- B3: hero car (Draco + WebP glTF) --------------------------------------
-  await loadHeroCar(scene, shadow);
+  // Resilient: a car-load failure must not blank the showroom/HDRI. Log and
+  // continue so the lit environment still renders.
+  try {
+    await loadHeroCar(scene, shadow);
+  } catch (err) {
+    console.error("[showroomScene] hero car load failed:", err);
+  }
 
   // --- Static hero camera (no auto-rotation, inputs NOT attached) ------------
   const camera = new ArcRotateCamera(
