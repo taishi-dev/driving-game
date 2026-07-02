@@ -1,4 +1,4 @@
-# ADR 0002 — Replace Three.js/React Three Fiber via Three-Engine Full-Port Trial
+# ADR 0003 — Replace Three.js/React Three Fiber via Three-Engine Full-Port Trial
 
 **Status:** Accepted  
 **Date:** 2026-06-30  
