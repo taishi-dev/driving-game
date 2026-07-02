@@ -84,12 +84,12 @@ These ZIPs are stored in `assets/source/textures/` (not shipped raw). Extracted 
 | Source format used | `Exports/glTF (Godot)/` — 153 .gltf + .bin pairs |
 | Textures folder | `Textures/` — 29 PNG textures (BaseColor, Normal, ORM/roughness sets) |
 | Extracted to | `assets/source/world/quaternius/` (gitignored) |
-| Shipped as | `public/models3d/world/quaternius/*.glb` — Draco + WebP, 1024px texture cap |
-| Shipped size | **44.40 MB** (all 153 pieces combined) |
+| Shipped as | `public/models3d/world/quaternius/*.glb` — Draco + WebP, 512px texture cap |
+| Shipped size | **~15 MB** (all 153 pieces combined) |
 
 Content: modular brick building components (columns, walls, windows, cornices, trims), 3 pre-assembled buildings (large/medium/small), street decals, road pieces (straight, curve, intersection, T-junction, sidewalks), props (bollards, planters, AC units, drains, manhole covers), doors, entrances, floor tiles, roof pieces, stairs.
 
-Texture sets (29 unique PNGs, all at 2048×2048 in source, capped at 1024px in shipped GLBs):
+Texture sets (29 unique PNGs, all at 2048×2048 in source, capped at 512px in shipped GLBs):
 `T_Concrete_*`, `T_RedBrick_*`, `T_MetalConcrete_*`, `T_Ornaments_*`, `T_RoofSlate_*`, `T_Trim_*`, `T_MarbleFloor_*`, `T_Dirt_*`, `T_Street_Decals`, `T_dark_interior`, `T_lit_interior_1/2`
 
 ### Stylized Fallback Note
@@ -125,11 +125,11 @@ https://gltf-transform.dev/).
 |---|---|---|
 | `CarConcept-draco.glb` | `gltf-transform draco` | **4.00 MB** |
 | `CarConcept-draco-webp.glb` | `gltf-transform optimize --compress draco --texture-compress webp` | **1.26 MB** |
-| `world/quaternius/*.glb` (153 files) | `gltf-transform optimize --compress draco --texture-compress webp --texture-size 1024` | **44.40 MB** total |
+| `world/quaternius/*.glb` (153 files) | `gltf-transform optimize --compress draco --texture-compress webp --texture-size 512` | **~15 MB** total |
 
-Total shipped models in `public/models3d/`: **49.66 MB** (car: 5.26 MB + world: 44.40 MB — within the ≤ 50 MB interactive budget).
+Total shipped models in `public/models3d/`: **~20 MB** (car: 5.26 MB + world: ~15 MB — within the ≤ 50 MB interactive budget).
 
-Note: The 153 Quaternius GLBs each embed their own copy of the shared textures (this is the standard Godot glTF export pattern). With 1024px WebP compression, the total just fits within budget. If tighter compression is needed, lower `QUATERNIUS_TEXTURE_SIZE` to 512 in `scripts/assets-build.mjs` (estimated ~12 MB total at 512px).
+Note: The 153 Quaternius GLBs each embed their own copy of the shared textures (this is the standard Godot glTF export pattern). At 512px WebP the total shipped models are ~20 MB, leaving ~30 MB headroom under the 50 MB budget for the MediaPipe files and the Draco decoder (counted per-engine in Phase B). Drop QUATERNIUS_TEXTURE_SIZE to 256 for more headroom.
 
 ### KTX2 note
 

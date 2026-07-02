@@ -48,7 +48,7 @@ const OUT_QUATERNIUS = join(OUT_DIR, 'world/quaternius');
 // Each GLB embeds its own copy of the shared textures (Godot glTF export style).
 // 1024px keeps visual quality while staying within the 50 MB budget.
 // Lower to 512 if total shipped size exceeds budget.
-const QUATERNIUS_TEXTURE_SIZE = 1024;
+const QUATERNIUS_TEXTURE_SIZE = 512;
 
 function mb(bytes) {
   return (bytes / 1024 / 1024).toFixed(2) + ' MB';
