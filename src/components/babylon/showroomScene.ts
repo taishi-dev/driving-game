@@ -9,12 +9,30 @@ import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator"
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader";
+import { DracoCompression } from "@babylonjs/core/Meshes/Compression/dracoCompression";
 import type { Engine } from "@babylonjs/core/Engines/engine";
+import type { ShadowGenerator as ShadowGeneratorType } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
 
 // Side-effect registrations required for ES6 tree-shaken imports:
-// shadow generation shader support, and material dirty-tracking used by PBR.
+// shadow generation shader support, HDR texture loading, and the glTF importer.
 import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
 import "@babylonjs/core/Materials/Textures/Loaders/hdrTextureLoader";
+import "@babylonjs/loaders/glTF/2.0";
+
+// Serve the Draco decoder locally (no CDN dependency). Files copied from
+// @babylonjs/core/assets/Draco into public/draco (~758 KB). Must be set before
+// the first Draco-compressed glTF is imported.
+DracoCompression.Configuration = {
+  decoder: {
+    wasmUrl: "/draco/draco_wasm_wrapper_gltf.js",
+    wasmBinaryUrl: "/draco/draco_decoder_gltf.wasm",
+    fallbackUrl: "/draco/draco_decoder_gltf.js",
+  },
+};
+
+/** Hero car GLB: Draco geometry + WebP textures (WebP decodes natively). */
+const HERO_CAR_URL = "/models3d/CarConcept-draco-webp.glb";
 
 /**
  * B2: HDRI image-based lighting + ACES tone mapping + sRGB output, a self-built
@@ -109,6 +127,9 @@ export async function createShowroomScene(engine: Engine): Promise<Scene> {
   backdrop.material = backdropMat;
   backdrop.receiveShadows = true;
 
+  // --- B3: hero car (Draco + WebP glTF) --------------------------------------
+  await loadHeroCar(scene, shadow);
+
   // --- Static hero camera (no auto-rotation, inputs NOT attached) ------------
   const camera = new ArcRotateCamera(
     "hero",
@@ -124,4 +145,69 @@ export async function createShowroomScene(engine: Engine): Promise<Scene> {
   scene.activeCamera = camera;
 
   return scene;
+}
+
+/**
+ * Load the CarConcept GLB (Draco geometry, WebP textures) via the glTF loader
+ * and reinforce showroom-grade materials: clearcoat car paint and transmission
+ * glass. The GLB already carries KHR_materials_clearcoat and
+ * KHR_materials_transmission, so the loader imports PBRMaterials with those
+ * features; here we ensure clearcoat reads as glossy automotive paint and glass
+ * transmits, then wire shadow casting.
+ */
+async function loadHeroCar(
+  scene: Scene,
+  shadow: ShadowGeneratorType,
+): Promise<void> {
+  const result = await ImportMeshAsync(HERO_CAR_URL, scene);
+
+  // Center on the ground and give it a comfortable showroom scale.
+  const rootMeshes = result.meshes.filter((m) => !m.parent);
+  const root =
+    rootMeshes.length === 1 ? rootMeshes[0] : (result.meshes[0] ?? null);
+
+  if (root) {
+    root.position = new Vector3(0, 0, 0);
+    root.scaling = new Vector3(1, 1, 1);
+  }
+
+  // Every rendered mesh casts a shadow onto the studio floor.
+  for (const mesh of result.meshes) {
+    if (mesh.getTotalVertices() > 0) {
+      shadow.addShadowCaster(mesh, true);
+    }
+  }
+
+  // Reinforce materials for the showroom bar.
+  const seen = new Set<string>();
+  for (const mesh of result.meshes) {
+    const mat = mesh.material;
+    if (!(mat instanceof PBRMaterial) || seen.has(mat.uniqueId.toString())) {
+      continue;
+    }
+    seen.add(mat.uniqueId.toString());
+
+    const name = (mat.name ?? "").toLowerCase();
+    const isGlass =
+      mat.subSurface.isRefractionEnabled ||
+      mat.alpha < 1 ||
+      /glass|window|windshield|windscreen/.test(name);
+
+    if (isGlass) {
+      // Transmission glass: physically transmit the environment behind it.
+      mat.subSurface.isRefractionEnabled = true;
+      mat.subSurface.refractionIntensity = 1.0;
+      mat.subSurface.indexOfRefraction = 1.5;
+      mat.metallic = 0.0;
+      mat.roughness = Math.min(mat.roughness ?? 0.05, 0.05);
+    } else {
+      // Clearcoat car paint: a thin glossy lacquer over the base coat.
+      mat.clearCoat.isEnabled = true;
+      mat.clearCoat.intensity = 1.0;
+      mat.clearCoat.roughness = 0.03;
+      mat.clearCoat.indexOfRefraction = 1.5;
+    }
+    // Let all car materials pick up the HDRI reflections fully.
+    mat.environmentIntensity = 1.0;
+  }
 }
