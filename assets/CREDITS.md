@@ -47,6 +47,7 @@ The `KHR_materials_*` extension names and Khronos/3D Commerce logos embedded in 
 | Authors | Greg Zaal (original); sky edits by Jarod Guest |
 | Source size | 19.13 MB (2K EXR) |
 | Shipped? | Source EXR is in `assets/source/hdri/` (not shipped). Per-engine Phase B: each engine branch will prefilter to its own IBL format (Babylon: .env; PlayCanvas: prefiltered cubemap; Cocos: native) during that branch's B2 task. The EXR itself is not part of the web build. |
+| Shipped (E2-playcanvas, P2) | `public/env/kloofendal_48d_partly_cloudy_puresky_2k.hdr` — **5.20 MB** (2k Radiance HDR, same CC0 source asset as E1). PlayCanvas 2.20.5 decodes Radiance `.hdr` natively (`HdrParser`) and prefilters the IBL at RUNTIME via `EnvLighting.generateLightingSource` + `generateAtlas`, so NO offline prefiltered cubemap artifact is needed. This makes the research FLAG `[C-ibl]` ("prefilter offline; no runtime prefilter API found") **outdated for 2.20.5**. |
 
 ---
 

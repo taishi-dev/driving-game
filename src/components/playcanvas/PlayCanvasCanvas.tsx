@@ -8,6 +8,28 @@ import {
   FILLMODE_FILL_WINDOW,
   RESOLUTION_AUTO,
 } from "playcanvas";
+import type { SceneHandle } from "./showroomScene";
+
+/**
+ * Builds a scene onto the live Application. Receives an `isDisposed` probe so
+ * async asset callbacks landing after a strict-mode unmount are safely dropped.
+ * Returns a handle whose `dispose()` releases everything the builder created,
+ * run just before `app.destroy()`.
+ */
+export type SceneBuilder = (
+  app: Application,
+  isDisposed: () => boolean,
+) => SceneHandle;
+
+interface PlayCanvasCanvasProps {
+  /**
+   * Optional scene builder. When provided, the builder owns the camera and all
+   * scene content. When omitted, the P1 fallback (dark clear-colour + a bare
+   * camera) is used — this keeps the /drive scaffold route rendering until P4/P5
+   * give it its own scene.
+   */
+  buildScene?: SceneBuilder;
+}
 
 /**
  * P1 scaffold: a client-only PlayCanvas canvas.
@@ -34,7 +56,9 @@ import {
  * synchronously (see `GraphicsDevice`/`WebglGraphicsDevice.loseContext()`) so
  * the second mount gets a clean canvas — no leaked RAF, no duplicate context.
  */
-export default function PlayCanvasCanvas() {
+export default function PlayCanvasCanvas({
+  buildScene,
+}: PlayCanvasCanvasProps = {}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [fps, setFps] = useState(0);
 
@@ -51,13 +75,27 @@ export default function PlayCanvasCanvas() {
     app.setCanvasFillMode(FILLMODE_FILL_WINDOW);
     app.setCanvasResolution(RESOLUTION_AUTO);
 
-    // Static camera + clear color only; P2+ replaces this with the real scene
-    // (HDRI showroom / drivable world). Clear color matches E1's studio dark.
-    const camera = new Entity("camera");
-    camera.addComponent("camera", {
-      clearColor: new Color(0.055, 0.06, 0.07),
-    });
-    app.root.addChild(camera);
+    // hiDPI decision (P1 review note): cap the backbuffer at 2x CSS pixels.
+    // FILLMODE_FILL_WINDOW + RESOLUTION_AUTO otherwise renders at the full
+    // devicePixelRatio, which on a 4K/hiDPI panel would quadruple the fragment
+    // load and blow the 60fps budget on the Arc 140T iGPU. The showroom is a
+    // cheap static scene so 2x is safe here; drive scenes (P4+) may lower this
+    // further after measurement. At the 1920x1200 DPR-1 verification window
+    // this is a no-op (ratio resolves to 1).
+    app.graphicsDevice.maxPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+
+    let sceneHandle: SceneHandle | null = null;
+    if (buildScene) {
+      sceneHandle = buildScene(app, () => disposed);
+    } else {
+      // P1 fallback: a bare static camera + dark clear colour. Kept so the
+      // /drive scaffold route still renders before it gets its own scene.
+      const camera = new Entity("camera");
+      camera.addComponent("camera", {
+        clearColor: new Color(0.055, 0.06, 0.07),
+      });
+      app.root.addChild(camera);
+    }
 
     app.start();
 
@@ -78,9 +116,10 @@ export default function PlayCanvasCanvas() {
       disposed = true;
       window.clearInterval(fpsTimer);
       window.removeEventListener("resize", onResize);
+      sceneHandle?.dispose();
       app.destroy();
     };
-  }, []);
+  }, [buildScene]);
 
   return (
     <div
