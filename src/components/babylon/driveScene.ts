@@ -57,6 +57,14 @@ export interface DriveSceneHandle {
   setInput: (input: VehicleInput) => void;
   /** Reset the chassis to spawn (used if it ever tips over in testing). */
   reset: () => void;
+  /**
+   * B7c debug/e2e aid: place the chassis at (x, z) with zeroed velocity,
+   * keeping the spawn heading. Exposed ONLY through `window.__driveDebug`
+   * (same gating as the rest of the debug hook) for the per-lesson goal sweep.
+   */
+  teleport: (x: number, z: number) => void;
+  /** Chassis world rotation (Babylon euler, radians) for replay recording. */
+  getChassisRotation: () => { x: number; y: number; z: number };
   /** True when the car is not on any road surface (off-track). */
   isOffTrack: () => boolean;
   /**
@@ -242,6 +250,24 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
     chassisBody.disablePreStep = false;
   };
 
+  // B7c sweep aid: same mechanics as reset, but to an arbitrary (x, z).
+  const teleport = (x: number, z: number) => {
+    chassisBody.setLinearVelocity(Vector3.Zero());
+    chassisBody.setAngularVelocity(Vector3.Zero());
+    chassisMesh.position.set(x, spawn.y, z);
+    if (chassisMesh.rotationQuaternion) {
+      chassisMesh.rotationQuaternion.copyFrom(SPAWN_ROT);
+    }
+    chassisBody.disablePreStep = false;
+  };
+
+  const getChassisRotation = () => {
+    const e = chassisMesh.rotationQuaternion
+      ? chassisMesh.rotationQuaternion.toEulerAngles()
+      : chassisMesh.rotation;
+    return { x: e.x, y: e.y, z: e.z };
+  };
+
   /**
    * Off-track detection: the car is off the road when its position is
    * more than OFF_TRACK_DIST metres from X=0 in the straight zone,
@@ -265,6 +291,8 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
     vehicle,
     setInput: (input) => vehicle.setInput(input),
     reset,
+    teleport,
+    getChassisRotation,
     isOffTrack,
     mirror: { setActive: mirror.setActive, isActive: mirror.isActive },
   };

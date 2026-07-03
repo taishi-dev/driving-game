@@ -5,12 +5,9 @@ import { useDrivingStore } from "@/lib/store";
 import { HomeScreen } from "./HomeScreen";
 import { LanguageScreen } from "./LanguageScreen";
 import { DrivingScreen } from "./DrivingScreen";
-import {
-  FeedbackScreen,
-  TutorialScreen,
-  AuthScreen,
-  HistoryScreen,
-} from "./StubScreens";
+import { FeedbackScreen } from "./FeedbackScreen";
+import { TutorialScreen } from "./TutorialScreen";
+import { AuthScreen, HistoryScreen } from "./StubScreens";
 
 /**
  * B7b — the Babylon product app shell. THIS is the product at `/` now (the old

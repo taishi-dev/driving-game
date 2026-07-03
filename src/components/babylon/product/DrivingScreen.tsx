@@ -47,6 +47,7 @@ export function DrivingScreen() {
   const speed = useDrivingStore((s) => s.speed);
   const gear = useDrivingStore((s) => s.gear);
   const isOffTrack = useDrivingStore((s) => s.isOffTrack);
+  const drivingFeedback = useDrivingStore((s) => s.drivingFeedback);
   const t = STRINGS[language];
 
   const goHome = () => {
@@ -83,6 +84,19 @@ export function DrivingScreen() {
           {t.controlsHint}
         </p>
       </div>
+
+      {/* B7c: checkpoint-cleared toast (original Dashboard's green popup — the
+          strings come verbatim from the frozen evaluateCheckpoint). */}
+      {drivingFeedback && (
+        <div className="absolute top-[20%] left-1/2 -translate-x-1/2 z-20 pointer-events-none select-none">
+          <div
+            data-testid="driving-feedback"
+            className="bg-black/80 border-2 border-green-400 rounded-xl px-8 py-4 text-green-400 text-2xl font-bold whitespace-nowrap shadow-[0_0_20px_rgba(74,222,128,0.3)]"
+          >
+            {drivingFeedback}
+          </div>
+        </div>
+      )}
 
       {/* HUD: speed + gear + off-track (bottom-right) */}
       <div className="absolute bottom-6 right-6 z-10 flex items-end gap-4 pointer-events-none select-none">

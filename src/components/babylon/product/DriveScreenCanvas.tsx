@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { createDriveScene, type DriveSceneHandle } from "../driveScene";
-import { useDrivingStore } from "@/lib/store";
+import { createMissionRuntime, type MissionRuntime } from "./missionRuntime";
+import { useDrivingStore, type SignalState } from "@/lib/store";
 import {
   DEFAULT_GEAR,
   normalizeKey,
@@ -36,6 +37,9 @@ export default function DriveScreenCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [fps, setFps] = useState(0);
   const [ready, setReady] = useState(false);
+  // Traffic-light lesson only: the current signal state, driven by the mission
+  // runtime's cycle. Rendered as a DOM widget (the world has no 3D signal yet).
+  const [signal, setSignal] = useState<SignalState | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -48,6 +52,7 @@ export default function DriveScreenCanvas() {
     });
 
     let handle: DriveSceneHandle | null = null;
+    let mission: MissionRuntime | null = null;
     let disposed = false;
 
     const store = useDrivingStore.getState();
@@ -94,6 +99,19 @@ export default function DriveScreenCanvas() {
         handle = h;
         setReady(true);
 
+        // B7c mission runtime: grading + replay recording + signal cycle.
+        mission = createMissionRuntime({
+          getPosition: () => {
+            const p = h.vehicle.getChassisPosition();
+            return { x: p.x, y: p.y, z: p.z };
+          },
+          getRotation: () => h.getChassisRotation(),
+          getForwardVel: () => h.vehicle.debug.forwardVel,
+          onSignalChange: (s) => {
+            if (!disposed) setSignal(s);
+          },
+        });
+
         // Debug hook for headless/e2e verification: live car telemetry (no user
         // data). Mirrors the /drive route's contract so the same shot scripts read
         // it. `setInput`/`clearInput` let a scripted drive bypass the store.
@@ -103,18 +121,29 @@ export default function DriveScreenCanvas() {
         (window as unknown as { __driveDebug?: unknown }).__driveDebug = {
           getState: () => {
             const p = h.vehicle.getChassisPosition();
+            const st = useDrivingStore.getState();
             return {
               x: p.x,
               y: p.y,
               z: p.z,
-              gear: useDrivingStore.getState().gear,
+              gear: st.gear,
               grounded: h.vehicle.isGrounded(),
               offTrack: h.isOffTrack(),
-              speed: useDrivingStore.getState().speed,
+              speed: st.speed,
               fps: Math.round(engine.getFps()),
               debug: { ...h.vehicle.debug },
+              // B7c grading telemetry (no user data):
+              missionState: st.missionState,
+              screen: st.screen,
+              lesson: st.currentLesson,
+              clearedCheckpointIds: [...st.clearedCheckpointIds],
+              deviationPenalty: st.deviationPenalty,
+              feedbackLogCount: st.feedbackLogs.length,
             };
           },
+          // B7c sweep aid (same exposure/gating as the rest of this hook):
+          // zero-velocity chassis placement for programmatic goal-detection checks.
+          teleport: (x: number, z: number) => h.teleport(x, z),
           setInput: (i: { throttle: number; brake: number; steer: number }) => {
             debugOverride = i;
           },
@@ -150,6 +179,10 @@ export default function DriveScreenCanvas() {
             st.setOffTrack(off);
           }
 
+          // B7c: advance mission grading (goal detection + checkpoints) AFTER
+          // the physics/telemetry for this frame.
+          mission?.step();
+
           if (h.scene.activeCamera) h.scene.render();
         });
       })
@@ -172,6 +205,7 @@ export default function DriveScreenCanvas() {
       window.removeEventListener("keyup", onKeyUp);
       delete (window as unknown as { __driveDebug?: unknown }).__driveDebug;
       engine.stopRenderLoop();
+      mission?.dispose();
       if (handle) handle.scene.dispose();
       engine.dispose();
       // Reset transient input so a re-entry doesn't inherit a stuck pedal/steer.
@@ -216,6 +250,46 @@ export default function DriveScreenCanvas() {
           }}
         >
           Loading 3D scene…
+        </div>
+      )}
+      {/* B7c traffic-light lesson: DOM signal widget (the Babylon world has no
+          3D signal model yet — world build-out is tracked separately). Drives the
+          same SIGNAL_CYCLE that scoring's red-light check replays. */}
+      {signal && (
+        <div
+          data-testid="drive-signal"
+          data-signal={signal}
+          style={{
+            position: "absolute",
+            top: 16,
+            left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex",
+            gap: 10,
+            padding: "10px 16px",
+            borderRadius: 10,
+            background: "rgba(15,18,22,0.85)",
+            border: "1px solid rgba(255,255,255,0.15)",
+            pointerEvents: "none",
+            userSelect: "none",
+          }}
+        >
+          {(["green", "yellow", "red"] as const).map((s) => (
+            <div
+              key={s}
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: "50%",
+                background:
+                  s === "green" ? "#22c55e" : s === "yellow" ? "#eab308" : "#ef4444",
+                opacity: signal === s ? 1 : 0.15,
+                boxShadow: signal === s ? "0 0 14px currentColor" : "none",
+                color:
+                  s === "green" ? "#22c55e" : s === "yellow" ? "#eab308" : "#ef4444",
+              }}
+            />
+          ))}
         </div>
       )}
       <div
