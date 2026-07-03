@@ -213,3 +213,37 @@ E<n>-<engine> B12 measurement sign-off:
   unit tests: PASS (_/_ suites)
   smoke: PASS
 ```
+
+---
+
+## E2 · PlayCanvas (playcanvas@2.20.5) — capability findings
+
+Filled during P2/P3. Verified headed at 1920×1200 on the Arc 140T.
+
+### Research-FLAG resolutions
+
+| FLAG | Research claim (2026-06-30) | E2 verdict (2.20.5) |
+|---|---|---|
+| `[C-pbr]` clearcoat | "clearCoat props exist FLAG (not verified this run)" | **EXISTS — CONFIRMED.** `pc.StandardMaterial` exposes the full clear-coat set: `clearCoat`, `clearCoatGloss`, `clearCoatGlossInvert`, `clearCoatMap`/`…MapChannel`/`…MapUv`/tiling/offset/rotation, `clearCoatVertexColor`, `clearCoatNormalMap`, `clearCoatPackedNormal`. The glTF loader imports `KHR_materials_clearcoat` onto it automatically. **Checklist 1.6 satisfied — no fallback needed.** |
+| `[C-ibl]` IBL prefilter | "HDR cubemap; prefilter offline (no runtime prefilter API found)" | **OUTDATED.** `pc.EnvLighting` provides runtime prefiltering: `generateLightingSource(equirect)` → `generateAtlas(source)` produces the prefiltered reflection+ambient atlas assigned to `scene.envAtlas`. Combined with the native `HdrParser` (loads Radiance `.hdr`), the whole IBL pipeline runs at load time — **no offline cubemap artifact required.** |
+
+### P2/P3 feature status
+
+| # | Feature | Status | Implementation note |
+|---|---|---|---|
+| 1.1 | HDRI IBL | ✅ | 2k `.hdr` → `EnvLighting` atlas → `scene.envAtlas`; visible in car-body reflections. |
+| 1.2 | ACES tone mapping | ✅ | `camera.toneMapping = TONEMAP_ACES`. |
+| 1.3 | sRGB output | ✅ | `camera.gammaCorrection` defaults to `GAMMA_SRGB` in 2.x. |
+| 1.4 | Soft shadows | ✅ | Directional key light, `SHADOW_PCF5`, 2048 res. |
+| 1.5 | Hero-car PBR | ✅ | `CarConcept-draco-webp.glb` via container loader; metallic-roughness intact. |
+| 1.6 | Hero-car clearcoat | ✅ | Carmine body forced onto bound Paint slots: `clearCoat=1`, `clearCoatGloss=0.97`. |
+| 1.7 | Hero-car glass transmission | ✅ | `KHR_materials_transmission` imported (dynamic refraction); enabled via `camera.requestSceneColorMap(true)` scene-colour grab pass. |
+| 1.8 | Static hero-shot home | ✅ | Static rear-3/4 camera on `/showroom`; no auto-rotation. |
+
+### hiDPI decision (P1 review note)
+
+`graphicsDevice.maxPixelRatio = min(devicePixelRatio, 2)`. Rationale: `FILLMODE_FILL_WINDOW` + `RESOLUTION_AUTO` otherwise renders at full DPR; capping at 2 bounds fragment cost on the Arc 140T iGPU. No-op at the 1920×1200 DPR-1 verification window. Drive scenes (P4+) may lower further after measurement.
+
+### Draco decoder (runtime, no CDN)
+
+Local decoder shipped at `public/lib/draco/` (`draco_wasm_wrapper.js` 58 KB glue + `draco_decoder.wasm` 192 KB; **250 KB total**, Apache-2.0, Google Draco glTF build). Wired via `pc.dracoInitialize({ jsUrl, wasmUrl, numWorkers: 1 })`. Counts toward the "decoders" line of the §10 download budget.

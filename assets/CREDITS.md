@@ -132,6 +132,19 @@ Total shipped models in `public/models3d/`: **~20 MB** (car: 5.26 MB + world: ~1
 
 Note: The 153 Quaternius GLBs each embed their own copy of the shared textures (this is the standard Godot glTF export pattern). At 512px WebP the total shipped models are ~20 MB, leaving ~30 MB headroom under the 50 MB budget for the MediaPipe files and the Draco decoder (counted per-engine in Phase B). Drop QUATERNIUS_TEXTURE_SIZE to 256 for more headroom.
 
+### Draco decoder (E2-playcanvas, P3)
+
+Runtime Draco decoding of the hero car GLB uses the Google **Draco** glTF decoder
+build, shipped locally at `public/lib/draco/` so there is no CDN fetch at runtime:
+
+| File | Size | Purpose |
+|---|---|---|
+| `draco_wasm_wrapper.js` | 58 KB | Emscripten glue (exposes `DracoDecoderModule`) |
+| `draco_decoder.wasm` | 192 KB | WebAssembly decoder |
+
+Total **~250 KB**. License: **Apache-2.0** (https://github.com/google/draco/blob/master/LICENSE);
+recorded in `public/lib/draco/DRACO.license`. Wired via `pc.dracoInitialize`.
+
 ### KTX2 note
 
 KTX2 GPU texture compression (`gltf-transform uastc` / `gltf-transform etc1s`) requires

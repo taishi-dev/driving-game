@@ -11,6 +11,7 @@ import {
   SHADOW_PCF5,
   TONEMAP_ACES,
 } from "playcanvas";
+import { loadHeroCar, type HeroCarHandle } from "./heroCar";
 
 /**
  * A scene built onto an existing {@link Application}. The canvas component owns
@@ -74,9 +75,12 @@ export function createShowroomScene(
   // Rear-3/4 view: car faces -Z (forward, per the coordinate contract), so the
   // camera sits behind (+Z) and to the +X side, looking down slightly at the
   // car's mid-height.
-  camera.setPosition(3.9, 1.55, 5.4);
+  camera.setPosition(4.8, 1.85, 6.9);
   app.root.addChild(camera);
-  camera.lookAt(0, 0.55, -0.2);
+  camera.lookAt(0, 0.72, 0);
+  // Enable the scene-colour grab pass so the car's glass (KHR_materials_
+  // transmission -> useDynamicRefraction) can refract what's behind it.
+  camera.camera!.requestSceneColorMap(true);
 
   // --- Lighting rig --------------------------------------------------------
   // Key light: warm, from front-upper-left, casting the soft grounding shadow.
@@ -112,9 +116,12 @@ export function createShowroomScene(
   // a faint IBL sheen.
   const groundMat = new StandardMaterial();
   groundMat.useMetalness = true;
-  groundMat.diffuse = new Color(0.05, 0.05, 0.055);
+  // Near-black, low gloss: dark enough to merge with the backdrop dome (no hard
+  // horizon band) yet with just enough sheen to read as a polished studio floor
+  // and catch the key light's soft grounding shadow.
+  groundMat.diffuse = new Color(0.015, 0.015, 0.018);
   groundMat.metalness = 0.0;
-  groundMat.gloss = 0.45;
+  groundMat.gloss = 0.5;
   groundMat.blendType = BLEND_NONE;
   groundMat.update();
 
@@ -167,8 +174,12 @@ export function createShowroomScene(
   app.assets.add(envAsset);
   app.assets.load(envAsset);
 
+  // --- Hero car (P3) -------------------------------------------------------
+  const heroCar: HeroCarHandle = loadHeroCar(app, isDisposed);
+
   return {
     dispose() {
+      heroCar.dispose();
       scene.envAtlas = null;
       camera.destroy();
       key.destroy();
