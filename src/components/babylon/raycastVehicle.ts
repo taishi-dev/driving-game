@@ -4,6 +4,11 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { PhysicsBody } from "@babylonjs/core/Physics/v2/physicsBody";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import {
+  suspensionForce,
+  driveForceMagnitude,
+  overSpeedDragMagnitude,
+} from "@/lib/vehicleKernel";
 
 /**
  * B4 — Hand-built raycast vehicle on Havok.
@@ -316,10 +321,13 @@ export class RaycastVehicle {
       const pointVel = this.velocityAtPoint(contactPoint, chassisVel, omega);
       const compressionVel = Vector3.Dot(pointVel, normal); // + = extending
 
-      const springF = compression * T.suspensionStiffness;
-      const damperF = -compressionVel * T.suspensionDamping;
-      let suspF = springF + damperF;
-      if (suspF < 0) suspF = 0; // suspension only pushes, never pulls
+      // Pure spring+damper math (Babylon-free, unit-tested in vehicleKernel).
+      const suspF = suspensionForce(
+        compression,
+        compressionVel,
+        T.suspensionStiffness,
+        T.suspensionDamping,
+      );
 
       const suspForce = normal.scale(suspF);
       this.body.applyForce(suspForce, contactPoint);
@@ -342,7 +350,11 @@ export class RaycastVehicle {
       // sign flips — so steer input is gear-invariant, but yaw direction flips
       // in reverse (yaw ∝ velocity × steer angle).
       if (cfg.isPowered && this.input.throttle !== 0) {
-        const driveMag = (T.engineForce * this.input.throttle) / poweredCount;
+        const driveMag = driveForceMagnitude(
+          T.engineForce,
+          this.input.throttle,
+          poweredCount,
+        );
         const drive = wheelForward.scale(driveMag);
         this.body.applyForce(drive, contactPoint);
         this.debug.lastDriveF += driveMag;
@@ -408,11 +420,14 @@ export class RaycastVehicle {
 
     // Soft top-speed drag so throttle doesn't run away (stiffened in B7c so the
     // equilibrium overshoot stays within ~4 km/h of the cap).
-    if (speed > T.maxSpeed) {
-      const excess = speed - T.maxSpeed;
-      const drag = chassisVel
-        .normalizeToNew()
-        .scale(-excess * T.chassisMass * T.overSpeedDrag);
+    const dragMag = overSpeedDragMagnitude(
+      speed,
+      T.maxSpeed,
+      T.chassisMass,
+      T.overSpeedDrag,
+    );
+    if (dragMag > 0) {
+      const drag = chassisVel.normalizeToNew().scale(-dragMag);
       this.body.applyForce(drag, chassis.getAbsolutePosition());
     }
   }

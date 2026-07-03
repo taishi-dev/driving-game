@@ -144,7 +144,7 @@
 |---|---|---|---|
 | 11.1 | type-check | `npm run type-check` passes with 0 errors | ✅ PASS (0 errors) |
 | 11.2 | lint | `npm run lint` passes with 0 errors | ✅ PASS (0 errors; 2 pre-existing warnings live only in the FROZEN R3F originals `src/components/ui/FeedbackScreen.tsx` + `src/components/vision/VisionController.tsx`) |
-| 11.3 | Unit tests | The branch's equivalent of the seven `node --test` suites pass: scoring, checkpoint eval, replay interpolation, pedal decision, steering gear, foot-pedal recognition, car physics (re-authored per engine) | ✅ PASS **151/151** (`npm run test:unit`) |
+| 11.3 | Unit tests | The branch's equivalent of the seven `node --test` suites pass: scoring, checkpoint eval, replay interpolation, pedal decision, steering gear, foot-pedal recognition, vehicle-force kernel | ✅ PASS (`npm run test:unit`). **Note on the vehicle physics suite:** the shipped Babylon vehicle (`raycastVehicle.ts`) is welded to Havok bodies + scene raycasts and has NO full unit suite — it is verified by **headed driving + the e2e specs** (drive/reverse/steer/top-speed observed live). `tests/carPhysics.test.ts` still covers the RETIRED R3F engine's `src/lib/carPhysics.ts` (kept as a frame-rate-independence regression guard, not the shipped engine). The Babylon vehicle's load-bearing arithmetic (suspension spring/damper, over-speed drag, signed drive force) is extracted into the Babylon-free `src/lib/vehicleKernel.ts` and unit-tested by `tests/vehicleKernel.test.ts`; `RaycastVehicle.update` calls those exact functions, so the tests exercise the real force math. |
 | 11.4 | Smoke test | `npm run smoke` (or engine equivalent) passes | ✅ e2e `npm run test:e2e` **5/5** (3 headless fallback + 2 headed vision); pure + E2E-flag production builds both compile clean |
 
 ---
@@ -219,7 +219,7 @@ E1-babylon B12 measurement sign-off (2026-07-03, headed, Arc 140T, 1920x1200):
   download — total to drive-ready (MB): 32.58   (<= 50 budget: PASS; first-interactive/home 7.48)
   type-check: PASS
   lint: PASS
-  unit tests: PASS (151/151)
+  unit tests: PASS (159/159)
   smoke / e2e: PASS (e2e 5/5)
 ```
 
@@ -241,3 +241,16 @@ These are honest E1-branch conclusions the engine comparison needs on record:
   and face→mirror checkpoints exercised only via fake webcam / keyboard fallback so far.
 - **Firebase real-config smoke pending** (§8): auth + history save/fetch verified fail-soft
   and by record-shape tests, but not against a live Firebase project.
+- **three.js still ships at runtime for course/scoring math:** the D1.a "verbatim core"
+  decision keeps `course.ts` / `scoring.ts` and the store on `THREE.CurvePath`/`THREE.Vector3`
+  for the coursepath geometry, so the three.js runtime is bundled even though Babylon renders
+  the world. Its bytes are folded into the measured app JS (§10.6) — not a separate line item.
+  A pure-math re-implementation of the curve/vector helpers would drop it, but that touches the
+  frozen scoring core and is out of scope for the engine trial (parity over refactor).
+- **Store state-machine inconsistencies (benign today, in the FROZEN store's semantics):**
+  (a) free-mode entry goes through `setLesson` → `missionState: "active"` directly, bypassing
+  the per-run reset that lives in `setMissionState("active")` (feedbackLogs / signalStateLogs /
+  deviationPenalty / clearedCheckpointIds) — harmless because free-mode is not scored; and
+  (b) `replayData` is not cleared when a graded run is aborted (exit to home), so it persists
+  until the next completed run overwrites it via `setState({ replayData })`. Neither affects
+  scoring today; both are recorded as inconsistencies to fix if the store is ever unfrozen.

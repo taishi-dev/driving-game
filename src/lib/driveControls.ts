@@ -16,6 +16,21 @@
  *   - Single-character keys are normalized to lowercase so Caps Lock/Shift
  *     WASD still works; named keys (e.g. "ArrowUp") are compared as-is.
  *
+ * ── steeringAngle scale (TWO SOURCES, ONE canonical full-lock = ±1.0) ─────────
+ * The store's `steeringAngle` is written from two input sources on different
+ * magnitudes, and this is deliberate (it matches the ORIGINAL app):
+ *   - Vision (webcam hand pose, frozen `steeringGear.ts`) writes ±1.0 at full
+ *     lock — the CANONICAL full-lock scale.
+ *   - Keyboard (this module, `STEER_MAGNITUDE`) writes ±0.6 at full press —
+ *     intentionally PARTIAL, matching the original `KeyboardControls` (a key is a
+ *     coarser input than a tracked hand, so a full press is a gentle turn).
+ * Display consumers therefore normalize against the ±1.0 canonical scale, NOT
+ * against 0.6: the driving HUD (`DrivingScreen.tsx`) and the tutorial bars
+ * (`TutorialScreen.tsx`, ±1.0 labels — same as the original) both map ±1.0 to
+ * the rail, so a keyboard full-press reads ~60% and a full vision lock reads
+ * 100% (no pinning). `steeringAngle` itself is defined in the FROZEN `store.ts`,
+ * so this convention is documented HERE, at the keyboard source.
+ *
  * Gear is new for this branch (the original only ever had "D"/"R", driven by
  * webcam gestures — see `src/lib/vision/steeringGear.ts`). This branch adds a
  * keyboard gear input so B6 is drive-testable without the webcam:

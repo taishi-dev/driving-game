@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import { useEffect } from "react";
 import { useDrivingStore } from "@/lib/store";
 import { getBriefing, getLessonTitle } from "@/lib/lessonCatalog";
-import { STEER_MAGNITUDE } from "@/lib/driveControls";
 import { COMMON_STRINGS } from "@/lib/uiStrings";
 import {
   MIRROR_WIDTH_FRAC,
@@ -62,6 +61,7 @@ export function DrivingScreen() {
   const currentLesson = useDrivingStore((s) => s.currentLesson);
   const missionState = useDrivingStore((s) => s.missionState);
   const setMissionState = useDrivingStore((s) => s.setMissionState);
+  const setHeadRotation = useDrivingStore((s) => s.setHeadRotation);
   const setScreen = useDrivingStore((s) => s.setScreen);
   const speed = useDrivingStore((s) => s.speed);
   const gear = useDrivingStore((s) => s.gear);
@@ -72,9 +72,13 @@ export function DrivingScreen() {
   const steeringAngle = useDrivingStore((s) => s.steeringAngle);
   const t = STRINGS[language];
 
-  // Steering position normalized to [-1, 1] for the HUD indicator (keyboard
-  // steer is ±STEER_MAGNITUDE; clamp so any larger value still stays on the rail).
-  const steerNorm = Math.max(-1, Math.min(1, steeringAngle / STEER_MAGNITUDE));
+  // Steering position normalized to [-1, 1] for the HUD indicator. The store's
+  // steeringAngle is on a two-source scale (documented in driveControls.ts):
+  // vision writes ±1.0 (full lock), keyboard writes ±STEER_MAGNITUDE (0.6,
+  // intentionally partial, matching the original app). ±1.0 is the canonical
+  // full-lock scale, so normalize by it directly (i.e. no divisor) — a full
+  // vision lock reads the rail, keyboard reads ~60%. The clamp guards overshoot.
+  const steerNorm = Math.max(-1, Math.min(1, steeringAngle));
 
   const goHome = () => {
     setMissionState("idle");
@@ -240,7 +244,18 @@ export function DrivingScreen() {
             <h2 className="text-3xl font-bold text-blue-400 mb-5">MISSION: {briefing.title}</h2>
             <p className="text-lg leading-relaxed text-slate-300 mb-10">{briefing.desc}</p>
             <button
-              onClick={() => setMissionState("active")}
+              onClick={() => {
+                // Per-run head reset: graded lessons (the only ones with
+                // mirror/safety checkpoints) always enter "active" through this
+                // briefing button. The per-run store reset lives in the FROZEN
+                // setMissionState("active") which does not touch headRotation, so
+                // clear it here — a clean Babylon-side hook — so a stale yaw from a
+                // prior run can't leak into this run's checkpoint grading. If the
+                // camera is live it overwrites yaw next frame; with no camera it
+                // stays 0, exactly what grading expects.
+                setHeadRotation({ pitch: 0, yaw: 0, roll: 0 });
+                setMissionState("active");
+              }}
               data-testid="briefing-start"
               className="px-10 py-3 text-xl font-bold bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors shadow-lg"
             >

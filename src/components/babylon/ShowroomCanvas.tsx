@@ -52,6 +52,10 @@ export default function ShowroomCanvas() {
         engine.runRenderLoop(renderLoop);
       })
       .catch((err) => {
+        // Don't touch anything if we've already unmounted (StrictMode double
+        // mount / fast route change): the engine may be disposed by now. Every
+        // other canvas guards its .catch the same way.
+        if (disposed) return;
         // Surface asset/loader failures instead of a silent black canvas.
         console.error("[ShowroomCanvas] scene init failed:", err);
       });

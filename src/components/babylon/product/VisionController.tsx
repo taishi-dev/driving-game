@@ -460,8 +460,14 @@ export default function VisionController() {
       drawingUtils = null;
       // Leave the store's vision flags for the next mount to overwrite; reset
       // steering so a stale camera steer value can't linger into keyboard driving.
+      // Also zero head rotation + gaze: missionRuntime grades mirror/safety
+      // checkpoints from `headRotation.yaw`, so a stale yaw left over from a prior
+      // camera session must not leak into the next run and spuriously clear/block
+      // a checkpoint. With no camera, yaw=0 is exactly what grading expects.
       store().setVisionReady(false);
       store().setSteering(0);
+      store().setHeadRotation({ pitch: 0, yaw: 0, roll: 0 });
+      store().setGaze({ x: 0, y: 0 });
     };
   }, []);
 
