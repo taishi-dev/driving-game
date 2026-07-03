@@ -34,6 +34,7 @@ import {
   type VehicleInput,
 } from "./raycastVehicle";
 import { buildDriveWorld } from "./driveWorld";
+import { setupRearviewMirror } from "./rearviewMirror";
 
 /** Chassis half-extents (m): a compact test box car. */
 const CHASSIS = { hw: 0.9, hh: 0.4, hl: 2.0 } as const;
@@ -58,6 +59,11 @@ export interface DriveSceneHandle {
   reset: () => void;
   /** True when the car is not on any road surface (off-track). */
   isOffTrack: () => boolean;
+  /**
+   * Rearview mirror hook: B7's graded-checkpoint system can toggle whether
+   * the mirror renders, or query whether it currently does.
+   */
+  mirror: { setActive: (active: boolean) => void; isActive: () => boolean };
 }
 
 /**
@@ -220,6 +226,11 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
   camera.maxZ = 2000;
   scene.activeCamera = camera;
 
+  // --- B5b: rearview mirror (RTT + rear-facing camera parented to the chassis,
+  //     composited top-center via a second screen-space camera+viewport). ---
+  const mirror = setupRearviewMirror(scene, engine, chassisMesh, CHASSIS.hh, CHASSIS.hl, camera);
+  scene.onDisposeObservable.addOnce(() => mirror.dispose());
+
   const spawn = new Vector3(0, 1.2, 10);
   const reset = () => {
     chassisBody.setLinearVelocity(Vector3.Zero());
@@ -255,5 +266,6 @@ export async function createDriveScene(engine: Engine): Promise<DriveSceneHandle
     setInput: (input) => vehicle.setInput(input),
     reset,
     isOffTrack,
+    mirror: { setActive: mirror.setActive, isActive: mirror.isActive },
   };
 }
