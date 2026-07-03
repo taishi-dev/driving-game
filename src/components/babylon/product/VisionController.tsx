@@ -7,10 +7,8 @@ import {
   HandLandmarker,
   DrawingUtils,
   PoseLandmarker,
-  ObjectDetector,
   type HandLandmarkerResult,
   type PoseLandmarkerResult,
-  type ObjectDetectorResult,
 } from "@mediapipe/tasks-vision";
 import { useDrivingStore } from "@/lib/store";
 import { STABILITY_DURATION_MS } from "@/lib/footPedalRecognition";
@@ -55,8 +53,12 @@ import {
 // How often (ms) the human-readable status string is written to the store; the
 // detection loop runs at display rate, the panel only needs a few Hz. (Original.)
 const DEBUG_THROTTLE_MS = 150;
-// Object detection feeds only the debug string, so run it a few times a second. (Original.)
-const OBJECT_DETECT_INTERVAL_MS = 300;
+// B12 PERF/SIZE DEVIATION: the original also loaded a MediaPipe ObjectDetector
+// (efficientdet_lite0, ~6.9 MB) whose output was used ONLY to append an
+// "| Obj: <name>" suffix to the debug string (see steeringGear.ts — it never
+// touches gear/steering/pedals). Dropping it removes ~6.9 MB from the download
+// and its per-frame-adjacent inference; the only observable effect is the debug
+// panel string losing that developer-only suffix. Driving behavior is unchanged.
 
 const TONE_COLORS: Record<VisionStatusTone, { color: string; bg: string }> = {
   info: { color: "#FFFFFF", bg: "rgba(0,0,0,0.8)" },
@@ -89,14 +91,11 @@ export default function VisionController() {
     const faceRef: { v: FaceLandmarker | null } = { v: null };
     const handRef: { v: HandLandmarker | null } = { v: null };
     const poseRef: { v: PoseLandmarker | null } = { v: null };
-    const objectRef: { v: ObjectDetector | null } = { v: null };
     const streamRef: { v: MediaStream | null } = { v: null };
 
     let rafId = 0;
     let lastVideoTime = -1;
     let lastFrameTime = 0;
-    let lastObjectDetectTime = 0;
-    let lastObjectResult: ObjectDetectorResult | null = null;
     let lastDebugTime = 0;
     let drawingUtils: DrawingUtils | null = null;
     const poseFilter = new PoseLandmarkFilterManager(1.0, 0.004, 1.5);
@@ -111,14 +110,13 @@ export default function VisionController() {
     };
 
     // ---- Steering + gear (delegates to the frozen pure module). ----
-    const processSteeringAndGear = (
-      handResult: HandLandmarkerResult,
-      objectResult: ObjectDetectorResult | null,
-    ): string => {
+    // `detections` is always null now that the object detector is dropped (B12);
+    // the pure module simply omits the debug-only "Obj:" suffix.
+    const processSteeringAndGear = (handResult: HandLandmarkerResult): string => {
       const s = store();
       const result = computeSteeringAndGear({
         landmarks: handResult.landmarks,
-        detections: objectResult?.detections ?? null,
+        detections: null,
       });
       if (s.gear !== result.newGear) s.setGear(result.newGear);
       s.setSteering(result.steering);
@@ -301,12 +299,6 @@ export default function VisionController() {
             }
           }
 
-          // Object detection (throttled — feeds only the debug string).
-          if (objectRef.v && startTimeMs - lastObjectDetectTime >= OBJECT_DETECT_INTERVAL_MS) {
-            lastObjectResult = objectRef.v.detectForVideo(video, startTimeMs);
-            lastObjectDetectTime = startTimeMs;
-          }
-
           // Hands -> steering + gear.
           const handResult = handRef.v.detectForVideo(video, startTimeMs);
           if (handResult.landmarks && drawingUtils) {
@@ -318,7 +310,7 @@ export default function VisionController() {
               drawingUtils.drawLandmarks(lms, { color: "#FF0000", lineWidth: 2 });
             }
           }
-          const handInfo = processSteeringAndGear(handResult, lastObjectResult);
+          const handInfo = processSteeringAndGear(handResult);
 
           // Pose -> pedals.
           const poseResult = poseRef.v ? poseRef.v.detectForVideo(video, startTimeMs) : null;
@@ -434,29 +426,17 @@ export default function VisionController() {
           minPosePresenceConfidence: 0.3,
           minTrackingConfidence: 0.3,
         });
-        const objectDetector = await ObjectDetector.createFromOptions(filesetResolver, {
-          baseOptions: {
-            modelAssetPath:
-              "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
-            delegate: "GPU",
-          },
-          scoreThreshold: 0.3,
-          runningMode: "VIDEO",
-        });
-
         if (disposed) {
           // Unmounted while models were still loading (StrictMode double mount):
           // release the LOCALS we just created; never touch a concurrent run's refs.
           faceLandmarker.close();
           handLandmarker.close();
           poseLandmarker.close();
-          objectDetector.close();
           return;
         }
         faceRef.v = faceLandmarker;
         handRef.v = handLandmarker;
         poseRef.v = poseLandmarker;
-        objectRef.v = objectDetector;
         store().setVisionReady(true);
         store().setDebugInfo("Models Ready.");
         maybeStartLoop();
@@ -474,15 +454,14 @@ export default function VisionController() {
       faceRef.v?.close();
       handRef.v?.close();
       poseRef.v?.close();
-      objectRef.v?.close();
       faceRef.v = null;
       handRef.v = null;
       poseRef.v = null;
-      objectRef.v = null;
       drawingUtils = null;
       // Leave the store's vision flags for the next mount to overwrite; reset
       // steering so a stale camera steer value can't linger into keyboard driving.
       store().setVisionReady(false);
+      store().setSteering(0);
     };
   }, []);
 
