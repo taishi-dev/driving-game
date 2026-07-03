@@ -24,10 +24,11 @@ import "@babylonjs/core/Physics/joinedPhysicsEngineComponent";
 
 import { getHavokPlugin } from "./havok";
 import { buildDriveWorld } from "./driveWorld";
-
-/** Chassis half-extents (m) — must match driveScene so replay looks like the drive. */
-const CHASSIS = { hw: 0.9, hh: 0.4, hl: 2.0 } as const;
-const WHEEL_RADIUS = 0.4;
+// Chassis half-extents + wheel radius imported from driveScene (single source of
+// truth) so the replay car's proportions can never drift from the drive car's.
+// By the time the feedback/replay screen is reached the drive scene's chunk is
+// already loaded, so this import adds no download to the replay path.
+import { CHASSIS, WHEEL_RADIUS } from "./driveScene";
 
 export type ReplayViewMode = "chase" | "driver";
 

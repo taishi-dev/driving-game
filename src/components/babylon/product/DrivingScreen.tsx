@@ -6,6 +6,11 @@ import { useDrivingStore } from "@/lib/store";
 import { getBriefing, getLessonTitle } from "@/lib/lessonCatalog";
 import { STEER_MAGNITUDE } from "@/lib/driveControls";
 import { COMMON_STRINGS } from "@/lib/uiStrings";
+import {
+  MIRROR_WIDTH_FRAC,
+  MIRROR_TOP_MARGIN_FRAC,
+  MIRROR_ASPECT,
+} from "@/lib/mirrorLayout";
 
 // Store-wired Babylon drive canvas. Client-only (WebGL/window + Havok WASM).
 const DriveScreenCanvas = dynamic(() => import("./DriveScreenCanvas"), { ssr: false });
@@ -110,12 +115,18 @@ export function DrivingScreen() {
       </div>
 
       {/* Rearview-mirror frame: a bezel overlaying the in-scene mirror RTT
-          (top-center) so it reads as a mirror against the sky. Kept in sync with
-          the mirror's on-screen rectangle in rearviewMirror.ts / mirrorLayout.ts
-          (widthFrac 0.26, topMargin 0.02, 2:1 aspect). */}
+          (top-center) so it reads as a mirror against the sky. The placement
+          fractions are imported from the same mirrorLayout.ts the Babylon
+          compositor uses, so the DOM bezel and the RTT viewport cannot drift. */}
       <div
         className="absolute z-10 pointer-events-none select-none"
-        style={{ top: "2%", left: "50%", width: "26%", transform: "translateX(-50%)", aspectRatio: "2 / 1" }}
+        style={{
+          top: `${MIRROR_TOP_MARGIN_FRAC * 100}%`,
+          left: "50%",
+          width: `${MIRROR_WIDTH_FRAC * 100}%`,
+          transform: "translateX(-50%)",
+          aspectRatio: `${MIRROR_ASPECT} / 1`,
+        }}
         data-testid="mirror-frame"
       >
         <div className="w-full h-full rounded-lg border-[3px] border-slate-200/70 shadow-[0_2px_10px_rgba(0,0,0,0.55),inset_0_0_0_2px_rgba(0,0,0,0.5)]" />

@@ -248,104 +248,104 @@ export function FeedbackScreen() {
         {/* Right: score + AI feedback + per-checkpoint results (scrolls). */}
         <div className="w-1/2 overflow-y-auto">
           <div className="max-w-3xl mx-auto p-8">
-          {/* Score + clear time */}
-          <div className="grid grid-cols-2 gap-4 mb-8">
-            <div className="p-6 bg-slate-800 rounded-xl border border-slate-700">
-              <div className="text-xs text-slate-500 mb-1">{t.score}</div>
-              <div className="text-5xl font-bold text-blue-400" data-testid="feedback-score">
-                {score}
-                <span className="text-lg text-slate-500">/100</span>
+            {/* Score + clear time */}
+            <div className="grid grid-cols-2 gap-4 mb-8">
+              <div className="p-6 bg-slate-800 rounded-xl border border-slate-700">
+                <div className="text-xs text-slate-500 mb-1">{t.score}</div>
+                <div className="text-5xl font-bold text-blue-400" data-testid="feedback-score">
+                  {score}
+                  <span className="text-lg text-slate-500">/100</span>
+                </div>
+              </div>
+              <div className="p-6 bg-slate-800 rounded-xl border border-slate-700">
+                <div className="text-xs text-slate-500 mb-1">{t.clearTime}</div>
+                <div className="text-5xl font-bold" data-testid="feedback-time">
+                  {clearTime}
+                </div>
               </div>
             </div>
-            <div className="p-6 bg-slate-800 rounded-xl border border-slate-700">
-              <div className="text-xs text-slate-500 mb-1">{t.clearTime}</div>
-              <div className="text-5xl font-bold" data-testid="feedback-time">
-                {clearTime}
-              </div>
-            </div>
-          </div>
 
-          {/* AI instructor feedback (original strings) */}
-          <div className="mb-8 p-6 bg-slate-800 rounded-xl border border-slate-700">
-            <h3 className="text-lg font-bold mb-4 text-green-400 flex items-center gap-2">
-              <span>✨</span> {t.aiInstructorFeedback}
-            </h3>
-            <div className="space-y-4 text-slate-300 leading-relaxed">
-              {kaizenLogs.length === 0 ? (
-                <p>{t.feedbackPerfect}</p>
+            {/* AI instructor feedback (original strings) */}
+            <div className="mb-8 p-6 bg-slate-800 rounded-xl border border-slate-700">
+              <h3 className="text-lg font-bold mb-4 text-green-400 flex items-center gap-2">
+                <span>✨</span> {t.aiInstructorFeedback}
+              </h3>
+              <div className="space-y-4 text-slate-300 leading-relaxed">
+                {kaizenLogs.length === 0 ? (
+                  <p>{t.feedbackPerfect}</p>
+                ) : (
+                  <>
+                    <p>{t.feedbackStable}</p>
+                    <div className="mt-4">
+                      <span className="text-yellow-400 font-bold">{t.improvementPoints}</span>
+                      <ul className="list-disc list-inside mt-2 space-y-2 text-sm" data-testid="feedback-kaizen">
+                        {kaizenLogs.map((log, i) => (
+                          <li key={i}>
+                            <span className="font-bold text-white">{log.message}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Per-checkpoint results */}
+            <div className="mb-8 p-6 bg-slate-800 rounded-xl border border-slate-700">
+              <h3 className="text-lg font-bold mb-4 text-blue-400">{t.checkpoints}</h3>
+              {gradedCheckpoints.length === 0 ? (
+                <p className="text-slate-500 text-sm">{t.noCheckpoints}</p>
               ) : (
-                <>
-                  <p>{t.feedbackStable}</p>
-                  <div className="mt-4">
-                    <span className="text-yellow-400 font-bold">{t.improvementPoints}</span>
-                    <ul className="list-disc list-inside mt-2 space-y-2 text-sm" data-testid="feedback-kaizen">
-                      {kaizenLogs.map((log, i) => (
-                        <li key={i}>
-                          <span className="font-bold text-white">{log.message}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </>
+                <ul className="space-y-2">
+                  {gradedCheckpoints.map((cp) => {
+                    const cleared = clearedCheckpointIds.includes(cp.id);
+                    return (
+                      <li
+                        key={cp.id}
+                        data-testid={`feedback-checkpoint-${cp.id}`}
+                        data-cleared={cleared}
+                        className="flex items-center justify-between px-4 py-3 rounded-lg bg-slate-900/60 border border-slate-700"
+                      >
+                        <span className="text-sm">
+                          {/* Localized name (never the mixed-language cp.label) —
+                              the id map covers all current checkpoints; the type
+                              name is the fallback for future ones. */}
+                          <span className="font-bold">
+                            {CHECKPOINT_NAMES[cp.id]?.[language] ?? typeName(cp.type)}
+                          </span>
+                        </span>
+                        <span
+                          className={`text-sm font-bold px-3 py-1 rounded ${
+                            cleared ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                          }`}
+                        >
+                          {cleared ? `✓ ${t.cleared}` : `✗ ${t.missed}`}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </div>
-          </div>
 
-          {/* Per-checkpoint results */}
-          <div className="mb-8 p-6 bg-slate-800 rounded-xl border border-slate-700">
-            <h3 className="text-lg font-bold mb-4 text-blue-400">{t.checkpoints}</h3>
-            {gradedCheckpoints.length === 0 ? (
-              <p className="text-slate-500 text-sm">{t.noCheckpoints}</p>
-            ) : (
-              <ul className="space-y-2">
-                {gradedCheckpoints.map((cp) => {
-                  const cleared = clearedCheckpointIds.includes(cp.id);
-                  return (
-                    <li
-                      key={cp.id}
-                      data-testid={`feedback-checkpoint-${cp.id}`}
-                      data-cleared={cleared}
-                      className="flex items-center justify-between px-4 py-3 rounded-lg bg-slate-900/60 border border-slate-700"
-                    >
-                      <span className="text-sm">
-                        {/* Localized name (never the mixed-language cp.label) —
-                            the id map covers all current checkpoints; the type
-                            name is the fallback for future ones. */}
-                        <span className="font-bold">
-                          {CHECKPOINT_NAMES[cp.id]?.[language] ?? typeName(cp.type)}
-                        </span>
-                      </span>
-                      <span
-                        className={`text-sm font-bold px-3 py-1 rounded ${
-                          cleared ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
-                        }`}
-                      >
-                        {cleared ? `✓ ${t.cleared}` : `✗ ${t.missed}`}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-4 pb-8">
-            <button
-              onClick={handleRetry}
-              data-testid="feedback-retry"
-              className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors shadow-lg shadow-blue-900/20"
-            >
-              {t.retry}
-            </button>
-            <button
-              onClick={handleHome}
-              data-testid="feedback-home"
-              className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition-colors border border-slate-600"
-            >
-              {COMMON_STRINGS.backToHome[language]}
-            </button>
-          </div>
+            {/* Actions */}
+            <div className="flex gap-4 pb-8">
+              <button
+                onClick={handleRetry}
+                data-testid="feedback-retry"
+                className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors shadow-lg shadow-blue-900/20"
+              >
+                {t.retry}
+              </button>
+              <button
+                onClick={handleHome}
+                data-testid="feedback-home"
+                className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition-colors border border-slate-600"
+              >
+                {COMMON_STRINGS.backToHome[language]}
+              </button>
+            </div>
           </div>
         </div>
       </div>

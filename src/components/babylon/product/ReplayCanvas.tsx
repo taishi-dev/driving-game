@@ -42,6 +42,13 @@ export default function ReplayCanvas() {
 
     let handle: ReplaySceneHandle | null = null;
     let disposed = false;
+    // Test/e2e-only telemetry hook, gated exactly like `__drivingStore` (store.ts)
+    // and `__driveDebug`: build-time NEXT_PUBLIC_E2E + runtime `?e2e`, so it never
+    // ships to a real deploy.
+    const exposeDebug =
+      process.env.NEXT_PUBLIC_E2E === "1" &&
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).has("e2e");
     let lastViewMode = useDrivingStore.getState().replayViewMode;
     let elapsedMs = 0;
     let lastTime = performance.now();
@@ -59,7 +66,8 @@ export default function ReplayCanvas() {
         // Debug hook for headless/e2e verification: replay playback telemetry
         // (no user data) — car position, elapsed time, loop count, camera mode.
         let loops = 0;
-        (window as unknown as { __replayDebug?: unknown }).__replayDebug = {
+        if (exposeDebug)
+          (window as unknown as { __replayDebug?: unknown }).__replayDebug = {
           getState: () => {
             const p = h.getCarPosition();
             return {
@@ -119,7 +127,7 @@ export default function ReplayCanvas() {
     return () => {
       disposed = true;
       window.removeEventListener("resize", onResize);
-      delete (window as unknown as { __replayDebug?: unknown }).__replayDebug;
+      if (exposeDebug) delete (window as unknown as { __replayDebug?: unknown }).__replayDebug;
       engine.stopRenderLoop();
       if (handle) handle.dispose();
       engine.dispose();

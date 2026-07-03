@@ -356,9 +356,13 @@ export async function buildDriveWorld(scene: Scene): Promise<DriveWorldResult> {
   const isRoadMesh = (mesh: AbstractMesh): boolean => rayGrounds.has(mesh);
 
   // ── 10. Dispose helper ──────────────────────────────────────────────────────────
+  // Dispose in REVERSE push order: tile roots (and the instances hanging off
+  // them) were pushed after their source templates, so reversing disposes the
+  // instances before the geometry they instance. (Babylon's dispose is
+  // idempotent, so forward order was harmless — this is just the tidy order.)
   const dispose = () => {
-    for (const m of disposables) {
-      m.dispose(false, true);
+    for (let i = disposables.length - 1; i >= 0; i--) {
+      disposables[i].dispose(false, true);
     }
   };
 

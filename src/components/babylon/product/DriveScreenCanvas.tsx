@@ -61,6 +61,17 @@ export default function DriveScreenCanvas() {
     let mission: MissionRuntime | null = null;
     let disposed = false;
 
+    // `__driveDebug` is a test/e2e-only hook that also exposes behavior injection
+    // (setInput / teleport / reset). Gate it exactly like `__drivingStore`
+    // (store.ts): build-time NEXT_PUBLIC_E2E === "1" (dead-code-eliminated from
+    // prod bundles) AND runtime `?e2e`, so it can never reach a real deploy. The
+    // on-screen FPS badge (data-testid="drive-fps") stays available for the B12
+    // measurement regardless of this gate.
+    const exposeDebug =
+      process.env.NEXT_PUBLIC_E2E === "1" &&
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).has("e2e");
+
     const store = useDrivingStore.getState();
     // Each fresh drive session starts in Drive: gear is global store state that
     // otherwise persists across scene re-entry (e.g. a prior reverse leaving "R").
@@ -124,7 +135,8 @@ export default function DriveScreenCanvas() {
         let debugOverride:
           | { throttle: number; brake: number; steer: number }
           | null = null;
-        (window as unknown as { __driveDebug?: unknown }).__driveDebug = {
+        if (exposeDebug)
+          (window as unknown as { __driveDebug?: unknown }).__driveDebug = {
           getState: () => {
             const p = h.vehicle.getChassisPosition();
             const st = useDrivingStore.getState();
@@ -214,7 +226,7 @@ export default function DriveScreenCanvas() {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
-      delete (window as unknown as { __driveDebug?: unknown }).__driveDebug;
+      if (exposeDebug) delete (window as unknown as { __driveDebug?: unknown }).__driveDebug;
       engine.stopRenderLoop();
       mission?.dispose();
       if (handle) handle.scene.dispose();

@@ -10,6 +10,18 @@
  * be exercised by `node --test` without the 3D engine.
  */
 
+/**
+ * On-screen placement of the mirror overlay, as fractions of the canvas.
+ * SINGLE SOURCE OF TRUTH: consumed both by the Babylon compositor
+ * (`rearviewMirror.ts`, which frames the RTT into this rectangle) AND by the
+ * DrivingScreen DOM bezel that overlays it — kept here (Babylon-free) so the two
+ * can never silently drift. `MIRROR_ASPECT` must equal the RTT's width/height
+ * (512/256) in `rearviewMirror.ts`.
+ */
+export const MIRROR_WIDTH_FRAC = 0.26;
+export const MIRROR_TOP_MARGIN_FRAC = 0.02;
+export const MIRROR_ASPECT = 2;
+
 export interface ViewportRect {
   x: number;
   y: number;

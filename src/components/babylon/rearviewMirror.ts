@@ -27,16 +27,20 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Engine } from "@babylonjs/core/Engines/engine";
 
-import { computeMirrorViewport, mirrorCameraLocalOffset } from "../../lib/mirrorLayout";
+import {
+  computeMirrorViewport,
+  mirrorCameraLocalOffset,
+  MIRROR_WIDTH_FRAC,
+  MIRROR_TOP_MARGIN_FRAC,
+  MIRROR_ASPECT,
+} from "../../lib/mirrorLayout";
 
-/** RTT resolution: modest, per B12's per-frame cost budget. 2:1, like a real mirror. */
+/** RTT resolution: modest, per B12's per-frame cost budget. 2:1 (== MIRROR_ASPECT),
+ *  like a real mirror. On-screen size/placement fractions (MIRROR_WIDTH_FRAC /
+ *  MIRROR_TOP_MARGIN_FRAC) and the aspect now live in the Babylon-free
+ *  mirrorLayout.ts so the DrivingScreen DOM bezel shares the exact same numbers. */
 const MIRROR_RTT_WIDTH = 512;
 const MIRROR_RTT_HEIGHT = 256;
-const MIRROR_ASPECT = MIRROR_RTT_WIDTH / MIRROR_RTT_HEIGHT;
-
-/** On-screen size/placement: top-center, ~a quarter of the canvas wide. */
-const MIRROR_WIDTH_FRAC = 0.26;
-const MIRROR_TOP_MARGIN_FRAC = 0.02;
 
 /**
  * Layer bit reserved for the mirror's overlay plane. Every other camera in

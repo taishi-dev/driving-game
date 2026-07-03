@@ -1,15 +1,22 @@
 /**
  * B9 — shared ja/en strings used by MORE THAN ONE product screen.
  *
- * Before this module, `appTitle` and `backToHome` were each defined locally in
- * 3+ screens' own `STRINGS` blocks and had drifted: the port introduced a
- * "ホームへ戻る" variant (StubScreens, DrivingScreen's exit button) alongside
- * the canonical "ホームに戻る" used by FeedbackScreen/TutorialScreen (which in
- * turn matches the original app's `ui/FeedbackScreen.tsx`, `ui/PauseMenu.tsx`,
- * `ui/HistoryScreen.tsx`, `ui/TutorialScreen.tsx`). This module is the single
- * source of truth for those two strings; screen-specific strings (that
- * legitimately differ in wording per screen, e.g. the tutorial's closing CTA
- * "Return Home") stay local per the B9 brief's "keep pragmatic" guidance.
+ * Before this module, `appTitle` and the "back to Home" nav label were each
+ * defined locally in 3+ screens' own `STRINGS` blocks and had drifted. This
+ * module is now the single source of truth for the strings shared across
+ * screens:
+ *   - `appTitle` — the plain app name;
+ *   - `backToHome` — the canonical "ホームに戻る" (に particle) used by
+ *     FeedbackScreen / TutorialScreen / HistoryScreen, matching the original
+ *     app's `ui/FeedbackScreen.tsx`, `ui/PauseMenu.tsx`, `ui/HistoryScreen.tsx`,
+ *     `ui/TutorialScreen.tsx`;
+ *   - `exitToHome` — the DrivingScreen exit button's "ホームへ戻る" (へ
+ *     particle). This is a DELIBERATE per-screen wording difference (it matches
+ *     the original DrivingScreen pause overlay), NOT drift — hence a separate
+ *     key rather than folding it into `backToHome`.
+ * Screen-specific strings that legitimately differ in wording per screen (e.g.
+ * the tutorial's closing CTA "Return Home") stay local per the B9 brief's "keep
+ * pragmatic" guidance.
  *
  * Pure (no @babylonjs / browser / firebase imports), following the
  * `lessonCatalog.ts` pattern so it is exercised by `node --test` directly.

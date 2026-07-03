@@ -36,9 +36,13 @@ import {
 import { buildDriveWorld } from "./driveWorld";
 import { setupRearviewMirror } from "./rearviewMirror";
 
-/** Chassis half-extents (m): a compact test box car. */
-const CHASSIS = { hw: 0.9, hh: 0.4, hl: 2.0 } as const;
-const WHEEL_RADIUS = 0.4;
+/**
+ * Chassis half-extents (m): a compact test box car. Exported as the single
+ * source of truth — the replay scene (replayScene.ts) imports these so the
+ * replay car's proportions can never silently drift from the drive car's.
+ */
+export const CHASSIS = { hw: 0.9, hh: 0.4, hl: 2.0 } as const;
+export const WHEEL_RADIUS = 0.4;
 
 /**
  * B5: off-track detection — car is considered "off track" when more than
