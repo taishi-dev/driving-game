@@ -90,8 +90,9 @@ export interface VehicleInput {
    * Signed drive throttle: positive = forward drive request, negative =
    * reverse drive request (B6 gear "R"), 0 = no drive force (gear "P" or no
    * gas). Magnitude is 0..1. The sign flips which way the drive force points
-   * along the wheel's forward axis; it does NOT touch steering, so a raycast
-   * wheel corners the same way in both gears (see `src/lib/driveControls.ts`).
+   * along the wheel's forward axis; it does NOT touch steering. The steer input
+   * magnitude is gear-invariant, but yaw direction flips in reverse because
+   * velocity sign flips (see `src/lib/driveControls.ts`).
    */
   throttle: number;
   /** 0..1 brake. Independent of gear — always opposes current motion. */
@@ -117,9 +118,9 @@ export class RaycastVehicle {
   /**
    * Debug snapshot from the last update (headless verification aid).
    * `angularVelY` is the chassis's world-Y (yaw) angular velocity (rad/s):
-   * B6 verification uses its SIGN to confirm steering yaws the body the same
-   * way in gear D and gear R (steering is not gear-dependent — see
-   * `src/lib/driveControls.ts`).
+   * B6 verification uses its SIGN to confirm the yaw direction flips in reverse
+   * (steering input is gear-invariant, but yaw ∝ velocity × steer, so reverse
+   * reverses yaw direction — see `src/lib/driveControls.ts`).
    */
   readonly debug = {
     groundedWheels: 0,
@@ -274,8 +275,8 @@ export class RaycastVehicle {
       // `throttle` is signed (B6): positive drives forward, negative drives
       // in reverse (gear "R"), 0 applies no drive force (gear "P" or no gas).
       // The force is still applied along `wheelForward` — only its magnitude's
-      // sign flips — so steering is unaffected by gear (turning left yaws the
-      // body the same way in D and R).
+      // sign flips — so steer input is gear-invariant, but yaw direction flips
+      // in reverse (yaw ∝ velocity × steer angle).
       if (cfg.isPowered && this.input.throttle !== 0) {
         const driveMag = (T.engineForce * this.input.throttle) / poweredCount;
         const drive = wheelForward.scale(driveMag);

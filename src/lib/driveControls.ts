@@ -22,10 +22,10 @@
  *   - Gear ∈ {"P", "D", "R"}, default "D".
  *   - D = forward drive force, R = drive force reversed, P = no drive force
  *     (the car holds/rolls to a stop under brake/rolling resistance).
- *   - Steering is NOT gear-dependent: turning the wheel left yaws the body
- *     the same way in D and R (physically emergent in the raycast vehicle —
- *     the drive force's sign flips, but the front wheels' steer direction
- *     does not).
+ *   - Steering input is NOT gear-dependent: the steer signal (left/right/straight)
+ *     is the same in D and R. However, the resulting yaw direction FLIPS because
+ *     velocity sign flips in reverse (yaw rate ∝ velocity × steer angle), so the
+ *     car yaws opposite ways in D vs R for the same steer input.
  *   - Gear-select keys are "1"/"2"/"3" (P/D/R). The scene's existing "R" key
  *     resets the car (test-scene debug feature, predates B6); reusing "r" for
  *     Reverse would collide with that binding, and "d" is already steer-right,

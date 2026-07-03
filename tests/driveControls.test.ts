@@ -5,6 +5,7 @@ import {
   DEFAULT_GEAR,
   STEER_MAGNITUDE,
   GEAR_KEY_MAP,
+  normalizeKey,
   gearForKey,
   nextGear,
   isGasPressed,
@@ -50,11 +51,31 @@ test("nextGear leaves the gear unchanged for a non-gear key", () => {
   assert.equal(nextGear("R", "ArrowUp"), "R");
 });
 
+// ─── Key normalization (Caps Lock → lowercase single chars) ─────────────────
+
+test("normalizeKey lowercases single-character keys", () => {
+  assert.equal(normalizeKey("W"), "w");
+  assert.equal(normalizeKey("A"), "a");
+  assert.equal(normalizeKey("S"), "s");
+  assert.equal(normalizeKey("D"), "d");
+});
+
+test("normalizeKey passes through named keys unchanged", () => {
+  assert.equal(normalizeKey("ArrowUp"), "ArrowUp");
+  assert.equal(normalizeKey("ArrowDown"), "ArrowDown");
+  assert.equal(normalizeKey("ArrowLeft"), "ArrowLeft");
+  assert.equal(normalizeKey("ArrowRight"), "ArrowRight");
+});
+
 // ─── Key-state predicates (Caps-Lock-safe: single chars normalized to lower) ─
 
-test("isGasPressed is true for w, W (caps), or ArrowUp", () => {
+test("isGasPressed is true for normalized w or ArrowUp (Caps Lock handled by normalizeKey)", () => {
   assert.equal(isGasPressed({ w: true }), true);
   assert.equal(isGasPressed({ ArrowUp: true }), true);
+  // Raw uppercase W does not match (keys must be pre-normalized):
+  assert.equal(isGasPressed({ W: true }), false);
+  // But when normalized first, it works (composition with normalizeKey):
+  assert.equal(isGasPressed({ [normalizeKey("W")]: true }), true);
   assert.equal(isGasPressed({}), false);
 });
 
