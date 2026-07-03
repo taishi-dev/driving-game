@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useDrivingStore } from "@/lib/store";
 import { HOME_ENTRIES, type HomeEntry } from "@/lib/lessonCatalog";
+import { auth } from "@/lib/firebase";
 
 // Babylon showroom hero as a static background. Client-only (WebGL/window).
 const HomeHeroCanvas = dynamic(() => import("./HomeHeroCanvas"), { ssr: false });
@@ -15,9 +16,12 @@ const STRINGS = {
     select: "コースを選択",
     ready: "/ 全システム準備完了",
     start: "開始",
-    player: "プレイヤー: ゲスト",
+    playerPrefix: "プレイヤー: ",
+    guest: "ゲスト",
+    driverFallback: "ドライバー",
     loginRegister: "ログイン / 登録",
     history: "走行履歴",
+    logout: "ログアウト",
   },
   en: {
     title1: "VIRTUAL",
@@ -26,17 +30,21 @@ const STRINGS = {
     select: "SELECT COURSE",
     ready: "/ ALL SYSTEMS READY",
     start: "START",
-    player: "PLAYER: GUEST",
+    playerPrefix: "PLAYER: ",
+    guest: "GUEST",
+    driverFallback: "DRIVER",
     loginRegister: "Login / Register",
     history: "History",
+    logout: "Logout",
   },
 } as const;
 
 /**
  * B7b Home screen (rewritten for the Babylon port — does NOT import the old R3F
  * HomeScreen/GarageScene). Static Babylon showroom hero behind an overlay: title,
- * language toggle, a stubbed PLAYER header, and lesson-select cards driven by the
- * pure `lessonCatalog`. Selecting a card routes via the engine-agnostic store:
+ * language toggle, the PLAYER header (guest/user + auth/history/logout, B10), and
+ * lesson-select cards driven by the pure `lessonCatalog`. Selecting a card routes
+ * via the engine-agnostic store:
  *   - tutorial  -> tutorial screen
  *   - free-mode -> setLesson (store sets missionState "active") + driving
  *   - lesson    -> setLesson (store sets missionState "briefing") + driving
@@ -46,7 +54,19 @@ export function HomeScreen() {
   const setScreen = useDrivingStore((s) => s.setScreen);
   const language = useDrivingStore((s) => s.language);
   const setLanguage = useDrivingStore((s) => s.setLanguage);
+  const user = useDrivingStore((s) => s.user);
+  const setUser = useDrivingStore((s) => s.setUser);
+  const setMissionHistory = useDrivingStore((s) => s.setMissionHistory);
   const t = STRINGS[language];
+
+  // Original ClientApp logout semantics: sign out (fail-soft: `auth` is null
+  // when unconfigured — but then nobody can be logged in anyway), then clear
+  // the store's user + cached history.
+  const handleLogout = async () => {
+    if (auth) await auth.signOut();
+    setUser(null);
+    setMissionHistory([]);
+  };
 
   const handleSelect = (entry: HomeEntry) => {
     if (entry.kind === "tutorial") {
@@ -65,19 +85,55 @@ export function HomeScreen() {
         <HomeHeroCanvas />
       </div>
 
-      {/* PLAYER header stub (real auth is B10). */}
+      {/* PLAYER header (B10): shows GUEST or the signed-in user's name, with
+          Login/Register for guests and History | Logout when signed in
+          (original ClientApp UserProfileHeader semantics). */}
       <div className="absolute top-6 right-6 z-20 flex flex-col items-end gap-2 pointer-events-auto">
-        <div className="px-5 py-2 bg-slate-800/90 border-l-4 border-blue-500 rounded-r text-sm font-mono tracking-widest">
-          {t.player}
+        <div
+          className="px-5 py-2 bg-slate-800/90 border-l-4 border-blue-500 rounded-r text-sm font-mono tracking-widest"
+          data-testid="player-header"
+        >
+          {t.playerPrefix}
+          {user ? user.email?.split("@")[0]?.toUpperCase() || t.driverFallback : t.guest}
         </div>
         <div className="flex gap-3 text-xs font-mono">
-          <button onClick={() => setScreen("auth")} className="text-cyan-400 hover:text-cyan-300 transition-colors">
-            {t.loginRegister}
-          </button>
-          <span className="text-slate-600">|</span>
-          <button onClick={() => setScreen("history")} className="text-cyan-400 hover:text-cyan-300 transition-colors underline">
-            {t.history}
-          </button>
+          {user ? (
+            <>
+              <button
+                onClick={() => setScreen("history")}
+                data-testid="home-history"
+                className="text-cyan-400 hover:text-cyan-300 transition-colors underline"
+              >
+                {t.history}
+              </button>
+              <span className="text-slate-600">|</span>
+              <button
+                onClick={handleLogout}
+                data-testid="home-logout"
+                className="text-slate-400 hover:text-red-400 transition-colors"
+              >
+                {t.logout}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setScreen("auth")}
+                data-testid="home-login"
+                className="text-cyan-400 hover:text-cyan-300 transition-colors"
+              >
+                {t.loginRegister}
+              </button>
+              <span className="text-slate-600">|</span>
+              <button
+                onClick={() => setScreen("history")}
+                data-testid="home-history"
+                className="text-cyan-400 hover:text-cyan-300 transition-colors underline"
+              >
+                {t.history}
+              </button>
+            </>
+          )}
         </div>
       </div>
 

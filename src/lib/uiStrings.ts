@@ -26,7 +26,7 @@ export const COMMON_STRINGS = {
    * split for the colored-span branding treatment). */
   appTitle: { ja: "バーチャル教習所", en: "Virtual Driving School" },
   /** Canonical "return to Home" nav action, shared by FeedbackScreen,
-   * TutorialScreen, and StubScreens (uses に particle per original app). */
+   * TutorialScreen, and HistoryScreen (uses に particle per original app). */
   backToHome: { ja: "ホームに戻る", en: "Back to Home" },
   /** DrivingScreen exit button "Back to Home" — uses へ particle per original
    * DrivingScreen pause overlay (ClientApp.tsx), distinct from backToHome's に. */

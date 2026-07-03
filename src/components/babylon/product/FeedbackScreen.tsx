@@ -1,11 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useDrivingStore } from "@/lib/store";
 import { MISSION_CHECKPOINTS } from "@/lib/mission/missions";
 import { getLessonTitle } from "@/lib/lessonCatalog";
 import { COMMON_STRINGS, CHECKPOINT_NAMES } from "@/lib/uiStrings";
+import { buildMissionLog } from "@/lib/missionLog";
+import { db } from "@/lib/firebase";
+import { addDoc, collection } from "firebase/firestore";
 
 // The replay scene is client-only (WebGL/window + Havok WASM), so load it lazily.
 const ReplayCanvas = dynamic(() => import("./ReplayCanvas"), { ssr: false });
@@ -21,8 +24,44 @@ const ReplayCanvas = dynamic(() => import("./ReplayCanvas"), { ssr: false });
  *     the frozen scoring.ts);
  *   - per-checkpoint results over the lesson's scored checkpoints (scored !== false,
  *     excluding the traffic-light signal, whose grading is the signal-violation path).
- * No Firebase here (history persistence is B10) and no replay scene (B8).
+ *
+ * B10: on mount, a signed-in user's result is persisted once to the Firestore
+ * `mission_logs` collection — the SAME path and field set as the original
+ * `ui/FeedbackScreen.tsx` saveResultToFirestore (the deployed owner-isolation
+ * rules validate that exact shape; see `@/lib/missionLog`). Guests and
+ * unconfigured-Firebase deployments skip the save entirely (fail-soft, no crash).
  */
+
+/**
+ * Persist the completed run for the signed-in user. Reads the store snapshot
+ * directly (module-level, no render-scope captures) so the mount effect below
+ * stays dependency-free and lint-clean. No-ops for guests / when Firebase is
+ * unconfigured (`db` null); save failures are logged, never thrown (a failed
+ * save must not break the feedback screen — original semantics).
+ */
+async function saveResultToFirestore(): Promise<void> {
+  if (!db) return; // guest-only mode: nothing to persist to
+  const state = useDrivingStore.getState();
+  const user = state.user;
+  if (!user) return;
+  try {
+    const logData = buildMissionLog({
+      userId: user.uid,
+      lesson: state.currentLesson,
+      timestamp: Date.now(),
+      language: state.language,
+      feedbackLogs: state.feedbackLogs,
+      deviationPenalty: state.deviationPenalty,
+      missionStartTime: state.missionStartTime,
+      missionEndTime: state.missionEndTime,
+    });
+    const docRef = await addDoc(collection(db, "mission_logs"), logData);
+    // Update the store's cached history too (avoids a re-fetch on History).
+    state.addHistoryItem({ id: docRef.id, ...logData });
+  } catch (e) {
+    console.error("Failed to save record", e);
+  }
+}
 
 const STRINGS = {
   ja: {
@@ -93,6 +132,18 @@ export function FeedbackScreen() {
     setIsReplaying(true);
     return () => setIsReplaying(false);
   }, [setIsReplaying]);
+
+  // Save the result once per mount (B10). `saveResultToFirestore` is module-level
+  // and reads the store snapshot itself, so this effect genuinely has no reactive
+  // dependencies (unlike the original's warned effect). The ref survives the
+  // strict-mode double-invoke, preventing a dev-mode double save; a retry
+  // unmounts the screen, so the next completed run saves again as intended.
+  const savedRef = useRef(false);
+  useEffect(() => {
+    if (savedRef.current) return;
+    savedRef.current = true;
+    void saveResultToFirestore();
+  }, []);
 
   const kaizenLogs = feedbackLogs.filter((l) => l.type === "KAIZEN");
 

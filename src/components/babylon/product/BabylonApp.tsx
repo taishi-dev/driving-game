@@ -1,13 +1,16 @@
 "use client";
 
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, useEffect, type ErrorInfo, type ReactNode } from "react";
 import { useDrivingStore } from "@/lib/store";
 import { HomeScreen } from "./HomeScreen";
 import { LanguageScreen } from "./LanguageScreen";
 import { DrivingScreen } from "./DrivingScreen";
 import { FeedbackScreen } from "./FeedbackScreen";
 import { TutorialScreen } from "./TutorialScreen";
-import { AuthScreen, HistoryScreen } from "./StubScreens";
+import { AuthScreen } from "./AuthScreen";
+import { HistoryScreen } from "./HistoryScreen";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 /**
  * B7b — the Babylon product app shell. THIS is the product at `/` now (the old
@@ -16,8 +19,10 @@ import { AuthScreen, HistoryScreen } from "./StubScreens";
  * store and renders exactly one screen. First launch with no saved language
  * starts on the picker (store `screen` init); afterwards it starts on Home.
  *
- * No Firebase here: auth/history are B10 stubs, so the shell stays fail-soft and
- * never imports config-dependent modules at the root.
+ * B10: the shell restores the persisted Firebase auth session on load (original
+ * ClientApp semantics). `@/lib/firebase` is the single FAIL-SOFT entry — with no
+ * NEXT_PUBLIC_FIREBASE_* config it exports `auth = null` instead of throwing at
+ * import, so the whole product still boots and runs as guest with zero config.
  */
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: string }> {
@@ -77,6 +82,21 @@ function ScreenRouter() {
 }
 
 export default function BabylonApp() {
+  // Restore the persisted Firebase auth session on load (original ClientApp
+  // semantics): Firebase keeps the session in browserLocalPersistence, but the
+  // store re-inits `user` to null on every page load — without this, a reload
+  // silently demotes the user to guest (history won't load, runs aren't saved).
+  // Fail-soft: `auth` is null when Firebase is unconfigured, so this is a no-op.
+  useEffect(() => {
+    if (!auth) return;
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      const store = useDrivingStore.getState();
+      store.setUser(u);
+      if (!u) store.setMissionHistory([]);
+    });
+    return unsubscribe;
+  }, []);
+
   return (
     <ErrorBoundary>
       <div
