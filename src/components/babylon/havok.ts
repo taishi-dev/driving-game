@@ -17,21 +17,32 @@ import { HavokPlugin } from "@babylonjs/core/Physics/v2/Plugins/havokPlugin";
  * The plugin is created with `useDeltaForWorldStep = true` (first ctor arg) so
  * Havok steps by the real frame delta — matching our frame-rate-independent
  * physics discipline.
+ *
+ * We cache the WASM MODULE (expensive, instantiated once) but return a FRESH
+ * HavokPlugin per call. A plugin owns a Havok world that is released when its
+ * scene is disposed; caching the plugin itself meant a second drive scene
+ * (e.g. exit driving -> re-enter, or lesson -> home -> free-mode in B7b) reused
+ * a torn-down world and threw "Cannot read properties of undefined (reading
+ * 'floatingOrigin')". A new plugin from the shared module gives each scene its
+ * own live world; multiple worlds off one module are supported by Havok.
  */
 
 const HAVOK_WASM_URL = "/havok/HavokPhysics.wasm";
 
-let cached: Promise<HavokPlugin> | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let modulePromise: Promise<any> | null = null;
 
 /**
- * Initialize (once) and return a ready HavokPlugin. Safe to call repeatedly;
- * the underlying WASM module is instantiated a single time and reused.
+ * Initialize the Havok WASM module (once) and return a ready HavokPlugin.
+ * Safe to call repeatedly: the WASM module is instantiated a single time and
+ * reused, but each call yields a fresh plugin/world for the calling scene.
  */
 export function getHavokPlugin(): Promise<HavokPlugin> {
-  if (cached) return cached;
-  cached = HavokPhysics({
-    locateFile: (file: string) =>
-      file.endsWith(".wasm") ? HAVOK_WASM_URL : file,
-  }).then((havok) => new HavokPlugin(true, havok));
-  return cached;
+  if (!modulePromise) {
+    modulePromise = HavokPhysics({
+      locateFile: (file: string) =>
+        file.endsWith(".wasm") ? HAVOK_WASM_URL : file,
+    });
+  }
+  return modulePromise.then((havok) => new HavokPlugin(true, havok));
 }
