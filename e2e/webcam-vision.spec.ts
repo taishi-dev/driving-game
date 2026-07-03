@@ -20,6 +20,11 @@ test.use({
   permissions: ["camera"],
 });
 
+// CI runners have no display server for a headed browser, and headless would
+// reintroduce the 1 FPS SwiftShader problem — this spec is local-only.
+// (The camera-DENIED path stays covered on CI by webcam-fallback.spec.ts.)
+test.skip(!!process.env.CI, "headed-only spec: requires a display + real GPU");
+
 type E2EState = {
   steeringAngle: number;
   screen: string;
