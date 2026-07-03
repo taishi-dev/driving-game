@@ -18,13 +18,17 @@
  * Layout covers the "straight" lesson (z ≈ +24 → -204) and first half of
  * left/right-turn lessons. Buildings and props are placed alongside the road.
  *
- * IMPORTANT (B5 fix): road tiles are placed by CLONING the loaded glTF root
- * hierarchy at each transform — NOT by thin-instancing. The glTF loader returns
- * the empty `__root__` mesh (0 vertices) as meshes[0]; the real geometry lives
- * in child meshes. Thin-instancing the empty root replicates nothing, so the
- * earlier implementation drew a single overlapping pile of tiles at the origin.
- * Cloning the root moves the whole child hierarchy, which is the pattern the
- * showroom scene uses for its single hero mesh.
+ * IMPORTANT (B5 fix, round 2): repeated road tiles are placed with REAL GPU
+ * instancing. The glTF loader returns the empty `__root__` mesh (0 vertices) as
+ * meshes[0]; the geometry lives in child primitives, each with an identity
+ * transform relative to the root (verified against the assets). For each
+ * placement we clone ONLY the 0-vertex root to reproduce its transform (RH→LH
+ * conversion + placement translation/rotation), then hang a hardware
+ * `createInstance()` of every geometry primitive off it. All tiles that share a
+ * source primitive collapse into a single draw call, instead of the earlier
+ * approach that cloned the whole geometry hierarchy per tile (~150 draw calls).
+ * Unique one-off pieces (buildings, props, asphalt fillers) still just move the
+ * loaded root — instancing buys nothing for a single copy.
  *
  * Also: Quaternius GLBs carry baked vertex colors (COLOR_0). Babylon's glTF
  * loader multiplies those into the PBR base color, which tints every surface a
@@ -40,6 +44,8 @@ import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { ImportMeshAsync } from "@babylonjs/core/Loading/sceneLoader";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
+// Side-effect: registers createInstance/InstancedMesh support (tree-shaken build).
+import "@babylonjs/core/Meshes/instancedMesh";
 import { PhysicsBody } from "@babylonjs/core/Physics/v2/physicsBody";
 import { PhysicsShapeBox } from "@babylonjs/core/Physics/v2/physicsShape";
 import { PhysicsMotionType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin";
@@ -51,6 +57,16 @@ import type { Node } from "@babylonjs/core/node";
 import { registerBuiltInLoaders } from "@babylonjs/loaders/dynamic";
 import { DracoCompression } from "@babylonjs/core/Meshes/Compression/dracoCompression";
 import "@babylonjs/core/Physics/joinedPhysicsEngineComponent";
+
+// Pure layout math + coordinate contract (no Babylon deps; unit-tested).
+import {
+  TILE_W,
+  TILE_L,
+  ROAD_Y,
+  STRAIGHT_START_Z,
+  STRAIGHT_TILE_COUNT,
+  checkCoordinateContract,
+} from "../../lib/driveLayout";
 
 registerBuiltInLoaders();
 
@@ -65,40 +81,9 @@ DracoCompression.Configuration = {
 
 const GLB_BASE = "/models3d/world/quaternius/";
 
-// ─── Tile dimensions (measured / verified from Quaternius urban pack) ────────
-/** Street_2Lane tile: 6 m wide, 12 m long (Z direction). */
-const TILE_W = 6;
-const TILE_L = 12;
-
-/** Road surface Y. */
-const ROAD_Y = 0;
-
-// ─── Coordinate-check contract ───────────────────────────────────────────────
-/**
- * Verify that the world's road centerline aligns with course.ts checkpoints.
- * course.ts "straight" lesson: (0,0,20) → (0,0,-200) at X=0, Y=0.
- * We assert the midpoint checkpoint (0,0,-90) lands inside the straight road
- * strip (|X| < TILE_W/2 = 3, Y ≈ 0).
- *
- * Throws if the coordinate contract fails.
- */
-function assertCoordinateContract(): { checkX: number; checkY: number; checkZ: number } {
-  // course.ts straight midpoint
-  const checkX = 0;
-  const checkY = 0;
-  const checkZ = -90;
-
-  // The straight road strip: X ∈ [-3, 3], Z ∈ [-204, +24], Y = 0.
-  const inStrip = Math.abs(checkX) < TILE_W / 2 && checkZ >= -204 && checkZ <= 24;
-  if (!inStrip) {
-    throw new Error(
-      `[B5] Coordinate contract FAILED: checkpoint (${checkX},${checkY},${checkZ}) ` +
-      `is outside road strip |X|<${TILE_W / 2}, Z∈[-204,24]. ` +
-      `Check tile alignment.`,
-    );
-  }
-  return { checkX, checkY, checkZ };
-}
+// Tile dimensions (TILE_W/TILE_L), ROAD_Y, the straight-layout constants and the
+// coordinate contract now live in ../../lib/driveLayout so they are shared with
+// the placement loop below AND unit-testable without Babylon.
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 export interface DriveWorldResult {
@@ -156,30 +141,55 @@ async function loadGlb(
  */
 export async function buildDriveWorld(scene: Scene): Promise<DriveWorldResult> {
   // 1. Verify coordinate contract (throws on mismatch, caught by caller).
-  const coord = assertCoordinateContract();
+  //    Derived from the SAME constants that place the tiles below.
+  const coord = checkCoordinateContract();
+  if (!coord.ok) {
+    throw new Error(`[B5] Coordinate contract FAILED: ${coord.reason}`);
+  }
   console.info(
-    `[B5] Coordinate contract OK — checkpoint (${coord.checkX}, ${coord.checkY}, ` +
-    `${coord.checkZ}) is inside road strip |X|<${TILE_W / 2}, Z∈[-204,24].`,
+    `[B5] Coordinate contract OK — checkpoint (${coord.checkpoint.x}, ` +
+    `${coord.checkpoint.y}, ${coord.checkpoint.z}) is inside road strip ` +
+    `X∈[${coord.strip.xMin},${coord.strip.xMax}], Z∈[${coord.strip.zMin},${coord.strip.zMax}].`,
   );
 
   const disposables: AbstractMesh[] = [];
   /** Root nodes whose subtree is driveable ground (identity membership). */
   const roadRoots = new Set<Node>();
 
-  // ── Load a tile TEMPLATE. It is hidden (disabled) and only cloned. ───────────
+  // ── Load a tile TEMPLATE. It stays in the scene (enabled) so its geometry can
+  //    be instanced, but the original geometry is hidden + non-pickable so it
+  //    neither draws nor catches wheel rays at the origin. ──────────────────────
   async function loadTemplate(filename: string, name: string): Promise<Mesh> {
     const m = await loadGlb(scene, filename, name);
-    m.setEnabled(false); // template never renders; clones do
+    m.isVisible = false;
+    m.isPickable = false;
+    for (const child of m.getChildMeshes(false)) {
+      child.isVisible = false;
+      child.isPickable = false;
+    }
     disposables.push(m);
     return m;
   }
 
+  /** The geometry-bearing primitives of a template (skips the 0-vertex root and
+   *  any empty intermediate TransformNode). */
+  function templateGeometry(template: Mesh): Mesh[] {
+    return template
+      .getChildMeshes(false)
+      .filter((m): m is Mesh => m.getTotalVertices() > 0);
+  }
+
   /**
-   * Clone a loaded template root at a world transform. Mirrors the showroom
-   * pattern (position/rotate the glTF root). The template's coordinate-system
-   * conversion lives in its scaling and is preserved by clone(); we only set
-   * translation (and rotation for turn pieces), exactly as the building
-   * placement below does.
+   * Place ONE repeated road tile using real GPU instancing.
+   *
+   * Clone only the 0-vertex glTF root to reproduce its transform (the RH→LH
+   * conversion — scaling (1,1,-1) + 180° Y — lives here and is preserved by
+   * clone()); then set translation and, for turn pieces, the Y rotation, exactly
+   * as the old clone path did. Each geometry primitive is added as a hardware
+   * `createInstance()` parented to that root. The primitives have identity
+   * transforms relative to the root, so an identity-local instance lands exactly
+   * where a full clone would — but every tile sharing a source primitive now
+   * batches into a single draw call.
    */
   function placeTile(
     template: Mesh,
@@ -189,17 +199,24 @@ export async function buildDriveWorld(scene: Scene): Promise<DriveWorldResult> {
     z: number,
     rotY = 0,
   ): Mesh {
-    const clone = template.clone(name);
-    if (!clone) throw new Error(`[B5] clone failed for ${name}`);
-    clone.setEnabled(true);
-    clone.position.set(x, y, z);
+    const tileRoot = template.clone(name, null, true); // root only, no children
+    if (!tileRoot) throw new Error(`[B5] clone failed for ${name}`);
+    tileRoot.setEnabled(true);
+    tileRoot.isVisible = false; // 0-vertex node, nothing to draw
+    tileRoot.isPickable = false;
+    tileRoot.position.set(x, y, z);
     if (rotY !== 0) {
-      clone.rotationQuaternion = Quaternion.RotationAxis(Vector3.Up(), rotY);
+      tileRoot.rotationQuaternion = Quaternion.RotationAxis(Vector3.Up(), rotY);
     }
-    disableVertexColors(clone);
-    roadRoots.add(clone);
-    disposables.push(clone);
-    return clone;
+    templateGeometry(template).forEach((gm, k) => {
+      const inst = gm.createInstance(`${name}_p${k}`);
+      inst.parent = tileRoot;
+      inst.isPickable = true; // wheel-raycast ground target
+      // Vertex-color tinting is disabled on the source mesh; instances inherit it.
+    });
+    roadRoots.add(tileRoot);
+    disposables.push(tileRoot);
+    return tileRoot;
   }
 
   // ── 2. Load road tile templates (hidden; cloned into place below). ───────────
@@ -215,8 +232,8 @@ export async function buildDriveWorld(scene: Scene): Promise<DriveWorldResult> {
   // Tile is 12 m long (Z axis), 6 m wide (X), centred at its origin.
   // Tile centres: starting at z=18 (covers 12..24), step -12 each, 19 tiles.
   // Last tile centre: z = 18 - 12*18 = -198 (covers -204..-192).
-  const STRAIGHT_START_Z = 18;
-  const STRAIGHT_TILE_COUNT = 19;
+  // STRAIGHT_START_Z / STRAIGHT_TILE_COUNT come from ../../lib/driveLayout so the
+  // coordinate contract is derived from these exact values.
   for (let i = 0; i < STRAIGHT_TILE_COUNT; i++) {
     const tz = STRAIGHT_START_Z - i * TILE_L;
     placeTile(street2L, `road_straight_${i}`, 0, ROAD_Y, tz);
@@ -341,14 +358,11 @@ export async function buildDriveWorld(scene: Scene): Promise<DriveWorldResult> {
 }
 
 /**
- * B5 coordinate check: returns the verified checkpoint position.
- * Call this from your bounded test to confirm axis/scale alignment.
+ * B5 coordinate check: returns the verified checkpoint position + pass flag.
+ * Thin wrapper over the pure, unit-tested `checkCoordinateContract` in
+ * ../../lib/driveLayout (see tests/driveLayout.test.ts).
  */
 export function b5CoordinateCheck(): { x: number; y: number; z: number; ok: boolean } {
-  try {
-    const c = assertCoordinateContract();
-    return { x: c.checkX, y: c.checkY, z: c.checkZ, ok: true };
-  } catch {
-    return { x: 0, y: 0, z: 0, ok: false };
-  }
+  const c = checkCoordinateContract();
+  return { x: c.checkpoint.x, y: c.checkpoint.y, z: c.checkpoint.z, ok: c.ok };
 }
