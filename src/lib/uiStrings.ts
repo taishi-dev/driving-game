@@ -15,21 +15,22 @@
  * `lessonCatalog.ts` pattern so it is exercised by `node --test` directly.
  */
 
-export type Language = "ja" | "en";
+// Re-export types from lessonCatalog (single source of truth).
+export type { Language, Localized } from "./lessonCatalog";
 
-export interface Localized {
-  ja: string;
-  en: string;
-}
+import type { Localized } from "./lessonCatalog";
 
 export const COMMON_STRINGS = {
   /** Plain (non-stylized) app name, used wherever the title isn't split into
    * a two-tone heading (the Home/Language screens keep their own stylized
    * split for the colored-span branding treatment). */
   appTitle: { ja: "バーチャル教習所", en: "Virtual Driving School" },
-  /** Canonical "return to Home" nav action, shared by every screen that just
-   * needs a plain back-to-Home link/button. */
+  /** Canonical "return to Home" nav action, shared by FeedbackScreen,
+   * TutorialScreen, and StubScreens (uses に particle per original app). */
   backToHome: { ja: "ホームに戻る", en: "Back to Home" },
+  /** DrivingScreen exit button "Back to Home" — uses へ particle per original
+   * DrivingScreen pause overlay (ClientApp.tsx), distinct from backToHome's に. */
+  exitToHome: { ja: "ホームへ戻る", en: "Back to Home" },
 } as const satisfies Record<string, Localized>;
 
 /**

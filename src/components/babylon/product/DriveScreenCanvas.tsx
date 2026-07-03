@@ -5,6 +5,7 @@ import { Engine } from "@babylonjs/core/Engines/engine";
 import { createDriveScene, type DriveSceneHandle } from "../driveScene";
 import { createMissionRuntime, type MissionRuntime } from "./missionRuntime";
 import { useDrivingStore, type SignalState } from "@/lib/store";
+import type { Localized } from "@/lib/uiStrings";
 import {
   DEFAULT_GEAR,
   normalizeKey,
@@ -17,7 +18,7 @@ import {
 
 // B9: the "loading" placeholder is user-visible (shown until the Havok/scene
 // promise resolves), so it must localize like the rest of the driving screen.
-const LOADING_TEXT = { ja: "3Dシーンを読み込み中…", en: "Loading 3D scene…" } as const;
+const LOADING_TEXT = { ja: "3Dシーンを読み込み中…", en: "Loading 3D scene…" } as const satisfies Localized;
 
 /**
  * B7b — the PRODUCT driving canvas: the Babylon drive scene wired to the

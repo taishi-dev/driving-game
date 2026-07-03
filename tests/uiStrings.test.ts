@@ -16,7 +16,7 @@ test("every COMMON_STRINGS entry has non-empty ja and en", () => {
 
 test("COMMON_STRINGS has the expected shared keys", () => {
   const keys = Object.keys(COMMON_STRINGS).sort();
-  assert.deepEqual(keys, ["appTitle", "backToHome"].sort());
+  assert.deepEqual(keys, ["appTitle", "backToHome", "exitToHome"].sort());
 });
 
 test("appTitle matches the canonical branding used across screens", () => {
@@ -24,9 +24,14 @@ test("appTitle matches the canonical branding used across screens", () => {
   assert.equal(COMMON_STRINGS.appTitle.en, "Virtual Driving School");
 });
 
-test("backToHome uses the canonical wording (not the drifted 'ホームへ戻る' variant)", () => {
+test("backToHome uses the canonical wording (に particle for FeedbackScreen/TutorialScreen)", () => {
   assert.equal(COMMON_STRINGS.backToHome.ja, "ホームに戻る");
   assert.equal(COMMON_STRINGS.backToHome.en, "Back to Home");
+});
+
+test("exitToHome uses the へ particle for DrivingScreen exit button per original app", () => {
+  assert.equal(COMMON_STRINGS.exitToHome.ja, "ホームへ戻る");
+  assert.equal(COMMON_STRINGS.exitToHome.en, "Back to Home");
 });
 
 // Feedback renders CHECKPOINT_NAMES[cp.id] for every scored, non-traffic-light

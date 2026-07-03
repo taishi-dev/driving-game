@@ -209,7 +209,7 @@ export function DrivingScreen() {
         className="absolute top-6 right-6 z-20 px-4 py-2 rounded-lg bg-slate-800/80 hover:bg-red-600 border border-slate-600 hover:border-red-500 text-sm font-bold transition-colors"
         title={t.exitHint}
       >
-        ✕ {COMMON_STRINGS.backToHome[language]}
+        ✕ {COMMON_STRINGS.exitToHome[language]}
       </button>
 
       {/* Briefing overlay (graded lessons only) */}
