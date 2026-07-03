@@ -65,7 +65,7 @@ export function createShowroomScene(
     // Dark studio clear colour (matches the P1 scaffold / E1 studio dark). The
     // enclosing dome covers the frame, so this only shows through any gap.
     clearColor: new Color(0.02, 0.023, 0.028),
-    fov: 32, // mild telephoto -> hero-shot compression, low perspective distortion
+    fov: 28, // mild telephoto -> hero-shot compression, low perspective distortion
     nearClip: 0.1,
     farClip: 500,
     // ACES tone mapping (checklist 1.2). gammaCorrection defaults to GAMMA_SRGB
@@ -73,11 +73,18 @@ export function createShowroomScene(
     toneMapping: TONEMAP_ACES,
   });
   // Rear-3/4 view: car faces -Z (forward, per the coordinate contract), so the
-  // camera sits behind (+Z) and to the +X side, looking down slightly at the
-  // car's mid-height.
-  camera.setPosition(4.8, 1.85, 6.9);
+  // camera sits behind (+Z) and to the +X side, elevated and looking DOWN at
+  // the car (mirrors the E1 reference hero shot: rear-3/4, seen from slightly
+  // above). Distance + fov are tuned so the car fills the mid-frame at a
+  // moderate size; the lookAt target is aimed low (near the wheel/rocker
+  // line, well below the car's visual centre) so the car's body renders
+  // above screen-centre with a modest floor strip below it and the backdrop
+  // filling the rest of the frame above the roofline, instead of the floor
+  // dominating. Tuned empirically against a same-viewport headed screenshot;
+  // re-check with a screenshot if any of these change.
+  camera.setPosition(8.9, 4.0, 12.07);
   app.root.addChild(camera);
-  camera.lookAt(0, 0.72, 0);
+  camera.lookAt(0, 0.35, 0);
   // Enable the scene-colour grab pass so the car's glass (KHR_materials_
   // transmission -> useDynamicRefraction) can refract what's behind it.
   camera.camera!.requestSceneColorMap(true);
@@ -171,14 +178,26 @@ export function createShowroomScene(
     // while the car body still reflects the HDRI (checklist 1.1).
     scene.envAtlas = envAtlas;
   });
-  app.assets.add(envAsset);
-  app.assets.load(envAsset);
+  // Defer one frame for the same reason heroCar.ts defers its container load:
+  // under React strict-mode's dev double-mount, the throwaway first
+  // Application is created and destroyed synchronously before any rAF fires,
+  // so deferring means that dead app never starts parsing the HDR (the
+  // texture parser touches the graphics device regardless of our own "load"
+  // handler, so a mid-parse destroy would hit a torn-down device). The live
+  // mount's rAF runs normally.
+  let envRafId = requestAnimationFrame(() => {
+    envRafId = 0;
+    if (isDisposed()) return;
+    app.assets.add(envAsset);
+    app.assets.load(envAsset);
+  });
 
   // --- Hero car (P3) -------------------------------------------------------
   const heroCar: HeroCarHandle = loadHeroCar(app, isDisposed);
 
   return {
     dispose() {
+      if (envRafId) cancelAnimationFrame(envRafId);
       heroCar.dispose();
       scene.envAtlas = null;
       camera.destroy();

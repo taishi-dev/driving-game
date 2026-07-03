@@ -122,11 +122,26 @@ export function loadHeroCar(
     // Seat on the ground: centre X/Z on the origin and drop the lowest point to
     // y=0. Compute a world-space AABB by merging the mesh instances' bounds
     // (valid once the entity is parented and its transform is synced).
+    //
+    // The "Wheel*"/brake meshes are excluded from this union: the exported
+    // GLB bakes all four wheels' geometry into a single merged primitive per
+    // part (one node named e.g. "WheelFrontLRim" carries ~23k vertices — far
+    // more than a single rim needs), so its object-space AABB spans the
+    // entire wheel track, not one wheel's footprint. Feeding that into a
+    // per-instance world-transform union inflates the box to bigger than the
+    // whole car and drags min.y down to roughly -1.6, which used to seat the
+    // car floating well over a metre above the studio floor. The remaining
+    // body/interior meshes are ordinary single-part meshes and give a sane,
+    // reliable footprint; using their underbody line as the ground offset is
+    // consistent with the wheel hub height baked into the model (~0.38, i.e.
+    // close to a plausible wheel radius), which indicates this model already
+    // ships close to its own natural ride height.
     app.root.syncHierarchy();
     const bounds = new BoundingBox();
     let first = true;
     for (const render of renders) {
       for (const mi of render.meshInstances) {
+        if (/^(Wheel|node_20)/.test(render.entity?.name ?? "")) continue;
         if (first) {
           bounds.copy(mi.aabb);
           first = false;
