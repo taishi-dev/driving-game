@@ -86,9 +86,15 @@ interface WheelState {
 }
 
 export interface VehicleInput {
-  /** 0..1 throttle. */
+  /**
+   * Signed drive throttle: positive = forward drive request, negative =
+   * reverse drive request (B6 gear "R"), 0 = no drive force (gear "P" or no
+   * gas). Magnitude is 0..1. The sign flips which way the drive force points
+   * along the wheel's forward axis; it does NOT touch steering, so a raycast
+   * wheel corners the same way in both gears (see `src/lib/driveControls.ts`).
+   */
   throttle: number;
-  /** 0..1 brake. */
+  /** 0..1 brake. Independent of gear — always opposes current motion. */
   brake: number;
   /** -1 (left) .. 1 (right) steering target. */
   steer: number;
@@ -108,8 +114,20 @@ export class RaycastVehicle {
   /** Smoothed steer angle (radians), slewed toward input.steer * maxSteerAngle. */
   private steerAngle = 0;
 
-  /** Debug snapshot from the last update (headless verification aid). */
-  readonly debug = { groundedWheels: 0, lastDriveF: 0, forwardVel: 0, poweredGrounded: 0 };
+  /**
+   * Debug snapshot from the last update (headless verification aid).
+   * `angularVelY` is the chassis's world-Y (yaw) angular velocity (rad/s):
+   * B6 verification uses its SIGN to confirm steering yaws the body the same
+   * way in gear D and gear R (steering is not gear-dependent — see
+   * `src/lib/driveControls.ts`).
+   */
+  readonly debug = {
+    groundedWheels: 0,
+    lastDriveF: 0,
+    forwardVel: 0,
+    poweredGrounded: 0,
+    angularVelY: 0,
+  };
 
   // Scratch objects reused each step to avoid per-frame allocation.
   private readonly _rayDir = new Vector3(0, -1, 0);
@@ -185,6 +203,7 @@ export class RaycastVehicle {
     this.debug.groundedWheels = 0;
     this.debug.poweredGrounded = 0;
     this.debug.lastDriveF = 0;
+    this.debug.angularVelY = this.body.getAngularVelocity().y;
 
     for (const wheel of this.wheels) {
       const cfg = wheel.config;
@@ -252,7 +271,12 @@ export class RaycastVehicle {
       }
 
       // --- Drive + brake (along wheel forward). ---
-      if (cfg.isPowered && this.input.throttle > 0) {
+      // `throttle` is signed (B6): positive drives forward, negative drives
+      // in reverse (gear "R"), 0 applies no drive force (gear "P" or no gas).
+      // The force is still applied along `wheelForward` — only its magnitude's
+      // sign flips — so steering is unaffected by gear (turning left yaws the
+      // body the same way in D and R).
+      if (cfg.isPowered && this.input.throttle !== 0) {
         const driveMag = (T.engineForce * this.input.throttle) / poweredCount;
         const drive = wheelForward.scale(driveMag);
         this.body.applyForce(drive, contactPoint);

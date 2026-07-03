@@ -3,24 +3,35 @@
 import { useEffect, useRef, useState } from "react";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { createDriveScene, type DriveSceneHandle } from "./driveScene";
+import {
+  DEFAULT_GEAR,
+  normalizeKey,
+  nextGear,
+  driveInputFromKeys,
+  type Gear,
+} from "@/lib/driveControls";
 
 /**
- * B4 test-drive canvas. Client-only (Babylon needs WebGL/window), mounted behind
- * `next/dynamic({ ssr: false })` from the /drive route. Owns the Engine lifecycle
- * (construct in useEffect, render loop, resize, dispose) and wires keyboard
- * controls to the raycast vehicle.
+ * B4/B6 test-drive canvas. Client-only (Babylon needs WebGL/window), mounted
+ * behind `next/dynamic({ ssr: false })` from the /drive route. Owns the Engine
+ * lifecycle (construct in useEffect, render loop, resize, dispose) and wires
+ * keyboard controls + gear to the raycast vehicle via the pure
+ * `src/lib/driveControls.ts` module (B11's webcam layer will feed the vehicle
+ * through the same throttle/brake/steer + gear contract).
  *
- * Control mapping matches the existing app (KeyboardControls.tsx):
- *   W / ArrowUp   = throttle
+ * Control mapping (see `src/lib/driveControls.ts` for the rationale):
+ *   W / ArrowUp   = gas
  *   S / ArrowDown = brake
  *   A / ArrowLeft = steer left
  *   D / ArrowRight= steer right
- *   R             = reset chassis (debug)
+ *   1 / 2 / 3     = gear Park / Drive / Reverse (default Drive)
+ *   R             = reset chassis (debug; predates B6, kept off "1/2/3")
  */
 export default function DriveCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [fps, setFps] = useState(0);
   const [ready, setReady] = useState(false);
+  const [gearDisplay, setGearDisplay] = useState<Gear>(DEFAULT_GEAR);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -37,31 +48,37 @@ export default function DriveCanvas() {
 
     // Keyboard state -> vehicle input, applied every frame.
     const keys: Record<string, boolean> = {};
-    const normalize = (k: string) => (k.length === 1 ? k.toLowerCase() : k);
+    let gear: Gear = DEFAULT_GEAR;
     const onKeyDown = (e: KeyboardEvent) => {
-      keys[normalize(e.key)] = true;
-      if (normalize(e.key) === "r" && handle) handle.reset();
+      const key = normalizeKey(e.key);
+      keys[key] = true;
+      if (key === "r" && handle) {
+        handle.reset();
+        return;
+      }
+      const updated = nextGear(gear, key);
+      if (updated !== gear) {
+        gear = updated;
+        setGearDisplay(updated);
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      keys[normalize(e.key)] = false;
+      keys[normalizeKey(e.key)] = false;
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
     // Headless verification override: when set (via __driveDebug.setInput) it
     // takes precedence over the keyboard so a scripted drive isn't clobbered by
-    // the per-frame keyboard read. null = use the keyboard.
+    // the per-frame keyboard read. null = use the keyboard. Note this bypasses
+    // gear entirely (callers pass the already-signed throttle they want); use
+    // real key dispatch (page.keyboard) instead to exercise gear end-to-end.
     let debugOverride: { throttle: number; brake: number; steer: number } | null =
       null;
 
     const computeInput = () => {
       if (debugOverride) return debugOverride;
-      const throttle = keys["w"] || keys["ArrowUp"] ? 1 : 0;
-      const brake = keys["s"] || keys["ArrowDown"] ? 1 : 0;
-      const left = keys["a"] || keys["ArrowLeft"];
-      const right = keys["d"] || keys["ArrowRight"];
-      const steer = right ? 1 : left ? -1 : 0;
-      return { throttle, brake, steer };
+      return driveInputFromKeys(keys, gear);
     };
 
     createDriveScene(engine)
@@ -84,6 +101,7 @@ export default function DriveCanvas() {
               x: p.x,
               y: p.y,
               z: p.z,
+              gear,
               grounded: h.vehicle.isGrounded(),
               offTrack: h.isOffTrack(),
               debug: { ...h.vehicle.debug },
@@ -168,7 +186,7 @@ export default function DriveCanvas() {
           userSelect: "none",
         }}
       >
-        {fps} FPS {ready ? "" : "· loading physics…"}
+        {fps} FPS · Gear {gearDisplay} {ready ? "" : "· loading physics…"}
       </div>
       <div
         style={{
@@ -184,7 +202,7 @@ export default function DriveCanvas() {
           userSelect: "none",
         }}
       >
-        W/↑ gas · S/↓ brake · A/D/←→ steer · R reset
+        W/↑ gas · S/↓ brake · A/D/←→ steer · 1 Park · 2 Drive · 3 Reverse · R reset
       </div>
     </div>
   );
