@@ -251,14 +251,22 @@ export async function buildDriveWorld(scene: Scene): Promise<DriveWorldResult> {
     placeTile(street2LNosw, `road_right_${i}`, 14 + i * TILE_L, ROAD_Y, -38, Math.PI / 2);
   }
 
-  // ── 5. Road collider boxes for physics (car chassis fallback) ─────────────────
-  // The wheel rays do the real ground detection against the visible tiles above;
-  // these static boxes stop the chassis from falling through if a ray misses.
+  // ── 5. Road collider boxes: physics ground AND the wheel-ray surface ─────────
+  // B7c fix (drift root cause): the visible Quaternius tiles have a subtly
+  // crowned/cambered asphalt profile, and using them as the wheel-ray ground
+  // tilted the chassis (~1 cm right-low across the track), whose roll-yaw
+  // coupling produced a constant ~0.02 rad/s yaw drift at neutral steering —
+  // enough to leave the road on a 160 m straight. The wheel rays now target
+  // these FLAT invisible collider boxes instead (isPickable = true + rayGrounds
+  // membership); the crowned tiles are visuals only. This also removes the
+  // tile-seam/junction holes that bumped the car at the turn joins.
+  const rayGrounds = new Set<AbstractMesh>();
   function addRoadCollider(cx: number, cy: number, cz: number, sx: number, sy: number, sz: number) {
     const box = MeshBuilder.CreateBox("roadCollider", { width: sx, height: sy, depth: sz }, scene);
     box.position.set(cx, cy - sy / 2 - 0.05, cz); // top face at Y=0-ε
     box.isVisible = false;
-    box.isPickable = false; // collider only, not wheel ray target
+    box.isPickable = true; // wheel-ray ground (flat, seamless)
+    rayGrounds.add(box);
     const body = new PhysicsBody(box, PhysicsMotionType.STATIC, false, scene);
     body.shape = new PhysicsShapeBox(
       Vector3.Zero(),
@@ -275,6 +283,11 @@ export async function buildDriveWorld(scene: Scene): Promise<DriveWorldResult> {
   addRoadCollider(-34, 0, -38, 52, 0.5, TILE_W);
   // Right-turn horizontal collider: X=[8,60], Z=[-41,-35].
   addRoadCollider(34, 0, -38, 52, 0.5, TILE_W);
+  // Turn-join corner fillers: cover the curve/asphalt sweep between the straight
+  // strip (|X|<=3) and the turn strips (|X|>=8) so wheel rays never fall into a
+  // junction hole mid-turn. X=[3,9] / [-9,-3], Z=[-41,-30].
+  addRoadCollider(6, 0, -35.5, 6, 0.5, 11);
+  addRoadCollider(-6, 0, -35.5, 6, 0.5, 11);
 
   // ── 6. Buildings alongside the straight ───────────────────────────────────────
   const buildingData: Array<[string, string, number, number, number, number]> = [
@@ -337,15 +350,10 @@ export async function buildDriveWorld(scene: Scene): Promise<DriveWorldResult> {
   );
 
   // ── 9. Ground predicate ────────────────────────────────────────────────────────
-  // A mesh is "road" if it (or any ancestor) is one of the road root nodes.
-  const isRoadMesh = (mesh: AbstractMesh): boolean => {
-    let n: Node | null = mesh;
-    while (n) {
-      if (roadRoots.has(n)) return true;
-      n = n.parent;
-    }
-    return false;
-  };
+  // B7c: driveable ground for the wheel rays is the FLAT collider boxes only —
+  // NOT the visible tiles (see the drift-fix note at section 5). `roadRoots`
+  // still tracks the visual tile roots for layout/dispose purposes.
+  const isRoadMesh = (mesh: AbstractMesh): boolean => rayGrounds.has(mesh);
 
   // ── 10. Dispose helper ──────────────────────────────────────────────────────────
   const dispose = () => {

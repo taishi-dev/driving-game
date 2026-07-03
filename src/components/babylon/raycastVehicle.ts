@@ -68,8 +68,29 @@ export const VEHICLE_TUNING = {
   /** Sideways grip: fraction of lateral velocity cancelled per second per wheel. */
   lateralGrip: 12.0,
 
-  /** Top speed clamp (m/s) applied as a soft drag above this. */
-  maxSpeed: 30,
+  /**
+   * Top speed clamp (m/s) applied as a soft drag above this. B7c: 15.5 m/s
+   * (~56 km/h, settling ≈60 km/h with the drag equilibrium) so the car tops out
+   * at the straight lesson's 60 km/h limit instead of ~113 km/h — matching the
+   * original app's controllable-lesson feel and keeping the speeding-penalty
+   * scoring band (limit + 5 km/h tolerance) reachable but not automatic.
+   */
+  maxSpeed: 15.5,
+  /** Over-cap drag stiffness (N per kg per m/s of excess). */
+  overSpeedDrag: 4,
+
+  /**
+   * B7c straight-line stabilizer (active ONLY at neutral steering, |steer|<0.01):
+   * yaw-rate damping (1/s) + lateral CM velocity damping (1/s). The explicit
+   * per-frame force model sustains a small roll/yaw limit cycle (~0.02 rad/s
+   * measured; see the grip-force note below) that walks the car off a 160 m
+   * straight with no steering input. Human drivers correct this unconsciously;
+   * the graded lessons must also be drivable by exact/scripted input, and a
+   * driving-school car should track straight. A solver-level fix (substepped
+   * physics / impulse-based tyres) is deferred to the feel pass (plan 9.B).
+   */
+  yawStabilize: 3.0,
+  lateralStabilize: 2.0,
 } as const;
 
 /** Per-wheel runtime state (visual sync + debugging). */
@@ -128,11 +149,20 @@ export class RaycastVehicle {
     forwardVel: 0,
     poweredGrounded: 0,
     angularVelY: 0,
+    /** Lateral (chassis-right) velocity component (m/s) — drift instrumentation. */
+    lateralVel: 0,
+    /** Current smoothed steer angle (radians). */
+    steerAngle: 0,
+    /** Per-wheel: suspension length (m; rest=0.5), NaN when airborne. */
+    wheelCompression: [0, 0, 0, 0] as number[],
+    /** Per-wheel: name of the mesh the suspension ray hit ("" when airborne). */
+    wheelHit: ["", "", "", ""] as string[],
   };
 
   // Scratch objects reused each step to avoid per-frame allocation.
   private readonly _rayDir = new Vector3(0, -1, 0);
   private readonly _ray = new Ray(Vector3.Zero(), new Vector3(0, -1, 0), 1);
+  private readonly _gripPoint = new Vector3();
 
   constructor(
     scene: Scene,
@@ -183,7 +213,19 @@ export class RaycastVehicle {
     const chassis = this.body.transformNode;
 
     // Slew the steering toward the target angle (speed-sensitive falloff).
-    const chassisVel = this.body.getLinearVelocity();
+    //
+    // B7c drift ROOT-CAUSE fix: snapshot (clone) the body's linear AND angular
+    // velocity ONCE here, and compute every wheel from this same pre-step state.
+    // Havok applies impulses/forces to the body's velocities IMMEDIATELY, so
+    // re-reading velocity per wheel (the old velocityAtPoint re-fetched
+    // getAngularVelocity mid-loop) made each wheel see the state already
+    // perturbed by the previous wheels' forces — in fixed processing order.
+    // That order dependence produced a deterministic left/right-antisymmetric
+    // slip pattern (measured wheelLatVel ±0.1 m/s, kinematically impossible
+    // from one rigid state) whose grip forces yielded a constant ~85 N·m yaw
+    // torque: the car veered off a straight road at neutral steering.
+    const chassisVel = this.body.getLinearVelocity().clone();
+    const omega = this.body.getAngularVelocity().clone();
     const speed = chassisVel.length();
     const falloff = 1 / (1 + speed * T.steerSpeedFalloff);
     const targetSteer = this.input.steer * T.maxSteerAngle * falloff;
@@ -204,18 +246,29 @@ export class RaycastVehicle {
     this.debug.groundedWheels = 0;
     this.debug.poweredGrounded = 0;
     this.debug.lastDriveF = 0;
-    this.debug.angularVelY = this.body.getAngularVelocity().y;
+    this.debug.angularVelY = omega.y;
+    this.debug.steerAngle = this.steerAngle;
+    this.debug.lateralVel = Vector3.Dot(chassisVel, rightBase);
+    const cmPos = chassis.getAbsolutePosition();
 
-    for (const wheel of this.wheels) {
+    for (let wi = 0; wi < this.wheels.length; wi++) {
+      const wheel = this.wheels[wi];
       const cfg = wheel.config;
 
       // Mount point (top of the suspension) in world space.
       const mount = Vector3.TransformCoordinates(cfg.localPosition, worldMatrix);
 
       // Cast a ray straight down from the mount to find the ground.
+      // B7c drift fix: the ray goes down in WORLD space, not chassis space.
+      // Chassis-space rays tilt sideways with any roll, laterally shifting BOTH
+      // contact points the same way; drive/resistance forces applied at those
+      // shifted points then produce a net yaw torque (≈ F·2δ) that sustains the
+      // roll via the grip forces — a self-reinforcing constant-rate veer
+      // (measured ~0.022 rad/s at neutral steering). World-down rays keep the
+      // contacts under the mounts so the wheel-force yaw torques cancel exactly.
       const probeLength = T.suspensionRest + cfg.radius + T.suspensionMaxTravel;
       this._ray.origin.copyFrom(mount);
-      this._rayDir.copyFrom(up).scaleInPlace(-1);
+      this._rayDir.set(0, -1, 0);
       this._ray.direction.copyFrom(this._rayDir);
       this._ray.length = probeLength;
 
@@ -228,11 +281,14 @@ export class RaycastVehicle {
         wheel.worldPosition.copyFrom(mount).addInPlace(
           this._rayDir.scale(T.suspensionRest),
         );
+        this.debug.wheelCompression[wi] = NaN;
+        this.debug.wheelHit[wi] = "";
         this.syncWheelMesh(wheel, rot);
         continue;
       }
 
       wheel.grounded = true;
+      this.debug.wheelHit[wi] = hit.pickedMesh?.name ?? "?";
       this.debug.groundedWheels++;
       if (cfg.isPowered) this.debug.poweredGrounded++;
       const contactPoint = hit.pickedPoint;
@@ -242,22 +298,30 @@ export class RaycastVehicle {
       const wheelCenterDist = hit.distance - cfg.radius;
       const compression = T.suspensionRest - wheelCenterDist;
       wheel.compression = wheelCenterDist;
+      this.debug.wheelCompression[wi] = wheelCenterDist;
       wheel.worldPosition.copyFrom(mount).addInPlace(
         up.scale(-wheelCenterDist),
       );
 
-      // --- Suspension force (spring + damper), along chassis up. ---
-      // Spring pushes up proportional to compression; damper opposes the
-      // compression velocity (component of chassis velocity at this point along up).
-      const pointVel = this.velocityAtPoint(contactPoint, chassisVel);
-      const compressionVel = Vector3.Dot(pointVel, up); // + = extending
+      // --- Suspension force (spring + damper), along the CONTACT NORMAL. ---
+      // B7c drift fix: this force used to point along chassis-up. Any transient
+      // roll/pitch (e.g. drive squat) then tilted the ~8 kN of suspension force,
+      // and its horizontal components — unequal front/rear under squat — formed a
+      // net yaw torque that the ground-level grip forces turned into a sustained
+      // roll: a self-reinforcing ~0.02 rad/s veer at neutral steering. Applying
+      // suspension along the surface normal (classic btRaycastVehicle behavior;
+      // world-up on this flat world) keeps it torque-free in yaw.
+      const normal = hit.getNormal(true) ?? Vector3.Up();
+      if (normal.y < 0) normal.scaleInPlace(-1); // never push downward
+      const pointVel = this.velocityAtPoint(contactPoint, chassisVel, omega);
+      const compressionVel = Vector3.Dot(pointVel, normal); // + = extending
 
       const springF = compression * T.suspensionStiffness;
       const damperF = -compressionVel * T.suspensionDamping;
       let suspF = springF + damperF;
       if (suspF < 0) suspF = 0; // suspension only pushes, never pulls
 
-      const suspForce = up.scale(suspF);
+      const suspForce = normal.scale(suspF);
       this.body.applyForce(suspForce, contactPoint);
 
       // --- Wheel forward/right directions (front wheels steer). ---
@@ -285,31 +349,70 @@ export class RaycastVehicle {
       }
 
       // Rolling resistance + braking oppose the forward velocity component.
+      // B7c drift fix: below 0.5 m/s the resistance ramps linearly instead of
+      // using sign() — the hard ±90 N flip on solver jitter (±1 mm/s) rectified
+      // into a slow parked-car creep (~0.06 m/s with no input). Brakes get the
+      // same ramp so a stopped car isn't pushed around by its own brake force.
       const forwardVel = Vector3.Dot(pointVel, wheelForward);
       this.debug.forwardVel = forwardVel;
-      let longForce = -Math.sign(forwardVel) * T.rollingResistance;
+      const oppose =
+        Math.abs(forwardVel) < 0.5 ? forwardVel / 0.5 : Math.sign(forwardVel);
+      let longForce = -oppose * T.rollingResistance;
       if (this.input.brake > 0) {
-        longForce +=
-          -Math.sign(forwardVel) * T.brakeForce * this.input.brake;
+        longForce += -oppose * T.brakeForce * this.input.brake;
       }
       this.body.applyForce(wheelForward.scale(longForce), contactPoint);
 
       // --- Lateral grip: cancel sideways sliding (impulse-like force). ---
       // Force = -lateralVel * grip * (mass share) so the car corners. Divided
       // among wheels; scaled by dt-normalized grip so it converges, not blows up.
+      //
+      // B7c drift fix (final piece): the grip force is applied at CM HEIGHT, not
+      // at the ground contact. Ground-level grip torques pumped the roll mode,
+      // and the roll rate fed back into the per-wheel slip readings (ω×r) with a
+      // phase lag — a self-sustained roll/yaw limit cycle that rectified into a
+      // constant ~0.02 rad/s veer at neutral steering (measured: left/right
+      // antisymmetric wheelLatVel ±0.11 m/s, impossible from yaw alone). Raising
+      // the application point to CM height removes the roll coupling — the
+      // standard arcade raycast-vehicle stabilization (plan 9.B feel pass owns
+      // any future body-roll re-tuning).
       const lateralVel = Vector3.Dot(pointVel, wheelRight);
       const massShare = T.chassisMass / this.wheels.length;
       const gripF =
         -lateralVel * T.lateralGrip * massShare;
-      this.body.applyForce(wheelRight.scale(gripF), contactPoint);
+      this._gripPoint.copyFrom(contactPoint);
+      this._gripPoint.y = cmPos.y;
+      this.body.applyForce(wheelRight.scale(gripF), this._gripPoint);
 
       this.syncWheelMesh(wheel, rot);
     }
 
-    // Soft top-speed drag so throttle doesn't run away.
+    // --- B7c straight-line stabilizer (see VEHICLE_TUNING.yawStabilize). ---
+    // Neutral steering + any wheel grounded: damp residual yaw rate and lateral
+    // CM velocity so the limit-cycle wobble of the explicit force model cannot
+    // rectify into a steady veer. Forces only — never writes velocities.
+    if (Math.abs(this.input.steer) < 0.01 && this.debug.groundedWheels > 0) {
+      if (omega.y !== 0) {
+        // Yaw moment of inertia of the chassis box (m/12 * (w^2 + l^2)).
+        const iy = (T.chassisMass / 12) * (1.8 * 1.8 + 4 * 4);
+        this.body.applyAngularImpulse(
+          new Vector3(0, -omega.y * T.yawStabilize * iy * dt, 0),
+        );
+      }
+      const latV = this.debug.lateralVel;
+      if (latV !== 0) {
+        const latForce = rightBase.scale(-latV * T.lateralStabilize * T.chassisMass);
+        this.body.applyForce(latForce, cmPos);
+      }
+    }
+
+    // Soft top-speed drag so throttle doesn't run away (stiffened in B7c so the
+    // equilibrium overshoot stays within ~4 km/h of the cap).
     if (speed > T.maxSpeed) {
       const excess = speed - T.maxSpeed;
-      const drag = chassisVel.normalizeToNew().scale(-excess * T.chassisMass);
+      const drag = chassisVel
+        .normalizeToNew()
+        .scale(-excess * T.chassisMass * T.overSpeedDrag);
       this.body.applyForce(drag, chassis.getAbsolutePosition());
     }
   }
@@ -317,9 +420,13 @@ export class RaycastVehicle {
   /**
    * Linear velocity of the chassis at a world point, including the angular
    * contribution: v_point = v_cm + omega x (point - cm).
+   *
+   * `linearVel`/`omega` MUST be the pre-step snapshots taken at the top of
+   * `update` — never re-fetched from the body mid-loop, because Havok applies
+   * the already-issued wheel forces to the body's velocities immediately (see
+   * the root-cause note in `update`).
    */
-  private velocityAtPoint(point: Vector3, linearVel: Vector3): Vector3 {
-    const omega = this.body.getAngularVelocity();
+  private velocityAtPoint(point: Vector3, linearVel: Vector3, omega: Vector3): Vector3 {
     const cm = this.body.transformNode.getAbsolutePosition();
     const r = point.subtract(cm);
     const rot = Vector3.Cross(omega, r);
