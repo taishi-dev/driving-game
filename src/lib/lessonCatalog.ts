@@ -126,6 +126,20 @@ export const HOME_ENTRIES: readonly HomeEntry[] = [
   { id: "free-mode", label: { ja: "フリーモード", en: "Free Mode" }, sub: "FREE", desc: "EXPLORE THE CITY", kind: "free" },
 ] as const;
 
+/** Localized Free Mode title (free-mode has no briefing, but the HUD still names it). */
+export const FREE_MODE_TITLE: Localized = { ja: "フリーモード", en: "Free Mode" };
+
+/**
+ * Localized display title for ANY lesson (including free-mode) — used by the
+ * drive HUD subtitle so it shows a human title ("Straight Driving") instead of
+ * the raw LessonId ("straight"). Graded lessons reuse their briefing title;
+ * free-mode falls back to {@link FREE_MODE_TITLE}.
+ */
+export function getLessonTitle(lesson: LessonId, language: Language): string {
+  if (lesson === "free-mode") return FREE_MODE_TITLE[language];
+  return LESSON_BRIEFINGS[lesson].title[language];
+}
+
 /**
  * Resolve the briefing for a lesson in the given language, or `null` for lessons
  * with no briefing (free-mode). Returning null lets the shell skip the overlay

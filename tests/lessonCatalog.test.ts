@@ -5,6 +5,7 @@ import {
   LESSON_BRIEFINGS,
   HOME_ENTRIES,
   getBriefing,
+  getLessonTitle,
 } from "../src/lib/lessonCatalog.ts";
 
 // The eight graded courses (every LessonId except "free-mode"). Kept literal so
@@ -67,4 +68,19 @@ test("getBriefing returns the requested language", () => {
 test("getBriefing returns null for free-mode (no briefing)", () => {
   assert.equal(getBriefing("free-mode", "en"), null);
   assert.equal(getBriefing("free-mode", "ja"), null);
+});
+
+test("getLessonTitle returns the localized title for every graded lesson", () => {
+  for (const id of GRADED_LESSONS) {
+    assert.equal(getLessonTitle(id, "en"), LESSON_BRIEFINGS[id].title.en);
+    assert.equal(getLessonTitle(id, "ja"), LESSON_BRIEFINGS[id].title.ja);
+    assert.ok(getLessonTitle(id, "en").length > 0);
+    assert.ok(getLessonTitle(id, "ja").length > 0);
+  }
+});
+
+test("getLessonTitle returns a localized Free Mode title (never the raw id)", () => {
+  assert.equal(getLessonTitle("free-mode", "en"), "Free Mode");
+  assert.equal(getLessonTitle("free-mode", "ja"), "フリーモード");
+  assert.notEqual(getLessonTitle("free-mode", "en"), "free-mode");
 });

@@ -130,6 +130,11 @@ export default function DriveScreenCanvas() {
               grounded: h.vehicle.isGrounded(),
               offTrack: h.isOffTrack(),
               speed: st.speed,
+              // Live HUD inputs (no user data) — lets the HUD verification read
+              // throttle/brake/steer without a DOM element.
+              throttle: st.throttle,
+              brake: st.brake,
+              steer: st.steeringAngle,
               fps: Math.round(engine.getFps()),
               debug: { ...h.vehicle.debug },
               // B7c grading telemetry (no user data):

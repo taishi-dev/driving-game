@@ -1,7 +1,13 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import { useEffect } from "react";
 import { useDrivingStore } from "@/lib/store";
 import { MISSION_CHECKPOINTS } from "@/lib/mission/missions";
+import { getLessonTitle } from "@/lib/lessonCatalog";
+
+// The replay scene is client-only (WebGL/window + Havok WASM), so load it lazily.
+const ReplayCanvas = dynamic(() => import("./ReplayCanvas"), { ssr: false });
 
 /**
  * B7c — the graded feedback screen (extends the B7b placeholder minimally; the
@@ -36,6 +42,10 @@ const STRINGS = {
     typeMirror: "ミラー確認",
     typeSafety: "安全確認",
     typeSpeed: "速度制限",
+    replay: "リプレイ",
+    chase: "追従",
+    driver: "運転席",
+    noReplay: "リプレイデータがありません。",
   },
   en: {
     missionFeedback: "Mission Feedback",
@@ -55,6 +65,10 @@ const STRINGS = {
     typeMirror: "Mirror check",
     typeSafety: "Safety check",
     typeSpeed: "Speed limit",
+    replay: "REPLAY",
+    chase: "CHASE",
+    driver: "DRIVER",
+    noReplay: "No replay data.",
   },
 } as const;
 
@@ -69,7 +83,17 @@ export function FeedbackScreen() {
   const setScreen = useDrivingStore((s) => s.setScreen);
   const setMissionState = useDrivingStore((s) => s.setMissionState);
   const clearReplayData = useDrivingStore((s) => s.clearReplayData);
+  const setIsReplaying = useDrivingStore((s) => s.setIsReplaying);
+  const replayViewMode = useDrivingStore((s) => s.replayViewMode);
+  const setReplayViewMode = useDrivingStore((s) => s.setReplayViewMode);
+  const hasReplay = useDrivingStore((s) => s.replayData.length > 0);
   const t = STRINGS[language];
+
+  // Enter replay mode on mount, leave on unmount (original FeedbackScreen semantics).
+  useEffect(() => {
+    setIsReplaying(true);
+    return () => setIsReplaying(false);
+  }, [setIsReplaying]);
 
   const kaizenLogs = feedbackLogs.filter((l) => l.type === "KAIZEN");
 
@@ -122,12 +146,58 @@ export function FeedbackScreen() {
       {/* Header */}
       <div className="h-16 px-6 flex items-center justify-between border-b border-slate-700 bg-slate-800 flex-shrink-0">
         <h2 className="text-xl font-bold text-blue-400">
-          {t.missionFeedback}: {currentLesson}
+          {t.missionFeedback}: {getLessonTitle(currentLesson, language)}
         </h2>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto p-8">
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {/* Left: 3D replay-review view. Plays the recorded run through the world. */}
+        <div className="w-1/2 relative border-r border-slate-700 bg-black">
+          {hasReplay ? (
+            <div className="absolute inset-0" data-testid="replay-canvas">
+              <ReplayCanvas />
+            </div>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm">
+              {t.noReplay}
+            </div>
+          )}
+
+          {/* Replay overlay: recording badge + chase/driver camera toggle. */}
+          {hasReplay && (
+            <div className="absolute top-4 left-4 z-10 flex gap-2 items-center">
+              <div className="bg-black/60 px-3 py-1 rounded text-xs font-mono text-red-500 animate-pulse">
+                ● {t.replay}
+              </div>
+              <div className="flex bg-slate-800/80 rounded p-1 border border-slate-600">
+                <button
+                  onClick={() => setReplayViewMode("chase")}
+                  data-testid="replay-chase"
+                  data-active={replayViewMode === "chase"}
+                  className={`px-3 py-1 rounded text-xs font-bold transition-colors ${
+                    replayViewMode === "chase" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {t.chase}
+                </button>
+                <button
+                  onClick={() => setReplayViewMode("driver")}
+                  data-testid="replay-driver"
+                  data-active={replayViewMode === "driver"}
+                  className={`px-3 py-1 rounded text-xs font-bold transition-colors ${
+                    replayViewMode === "driver" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {t.driver}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Right: score + AI feedback + per-checkpoint results (scrolls). */}
+        <div className="w-1/2 overflow-y-auto">
+          <div className="max-w-3xl mx-auto p-8">
           {/* Score + clear time */}
           <div className="grid grid-cols-2 gap-4 mb-8">
             <div className="p-6 bg-slate-800 rounded-xl border border-slate-700">
@@ -221,6 +291,7 @@ export function FeedbackScreen() {
             >
               {t.backToHome}
             </button>
+          </div>
           </div>
         </div>
       </div>
