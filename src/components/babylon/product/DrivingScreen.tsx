@@ -10,6 +10,12 @@ import { COMMON_STRINGS } from "@/lib/uiStrings";
 // Store-wired Babylon drive canvas. Client-only (WebGL/window + Havok WASM).
 const DriveScreenCanvas = dynamic(() => import("./DriveScreenCanvas"), { ssr: false });
 
+// B11 webcam/MediaPipe vision layer. Client-only (getUserMedia + WASM models) and
+// heavy, so lazy-loaded; mount/unmount owns the camera lifecycle. When a camera is
+// available it feeds steering/gear/head/pedals into the same store the keyboard
+// writes; with no camera the keyboard fallback drives everything (B6 behavior).
+const VisionController = dynamic(() => import("./VisionController"), { ssr: false });
+
 // `appTitle` + `exit` (canonical "back to Home" wording) now come from the
 // shared `uiStrings.ts` (B9 consolidation). `freeMode` was dropped here: it
 // duplicated `FREE_MODE_TITLE` in lessonCatalog.ts and was never referenced
@@ -89,6 +95,10 @@ export function DrivingScreen() {
       <div className="absolute inset-0 z-0">
         <DriveScreenCanvas />
       </div>
+
+      {/* B11 webcam vision layer (self-positioned overlay: preview + status +
+          camera-denied fallback). Mounted only while the driving screen is up. */}
+      <VisionController />
 
       {/* Title + lesson name (top-left). The subtitle is the LOCALIZED lesson
           title (not the raw LessonId). */}

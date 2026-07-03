@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { useDrivingStore } from "@/lib/store";
+
+// B11: the vision pipeline drives step 3 (steering bar) and step 4 (foot
+// calibration / pedal bars). Client-only + heavy, so lazy-loaded; mounting it
+// here mirrors the original tutorial, which showed the camera feed behind the card.
+const VisionController = dynamic(() => import("./VisionController"), { ssr: false });
 
 /**
  * B7c — the tutorial flow, ported DOM-native from the original
@@ -157,7 +163,12 @@ export function TutorialScreen() {
 
   return (
     <div className="relative w-full h-full bg-slate-900 text-white overflow-hidden flex flex-col items-center justify-center">
-      {/* Camera preview background arrives with the B11 vision pipeline. */}
+      {/* B11: the vision pipeline runs while the tutorial is open so the steering
+          bar (step 3) and foot calibration (step 4) respond to the camera. The
+          self-positioned preview widget shows the feed at reduced opacity. */}
+      <div className="opacity-60 pointer-events-none">
+        <VisionController />
+      </div>
 
       <div className="relative z-10 bg-slate-800/90 p-8 rounded-xl max-w-2xl w-full shadow-2xl border border-slate-700 backdrop-blur-sm max-h-full overflow-y-auto">
         {/* Step indicator */}
