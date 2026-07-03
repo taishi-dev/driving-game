@@ -119,25 +119,33 @@
 
 ## 10. Performance Gate
 
-| # | Metric | Target |
-|---|---|---|
-| 10.1 | Frame rate | ≥ 60 fps steady at 1920×1200 on the target machine (Intel Core Ultra 7 255H + Intel Arc 140T) |
-| 10.2 | Measured fps | Recorded figure from the measurement method below |
-| 10.3 | Download size — models | Recorded figure from the measurement method below |
-| 10.4 | Download size — decoders | Draco decoder + KTX2 decoder payload, recorded separately |
-| 10.5 | Download size — MediaPipe | MediaPipe vision WASM + model files, recorded separately |
-| 10.6 | Total to first interactive | Sum of all above; must be ≤ 50 MB |
+| # | Metric | Target | **E1-babylon (measured, 2026-07-03)** |
+|---|---|---|---|
+| 10.1 | Frame rate | ≥ 60 fps steady at 1920×1200 on the target machine (Intel Core Ultra 7 255H + Intel Arc 140T) | ✅ home / keyboard-drive / replay = 60 fps. ⚠️ vision-active drive = **29 fps median** (MediaPipe-bound; see note) |
+| 10.2 | Measured fps | Recorded figure from the measurement method below | Home (showroom hero) 60/60/60 · Drive keyboard 49/60/60 · Drive + vision (fake webcam) **26/29/42** · Replay 60/60/60 (min/median/max, headed real GPU) |
+| 10.3 | Download size — models | Recorded figure | **2.97 MB** (CarConcept 1.21 + Quaternius world tiles/buildings/props) |
+| 10.4 | Download size — decoders | Draco decoder + KTX2 decoder payload, recorded separately | Draco **0.07 MB** (wasm+js). No KTX2 (textures are .webp-in-GLB + one .hdr). HDRI 2k = **5.20 MB** (textures) |
+| 10.5 | Download size — MediaPipe | MediaPipe vision WASM + model files, recorded separately | **22.38 MB** CDN (jsdelivr wasm 2.32 + googleapis models: pose_full 8.96, hand 7.46, face 3.59). Object detector (efficientdet, 6.92 MB) **dropped** in B12 — see §12.4 |
+| 10.6 | Total to first interactive | Sum of all above; must be ≤ 50 MB | **32.58 MB** total to drive-ready (was 39.50 before the detector drop). First-interactive (home rendered) subtotal 7.48 MB. **PASS ≤ 50 MB** |
+
+> **fps note (10.1):** the identical Babylon scene renders at a steady 60 fps under keyboard
+> driving, so the vision-active deficit is entirely the MediaPipe pipeline (face + hand + pose
+> landmarkers, one inference each per frame, synchronous on the shared iGPU), NOT Babylon
+> rendering — an engine-independent cost. B12 dropped the debug-only object detector
+> (16–18 fps dev → 20 fps prod baseline → **29 fps** after the drop). Reaching 60 with live
+> vision would need inference decoupled from the render loop (workers / reduced cadence),
+> beyond this task's documented-perf-lever scope and out of parity with the original app.
 
 ---
 
 ## 11. Build Quality
 
-| # | Feature | Acceptance criterion |
-|---|---|---|
-| 11.1 | type-check | `npm run type-check` passes with 0 errors |
-| 11.2 | lint | `npm run lint` passes with 0 errors |
-| 11.3 | Unit tests | The branch's equivalent of the seven `node --test` suites pass: scoring, checkpoint eval, replay interpolation, pedal decision, steering gear, foot-pedal recognition, car physics (re-authored per engine) |
-| 11.4 | Smoke test | `npm run smoke` (or engine equivalent) passes |
+| # | Feature | Acceptance criterion | **E1-babylon (2026-07-03)** |
+|---|---|---|---|
+| 11.1 | type-check | `npm run type-check` passes with 0 errors | ✅ PASS (0 errors) |
+| 11.2 | lint | `npm run lint` passes with 0 errors | ✅ PASS (0 errors; 2 pre-existing warnings live only in the FROZEN R3F originals `src/components/ui/FeedbackScreen.tsx` + `src/components/vision/VisionController.tsx`) |
+| 11.3 | Unit tests | The branch's equivalent of the seven `node --test` suites pass: scoring, checkpoint eval, replay interpolation, pedal decision, steering gear, foot-pedal recognition, car physics (re-authored per engine) | ✅ PASS **151/151** (`npm run test:unit`) |
+| 11.4 | Smoke test | `npm run smoke` (or engine equivalent) passes | ✅ e2e `npm run test:e2e` **5/5** (3 headless fallback + 2 headed vision); pure + E2E-flag production builds both compile clean |
 
 ---
 
@@ -150,6 +158,7 @@ These are deliberate behavior changes — not missing features:
 | 12.1 | Home screen: static hero shot instead of live GarageScene | Artistic direction for Phase B (plan §10.A) |
 | 12.2 | Vehicle physics: engine's own model, not Three.js carPhysics.ts | Each engine uses its built-in vehicle controller for fair comparison (plan §9.B) |
 | 12.3 | No shared cross-engine logic module | D1 resolution: full rewrite per engine (plan Revision 2) |
+| 12.4 | **MediaPipe ObjectDetector dropped (E1, B12)** | Its output was used ONLY to append a debug-string suffix (`steeringGear.ts` never reads it for gear/steering/pedals). Dropping it removed 6.92 MB of download and ~+45 % vision fps (20→29). Driving behavior is byte-identical; the only observable change is the debug status panel losing the developer-only "Obj:" text. |
 
 ---
 
@@ -202,14 +211,33 @@ node -e "const h=JSON.parse(require('fs').readFileSync('network.har','utf8')); \
 ## Sign-Off Checklist (B12 commit message must include)
 
 ```
-E<n>-<engine> B12 measurement sign-off:
-  fps (steady, headed, target GPU): ___
-  download — models (MB): ___
-  download — decoders (MB): ___
-  download — MediaPipe (MB): ___
-  download — total to first interactive (MB): ___
+E1-babylon B12 measurement sign-off (2026-07-03, headed, Arc 140T, 1920x1200):
+  fps (steady, headed, target GPU): home 60 / keyboard-drive 60 / replay 60 / vision-drive 29 (median)
+  download — models (MB): 2.97
+  download — decoders (MB): 0.07 (Draco; no KTX2)  [+ HDRI texture 5.20]
+  download — MediaPipe (MB): 22.38 (object detector dropped, -6.92)
+  download — total to drive-ready (MB): 32.58   (<= 50 budget: PASS; first-interactive/home 7.48)
   type-check: PASS
   lint: PASS
-  unit tests: PASS (_/_ suites)
-  smoke: PASS
+  unit tests: PASS (151/151)
+  smoke / e2e: PASS (e2e 5/5)
 ```
+
+---
+
+## E1-babylon — Known Gaps (recorded at B12, NOT fixed here)
+
+These are honest E1-branch conclusions the engine comparison needs on record:
+
+- **World build-out gap:** s-curve / crank / crosswalk / traffic-light / railroad lesson
+  areas are unbuilt. Their goals are reachable over the flat safety ground, but the car
+  reads **OFF TRACK** in the unbuilt zones. Only the straight + turn stubs are modelled
+  (affects §2.5 traffic actors, parts of §5.2 nine-lesson fidelity).
+- **Traffic light is a DOM widget** (§2.6), not a 3D signal in the world; it still cycles
+  and feeds the scoring's red-light check.
+- **Hero car is still the placeholder box** in the drive and replay scenes (§1.5–1.7 PBR
+  CarConcept is present only in the showroom/home hero).
+- **Real-webcam drive-test pending** (§9.1–9.3): hands-steer, gear gestures, feet pedals,
+  and face→mirror checkpoints exercised only via fake webcam / keyboard fallback so far.
+- **Firebase real-config smoke pending** (§8): auth + history save/fetch verified fail-soft
+  and by record-shape tests, but not against a live Firebase project.
