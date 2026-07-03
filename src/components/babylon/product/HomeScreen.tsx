@@ -8,8 +8,28 @@ import { HOME_ENTRIES, type HomeEntry } from "@/lib/lessonCatalog";
 const HomeHeroCanvas = dynamic(() => import("./HomeHeroCanvas"), { ssr: false });
 
 const STRINGS = {
-  ja: { title1: "バーチャル", title2: "教習所", subtitle: "シミュレーションシステム v2.0", select: "コースを選択", ready: "/ 全システム準備完了", start: "開始" },
-  en: { title1: "VIRTUAL", title2: "DRIVING SCHOOL", subtitle: "SIMULATION SYSTEM v2.0", select: "SELECT COURSE", ready: "/ ALL SYSTEMS READY", start: "START" },
+  ja: {
+    title1: "バーチャル",
+    title2: "教習所",
+    subtitle: "シミュレーションシステム v2.0",
+    select: "コースを選択",
+    ready: "/ 全システム準備完了",
+    start: "開始",
+    player: "プレイヤー: ゲスト",
+    loginRegister: "ログイン / 登録",
+    history: "走行履歴",
+  },
+  en: {
+    title1: "VIRTUAL",
+    title2: "DRIVING SCHOOL",
+    subtitle: "SIMULATION SYSTEM v2.0",
+    select: "SELECT COURSE",
+    ready: "/ ALL SYSTEMS READY",
+    start: "START",
+    player: "PLAYER: GUEST",
+    loginRegister: "Login / Register",
+    history: "History",
+  },
 } as const;
 
 /**
@@ -48,15 +68,15 @@ export function HomeScreen() {
       {/* PLAYER header stub (real auth is B10). */}
       <div className="absolute top-6 right-6 z-20 flex flex-col items-end gap-2 pointer-events-auto">
         <div className="px-5 py-2 bg-slate-800/90 border-l-4 border-blue-500 rounded-r text-sm font-mono tracking-widest">
-          PLAYER: GUEST
+          {t.player}
         </div>
         <div className="flex gap-3 text-xs font-mono">
           <button onClick={() => setScreen("auth")} className="text-cyan-400 hover:text-cyan-300 transition-colors">
-            Login / Register
+            {t.loginRegister}
           </button>
           <span className="text-slate-600">|</span>
           <button onClick={() => setScreen("history")} className="text-cyan-400 hover:text-cyan-300 transition-colors underline">
-            History
+            {t.history}
           </button>
         </div>
       </div>
@@ -106,7 +126,7 @@ export function HomeScreen() {
                   </div>
                   <div>
                     <h3 className="text-2xl font-black italic group-hover:text-blue-300 mb-1">{entry.label[language]}</h3>
-                    <p className="text-xs text-slate-400 font-mono">{entry.desc}</p>
+                    <p className="text-xs text-slate-400 font-mono">{entry.desc[language]}</p>
                   </div>
                   <div className="flex justify-between items-end">
                     <div className="text-4xl font-black text-slate-800 group-hover:text-slate-700 select-none">

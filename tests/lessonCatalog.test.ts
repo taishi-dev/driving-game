@@ -57,6 +57,24 @@ test("HOME_ENTRIES kind matches id semantics", () => {
   }
 });
 
+// B9 defect 1: card `desc` used to be an English-only string. Every entry's
+// desc must now be localized in both directions.
+test("HOME_ENTRIES desc is localized (non-empty ja + en) for every entry", () => {
+  for (const e of HOME_ENTRIES) {
+    assert.ok(e.desc.ja.length > 0, `${e.id} desc missing ja`);
+    assert.ok(e.desc.en.length > 0, `${e.id} desc missing en`);
+  }
+});
+
+// B9 defect 2: the traffic-light card used to say "信号" while the briefing
+// said "信号機" (ja label drift). They must now agree on "信号機".
+test("traffic-light ja label matches its briefing title (no ja label drift)", () => {
+  const entry = HOME_ENTRIES.find((e) => e.id === "traffic-light");
+  assert.ok(entry, "traffic-light entry missing");
+  assert.equal(entry.label.ja, LESSON_BRIEFINGS["traffic-light"].title.ja);
+  assert.equal(entry.label.ja, "信号機");
+});
+
 test("getBriefing returns the requested language", () => {
   const en = getBriefing("straight", "en");
   const ja = getBriefing("straight", "ja");

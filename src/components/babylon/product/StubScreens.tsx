@@ -1,6 +1,7 @@
 "use client";
 
 import { useDrivingStore } from "@/lib/store";
+import { COMMON_STRINGS } from "@/lib/uiStrings";
 
 /**
  * B7b placeholder / stub screens. Each is a self-contained screen with a clear
@@ -9,18 +10,20 @@ import { useDrivingStore } from "@/lib/store";
  *   - Auth / History  -> B10 (Firebase auth + saved runs)
  * (Feedback and Tutorial graduated to real screens in B7c — see
  *  FeedbackScreen.tsx / TutorialScreen.tsx in this directory.)
+ *
+ * `backToHome` is shared (B9 consolidation): this file previously had its own
+ * "ホームへ戻る" that had drifted from the canonical "ホームに戻る" used
+ * elsewhere — see `uiStrings.ts`.
  */
 
 const STRINGS = {
   ja: {
-    backToHome: "ホームへ戻る",
     authTitle: "ログイン / 登録",
     authNote: "アカウント機能は B10 で実装予定です。",
     historyTitle: "走行履歴",
     historyNote: "走行履歴は B10 で実装予定です。",
   },
   en: {
-    backToHome: "Back to Home",
     authTitle: "Login / Register",
     authNote: "Accounts arrive in B10.",
     historyTitle: "Driving History",
@@ -70,7 +73,7 @@ export function AuthScreen() {
   const t = STRINGS[language];
   return (
     <StubShell title={t.authTitle} note={t.authNote}>
-      <HomeButton label={t.backToHome} />
+      <HomeButton label={COMMON_STRINGS.backToHome[language]} />
     </StubShell>
   );
 }
@@ -80,7 +83,7 @@ export function HistoryScreen() {
   const t = STRINGS[language];
   return (
     <StubShell title={t.historyTitle} note={t.historyNote}>
-      <HomeButton label={t.backToHome} />
+      <HomeButton label={COMMON_STRINGS.backToHome[language]} />
     </StubShell>
   );
 }

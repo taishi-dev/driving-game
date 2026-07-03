@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useDrivingStore } from "@/lib/store";
 import { MISSION_CHECKPOINTS } from "@/lib/mission/missions";
 import { getLessonTitle } from "@/lib/lessonCatalog";
+import { COMMON_STRINGS, CHECKPOINT_NAMES } from "@/lib/uiStrings";
 
 // The replay scene is client-only (WebGL/window + Havok WASM), so load it lazily.
 const ReplayCanvas = dynamic(() => import("./ReplayCanvas"), { ssr: false });
@@ -37,7 +38,6 @@ const STRINGS = {
     score: "スコア",
     clearTime: "クリアタイム",
     retry: "もう一度挑戦",
-    backToHome: "ホームに戻る",
     typeStop: "一時停止",
     typeMirror: "ミラー確認",
     typeSafety: "安全確認",
@@ -60,7 +60,6 @@ const STRINGS = {
     score: "Score",
     clearTime: "Clear Time",
     retry: "Try Again",
-    backToHome: "Back to Home",
     typeStop: "Stop",
     typeMirror: "Mirror check",
     typeSafety: "Safety check",
@@ -258,8 +257,12 @@ export function FeedbackScreen() {
                       className="flex items-center justify-between px-4 py-3 rounded-lg bg-slate-900/60 border border-slate-700"
                     >
                       <span className="text-sm">
-                        <span className="text-slate-500 mr-2 font-mono">{typeName(cp.type)}</span>
-                        <span className="font-bold">{cp.label ?? cp.id}</span>
+                        {/* Localized name (never the mixed-language cp.label) —
+                            the id map covers all current checkpoints; the type
+                            name is the fallback for future ones. */}
+                        <span className="font-bold">
+                          {CHECKPOINT_NAMES[cp.id]?.[language] ?? typeName(cp.type)}
+                        </span>
                       </span>
                       <span
                         className={`text-sm font-bold px-3 py-1 rounded ${
@@ -289,7 +292,7 @@ export function FeedbackScreen() {
               data-testid="feedback-home"
               className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-lg transition-colors border border-slate-600"
             >
-              {t.backToHome}
+              {COMMON_STRINGS.backToHome[language]}
             </button>
           </div>
           </div>

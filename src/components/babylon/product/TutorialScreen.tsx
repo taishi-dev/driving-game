@@ -30,6 +30,9 @@ const STRINGS = {
     welcomeHands: "「手の動き（ハンドル）」",
     welcomeFeet: "「足の動き（アクセル・ブレーキ）」",
     welcomeLine2: "を認識して操作します。",
+    // Separator between the three quoted phrases below (B9 defect 3: this used
+    // to be a hardcoded 、 baked into the JSX, so it also showed up in English).
+    welcomeSep: "、",
     cameraNote1: "※カメラの使用許可が必要です。",
     cameraNote2: "全身（特に腰から下と両手）が映る位置に椅子を置いてください。",
 
@@ -81,6 +84,7 @@ const STRINGS = {
     welcomeHands: '"hand movements (steering)"',
     welcomeFeet: '"foot movements (accelerator and brake)"',
     welcomeLine2: "to control the car.",
+    welcomeSep: ", ",
     cameraNote1: "* Camera permission is required.",
     cameraNote2:
       "Place your chair so that your whole body (especially from the waist down and both hands) is visible.",
@@ -189,8 +193,11 @@ export function TutorialScreen() {
             <p className="text-lg text-slate-300 mb-4 leading-relaxed">
               {t.welcomeLine1}
               <br />
-              <span className="font-bold text-white">{t.welcomeFace}</span>、
-              <span className="font-bold text-white">{t.welcomeHands}</span>、<br />
+              <span className="font-bold text-white">{t.welcomeFace}</span>
+              {t.welcomeSep}
+              <span className="font-bold text-white">{t.welcomeHands}</span>
+              {t.welcomeSep}
+              <br />
               <span className="font-bold text-white">{t.welcomeFeet}</span>
               <br />
               {t.welcomeLine2}

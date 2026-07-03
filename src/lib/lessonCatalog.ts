@@ -103,8 +103,8 @@ export interface HomeEntry {
   label: Localized;
   /** Short mono sub-label (course number / mode tag). */
   sub: string;
-  /** English one-liner shown on the card. */
-  desc: string;
+  /** Short mono one-liner shown on the card, localized (B9: was English-only). */
+  desc: Localized;
   /** How selecting the entry routes: a graded lesson, free mode, or the tutorial. */
   kind: "lesson" | "free" | "tutorial";
 }
@@ -114,16 +114,18 @@ export interface HomeEntry {
  * matching the original `HomeScreen.tsx` LESSONS ordering.
  */
 export const HOME_ENTRIES: readonly HomeEntry[] = [
-  { id: "tutorial", label: { ja: "チュートリアル", en: "Tutorial" }, sub: "BASIC", desc: "LEARN CONTROLS", kind: "tutorial" },
-  { id: "straight", label: { ja: "直線走行", en: "Straight Driving" }, sub: "LEVEL 01", desc: "BASIC CONTROL", kind: "lesson" },
-  { id: "left-turn", label: { ja: "左折", en: "Left Turn" }, sub: "LEVEL 02", desc: "TURNING LEFT", kind: "lesson" },
-  { id: "right-turn", label: { ja: "右折", en: "Right Turn" }, sub: "LEVEL 03", desc: "TURNING RIGHT", kind: "lesson" },
-  { id: "s-curve", label: { ja: "S字カーブ", en: "S-Curve" }, sub: "LEVEL 04", desc: "S-CURVE", kind: "lesson" },
-  { id: "crank", label: { ja: "クランク", en: "Crank" }, sub: "LEVEL 05", desc: "CRANK", kind: "lesson" },
-  { id: "traffic-light", label: { ja: "信号", en: "Traffic Light" }, sub: "LEVEL 06", desc: "TRAFFIC LIGHT PRACTICE", kind: "lesson" },
-  { id: "crosswalk", label: { ja: "横断歩道", en: "Crosswalk" }, sub: "LEVEL 07", desc: "STOP FOR PEDESTRIANS", kind: "lesson" },
-  { id: "railroad-crossing", label: { ja: "踏切", en: "Railroad Crossing" }, sub: "LEVEL 08", desc: "RAILROAD CROSSING", kind: "lesson" },
-  { id: "free-mode", label: { ja: "フリーモード", en: "Free Mode" }, sub: "FREE", desc: "EXPLORE THE CITY", kind: "free" },
+  { id: "tutorial", label: { ja: "チュートリアル", en: "Tutorial" }, sub: "BASIC", desc: { ja: "操作を学ぶ", en: "LEARN CONTROLS" }, kind: "tutorial" },
+  { id: "straight", label: { ja: "直線走行", en: "Straight Driving" }, sub: "LEVEL 01", desc: { ja: "基本操作", en: "BASIC CONTROL" }, kind: "lesson" },
+  { id: "left-turn", label: { ja: "左折", en: "Left Turn" }, sub: "LEVEL 02", desc: { ja: "左折の練習", en: "TURNING LEFT" }, kind: "lesson" },
+  { id: "right-turn", label: { ja: "右折", en: "Right Turn" }, sub: "LEVEL 03", desc: { ja: "右折の練習", en: "TURNING RIGHT" }, kind: "lesson" },
+  { id: "s-curve", label: { ja: "S字カーブ", en: "S-Curve" }, sub: "LEVEL 04", desc: { ja: "S字カーブ走行", en: "S-CURVE" }, kind: "lesson" },
+  { id: "crank", label: { ja: "クランク", en: "Crank" }, sub: "LEVEL 05", desc: { ja: "クランク走行", en: "CRANK" }, kind: "lesson" },
+  // ja label unified to "信号機" (was "信号"), matching LESSON_BRIEFINGS' title
+  // below and the original app's ClientApp.tsx MISSION_INFO (B9 known defect 2).
+  { id: "traffic-light", label: { ja: "信号機", en: "Traffic Light" }, sub: "LEVEL 06", desc: { ja: "信号機の練習", en: "TRAFFIC LIGHT PRACTICE" }, kind: "lesson" },
+  { id: "crosswalk", label: { ja: "横断歩道", en: "Crosswalk" }, sub: "LEVEL 07", desc: { ja: "歩行者優先", en: "STOP FOR PEDESTRIANS" }, kind: "lesson" },
+  { id: "railroad-crossing", label: { ja: "踏切", en: "Railroad Crossing" }, sub: "LEVEL 08", desc: { ja: "踏切の通過", en: "RAILROAD CROSSING" }, kind: "lesson" },
+  { id: "free-mode", label: { ja: "フリーモード", en: "Free Mode" }, sub: "FREE", desc: { ja: "街を自由に走行", en: "EXPLORE THE CITY" }, kind: "free" },
 ] as const;
 
 /** Localized Free Mode title (free-mode has no briefing, but the HUD still names it). */

@@ -33,10 +33,17 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
   }
   render() {
     if (this.state.hasError) {
+      // Class component: read the store snapshot directly (no hooks) rather
+      // than subscribing — a crash fallback doesn't need to react to a later
+      // language change (B9: this used to be English-only in both languages).
+      const language = useDrivingStore.getState().language;
+      const t = language === "ja"
+        ? { title: "問題が発生しました。", body: "ページを再読み込みしてください。" }
+        : { title: "Something went wrong.", body: "Please reload the page." };
       return (
         <div className="absolute inset-0 z-50 p-10 text-red-400 bg-slate-900">
-          <h1 className="text-2xl font-bold mb-2">Something went wrong.</h1>
-          <p>Please reload the page.</p>
+          <h1 className="text-2xl font-bold mb-2">{t.title}</h1>
+          <p>{t.body}</p>
           {process.env.NODE_ENV !== "production" && (
             <pre className="mt-4 text-xs whitespace-pre-wrap">{this.state.error}</pre>
           )}

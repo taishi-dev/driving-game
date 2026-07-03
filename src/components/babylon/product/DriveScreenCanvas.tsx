@@ -15,6 +15,10 @@ import {
   driveThrottleForGear,
 } from "@/lib/driveControls";
 
+// B9: the "loading" placeholder is user-visible (shown until the Havok/scene
+// promise resolves), so it must localize like the rest of the driving screen.
+const LOADING_TEXT = { ja: "3Dシーンを読み込み中…", en: "Loading 3D scene…" } as const;
+
 /**
  * B7b — the PRODUCT driving canvas: the Babylon drive scene wired to the
  * zustand store instead of local input state (that's the /drive test route,
@@ -40,6 +44,7 @@ export default function DriveScreenCanvas() {
   // Traffic-light lesson only: the current signal state, driven by the mission
   // runtime's cycle. Rendered as a DOM widget (the world has no 3D signal yet).
   const [signal, setSignal] = useState<SignalState | null>(null);
+  const language = useDrivingStore((s) => s.language);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -254,7 +259,7 @@ export default function DriveScreenCanvas() {
             pointerEvents: "none",
           }}
         >
-          Loading 3D scene…
+          {LOADING_TEXT[language]}
         </div>
       )}
       {/* B7c traffic-light lesson: DOM signal widget (the Babylon world has no

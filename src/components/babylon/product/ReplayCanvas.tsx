@@ -6,6 +6,10 @@ import { createReplayScene, type ReplaySceneHandle } from "../replayScene";
 import { useDrivingStore } from "@/lib/store";
 import { sampleReplay, replayDurationMs } from "@/lib/replay";
 
+// B9: user-visible loading placeholder — must localize like the rest of the
+// feedback screen.
+const LOADING_TEXT = { ja: "リプレイを読み込み中…", en: "Loading replay…" } as const;
+
 /**
  * B8 — the feedback screen's replay-review canvas.
  *
@@ -23,6 +27,7 @@ import { sampleReplay, replayDurationMs } from "@/lib/replay";
 export default function ReplayCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [ready, setReady] = useState(false);
+  const language = useDrivingStore((s) => s.language);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -139,7 +144,7 @@ export default function ReplayCanvas() {
             pointerEvents: "none",
           }}
         >
-          Loading replay…
+          {LOADING_TEXT[language]}
         </div>
       )}
     </div>

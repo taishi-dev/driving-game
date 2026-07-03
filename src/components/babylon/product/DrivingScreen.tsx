@@ -5,18 +5,20 @@ import { useEffect } from "react";
 import { useDrivingStore } from "@/lib/store";
 import { getBriefing, getLessonTitle } from "@/lib/lessonCatalog";
 import { STEER_MAGNITUDE } from "@/lib/driveControls";
+import { COMMON_STRINGS } from "@/lib/uiStrings";
 
 // Store-wired Babylon drive canvas. Client-only (WebGL/window + Havok WASM).
 const DriveScreenCanvas = dynamic(() => import("./DriveScreenCanvas"), { ssr: false });
 
+// `appTitle` + `exit` (canonical "back to Home" wording) now come from the
+// shared `uiStrings.ts` (B9 consolidation). `freeMode` was dropped here: it
+// duplicated `FREE_MODE_TITLE` in lessonCatalog.ts and was never referenced
+// (the HUD subtitle already uses `getLessonTitle`, below).
 const STRINGS = {
   ja: {
-    appTitle: "バーチャル教習所",
     controlsHint: "W/↑ アクセル · S/↓ ブレーキ · A/D/←→ ハンドル · 1 P · 2 D · 3 R",
     startMission: "ミッション開始",
-    exit: "ホームへ戻る",
     exitHint: "Esc でホームへ",
-    freeMode: "フリーモード",
     speed: "速度",
     offTrack: "コース外",
     warning: "警告",
@@ -25,12 +27,9 @@ const STRINGS = {
     steer: "ハンドル",
   },
   en: {
-    appTitle: "Virtual Driving School",
     controlsHint: "W/↑ gas · S/↓ brake · A/D/←→ steer · 1 Park · 2 Drive · 3 Reverse",
     startMission: "Start Mission",
-    exit: "Back to Home",
     exitHint: "Press Esc to exit",
-    freeMode: "Free Mode",
     speed: "SPEED",
     offTrack: "OFF TRACK",
     warning: "WARNING",
@@ -94,7 +93,7 @@ export function DrivingScreen() {
       {/* Title + lesson name (top-left). The subtitle is the LOCALIZED lesson
           title (not the raw LessonId). */}
       <div className="absolute top-0 left-0 z-10 p-4 pr-6 max-w-[70%] pointer-events-none select-none">
-        <h1 className="text-2xl font-bold drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">{t.appTitle}</h1>
+        <h1 className="text-2xl font-bold drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">{COMMON_STRINGS.appTitle[language]}</h1>
         <p className="text-sm opacity-80 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
           {getLessonTitle(currentLesson, language)}
         </p>
@@ -210,7 +209,7 @@ export function DrivingScreen() {
         className="absolute top-6 right-6 z-20 px-4 py-2 rounded-lg bg-slate-800/80 hover:bg-red-600 border border-slate-600 hover:border-red-500 text-sm font-bold transition-colors"
         title={t.exitHint}
       >
-        ✕ {t.exit}
+        ✕ {COMMON_STRINGS.backToHome[language]}
       </button>
 
       {/* Briefing overlay (graded lessons only) */}
