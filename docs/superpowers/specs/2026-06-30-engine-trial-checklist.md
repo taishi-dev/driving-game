@@ -229,6 +229,10 @@ E1-babylon B12 measurement sign-off (2026-07-03, headed, Arc 140T, 1920x1200):
 
 These are honest E1-branch conclusions the engine comparison needs on record:
 
+- **Click-to-pause not ported** (original ClientApp pause overlay): intentional deviation —
+  Escape + exit button replace it; vision layer acquires camera on mount without a pause state
+  (see `VisionController` rationale). Same gap exists in E2 (parity, previously unrecorded).
+  Recorded retroactively during E2's P12 review.
 - **World build-out gap:** s-curve / crank / crosswalk / traffic-light / railroad lesson
   areas are unbuilt. Their goals are reachable over the flat safety ground, but the car
   reads **OFF TRACK** in the unbuilt zones. Only the straight + turn stubs are modelled
