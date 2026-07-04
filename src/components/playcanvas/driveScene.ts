@@ -14,6 +14,7 @@ import { RaycastVehicle, VEHICLE_TUNING } from "./raycastVehicle";
 import { ensurePhysicsWorld } from "./ammoPhysics";
 import { buildDriveWorld } from "./driveWorld";
 import { setupRearviewMirror } from "./rearviewMirror";
+import { createDriveControls, normalizeKey, signedThrottle } from "@/lib/pcDriveControls";
 
 /**
  * P4 — vehicle-physics TEST scene on /drive.
@@ -25,7 +26,9 @@ import { setupRearviewMirror } from "./rearviewMirror";
  * flat ground for the Quaternius world (keeping the FLAT collider boxes as the
  * wheel-ray surface); P5b adds the rearview mirror.
  *
- * Controls are LOCAL to this test scene (product control wiring is P6/P7):
+ * Controls are LOCAL to this test scene and go through the shared pure
+ * `pcDriveControls` contract (P6) — the SAME module the product driving screen
+ * wires the keyboard through, so the test route and the product feel identical:
  *   W / ↑ = gas, S / ↓ = brake, A/D or ←/→ = steer, 1/2/3 = gear P/D/R, R = reset.
  *
  * `window.__driveDebug.getState()` is exposed UNGATED here — fine for a test
@@ -52,10 +55,6 @@ export interface DriveDebugApi {
 declare global {
   var __driveDebug: DriveDebugApi | undefined;
 }
-
-type Gear = "P" | "D" | "R";
-const GEAR_KEYS: Record<string, Gear> = { "1": "P", "2": "D", "3": "R" };
-const STEER_MAGNITUDE = 0.6; // keyboard partial steer (P6 will formalise ±0.6)
 
 const SPAWN_POS = new Vec3(0, VEHICLE_TUNING.spawnHeight, 12);
 const SPAWN_YAW = 180; // face −Z (local +Z → world −Z); see raycastVehicle coordinate note
@@ -250,34 +249,26 @@ export function createDriveScene(
     T.chassisHalfExtents.z,
   );
 
-  // --- Keyboard state ------------------------------------------------------
-  const keys: Record<string, boolean> = {};
-  let gear: Gear = "D";
+  // --- Keyboard state (via the shared pure pcDriveControls contract) -------
+  const controls = createDriveControls();
   // Script-forced input (probe). null = keyboard drives.
   let forced: { steer: number; throttle: number; brake: number } | null = null;
 
-  const norm = (k: string) => (k.length === 1 ? k.toLowerCase() : k);
   const onKeyDown = (e: KeyboardEvent) => {
-    const k = norm(e.key);
-    keys[k] = true;
-    if (GEAR_KEYS[k]) gear = GEAR_KEYS[k];
-    if (k === "r") vehicle.resetTo(SPAWN_POS, SPAWN_YAW);
+    controls.keyDown(e.key);
+    // Reset is a test-scene-only convenience, not part of the drive contract.
+    if (normalizeKey(e.key) === "r") vehicle.resetTo(SPAWN_POS, SPAWN_YAW);
   };
   const onKeyUp = (e: KeyboardEvent) => {
-    keys[norm(e.key)] = false;
+    controls.keyUp(e.key);
   };
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
 
   function computeKeyboardInput() {
-    const gas = keys["w"] || keys["ArrowUp"] ? 1 : 0;
-    const brakePressed = keys["s"] || keys["ArrowDown"] ? 1 : 0;
-    const left = keys["a"] || keys["ArrowLeft"];
-    const right = keys["d"] || keys["ArrowRight"];
-    const steer = right && !left ? STEER_MAGNITUDE : left && !right ? -STEER_MAGNITUDE : 0;
-    // Gear applies the drive sign; P disables drive force.
-    const throttle = gear === "P" ? 0 : gear === "R" ? -gas || 0 : gas;
-    return { steer, throttle, brake: brakePressed };
+    const { gas, brake, steer } = controls.getInput();
+    // signedThrottle applies the gear sign (P → 0, D → +, R → −).
+    return { steer, throttle: signedThrottle(controls.getGear(), gas), brake };
   }
 
   // --- Chase camera --------------------------------------------------------
@@ -314,7 +305,7 @@ export function createDriveScene(
       const s = vehicle.getState();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const drawCalls = ((app.stats as any)?.drawCalls?.total ?? 0) as number;
-      return { ...s, gear, offTrack: world.isOffTrack(s.x, s.z), drawCalls };
+      return { ...s, gear: controls.getGear(), offTrack: world.isOffTrack(s.x, s.z), drawCalls };
     },
     setInput: (steer, throttle, brake) => {
       forced = { steer, throttle, brake };
