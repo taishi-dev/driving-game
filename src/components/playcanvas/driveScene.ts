@@ -12,6 +12,7 @@ import { SHOWROOM_HDR_URL, type SceneHandle } from "./showroomScene";
 import { RaycastVehicle, VEHICLE_TUNING } from "./raycastVehicle";
 import { ensurePhysicsWorld } from "./ammoPhysics";
 import { buildDriveWorld } from "./driveWorld";
+import { setupRearviewMirror } from "./rearviewMirror";
 
 /**
  * P4 — vehicle-physics TEST scene on /drive.
@@ -42,6 +43,9 @@ export interface DriveDebugApi {
   /** Clear any script-forced input and return control to the keyboard. */
   releaseInput: () => void;
   reset: () => void;
+  /** Toggle the rearview mirror (P7's graded checkpoints use this hook). */
+  setMirrorActive: (active: boolean) => void;
+  isMirrorActive: () => boolean;
 }
 
 declare global {
@@ -228,6 +232,14 @@ export function createDriveScene(
   const vehicle = new RaycastVehicle(app, chassis);
   vehicle.attachWheelEntities(wheelEntities);
 
+  // --- Rearview mirror (P5b) -----------------------------------------------
+  const mirror = setupRearviewMirror(
+    app,
+    chassis,
+    T.chassisHalfExtents.y,
+    T.chassisHalfExtents.z,
+  );
+
   // --- Keyboard state ------------------------------------------------------
   const keys: Record<string, boolean> = {};
   let gear: Gear = "D";
@@ -301,6 +313,8 @@ export function createDriveScene(
       forced = null;
     },
     reset: () => vehicle.resetTo(SPAWN_POS, SPAWN_YAW),
+    setMirrorActive: (a) => mirror.setActive(a),
+    isMirrorActive: () => mirror.isActive(),
   };
   globalThis.__driveDebug = debugApi;
 
@@ -315,6 +329,7 @@ export function createDriveScene(
       for (const tex of generated) tex.destroy();
       envAsset.unload();
       app.assets.remove(envAsset);
+      mirror.dispose();
       world.dispose();
       vehicle.dispose();
       for (const w of wheelEntities) w.destroy();
