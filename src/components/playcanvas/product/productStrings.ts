@@ -47,11 +47,8 @@ export const SHELL_STRINGS = {
     backHome: "ホームに戻る", // に form: everywhere else
     speedUnit: "km/h",
     gearLabel: "ギア",
-    stubComingSoon: "この画面は次のタスクで実装されます。",
     feedbackTitle: "フィードバック",
     tutorialTitle: "チュートリアル",
-    authTitle: "ログイン / 登録",
-    historyTitle: "走行履歴",
     drivingHint: "W/S: アクセル・ブレーキ / A・D: ハンドル / 1・2・3: ギア P・D・R",
     // P9: the Ammo physics gate (DriveCanvas) is user-visible on every drive/
     // replay entry, so it must localize like the rest of the driving screen
@@ -79,11 +76,8 @@ export const SHELL_STRINGS = {
     backHome: "Back to Home",
     speedUnit: "km/h",
     gearLabel: "GEAR",
-    stubComingSoon: "This screen is implemented in the next task.",
     feedbackTitle: "Feedback",
     tutorialTitle: "Tutorial",
-    authTitle: "Login / Register",
-    historyTitle: "History",
     drivingHint: "W/S: gas & brake / A & D: steering / 1-2-3: gear P-D-R",
     physicsLoading: "Loading physics…",
     physicsFailedPrefix: "Failed to load physics (Ammo): ",

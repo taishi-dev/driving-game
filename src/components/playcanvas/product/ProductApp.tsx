@@ -1,6 +1,6 @@
 "use client";
 
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, useEffect, type ErrorInfo, type ReactNode } from "react";
 import { useDrivingStore } from "@/lib/store";
 import { SHELL_STRINGS } from "./productStrings";
 import { LanguageScreen } from "./LanguageScreen";
@@ -8,7 +8,10 @@ import { HomeScreen } from "./HomeScreen";
 import { DrivingScreen } from "./DrivingScreen";
 import { FeedbackScreen } from "./FeedbackScreen";
 import { TutorialScreen } from "./TutorialScreen";
-import { AuthStub, HistoryStub } from "./StubScreens";
+import { AuthScreen } from "./AuthScreen";
+import { HistoryScreen } from "./HistoryScreen";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 /**
  * P7a — the PlayCanvas product shell, mounted at `/`.
@@ -20,8 +23,14 @@ import { AuthStub, HistoryStub } from "./StubScreens";
  * `screen` initializer, not here.
  *
  * feedback (P7b score/results; P8 adds the replay scene) and tutorial (P7b) are
- * now real screens; auth / history remain minimal localized STUBS until P10.
- * Firebase auth restore is also P10 — until then the header is always GUEST.
+ * real screens; auth / history graduated in P10 (Firebase, fail-soft guest
+ * path) — every screen is now real, nothing left stubbed.
+ *
+ * P10: the shell restores the persisted Firebase auth session on load
+ * (original ClientApp semantics). `@/lib/firebase` is the single FAIL-SOFT
+ * entry — with no NEXT_PUBLIC_FIREBASE_* config it exports `auth = null`
+ * instead of throwing at import, so the whole product still boots and runs as
+ * guest with zero config.
  */
 
 class ErrorBoundary extends Component<
@@ -63,6 +72,21 @@ class ErrorBoundary extends Component<
 export default function ProductApp() {
   const screen = useDrivingStore((s) => s.screen);
 
+  // Restore the persisted Firebase auth session on load (original ClientApp
+  // semantics): Firebase keeps the session in browserLocalPersistence, but the
+  // store re-inits `user` to null on every page load — without this, a reload
+  // silently demotes the user to guest (history won't load, runs aren't saved).
+  // Fail-soft: `auth` is null when Firebase is unconfigured, so this is a no-op.
+  useEffect(() => {
+    if (!auth) return;
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      const store = useDrivingStore.getState();
+      store.setUser(u);
+      if (!u) store.setMissionHistory([]);
+    });
+    return unsubscribe;
+  }, []);
+
   return (
     <ErrorBoundary>
       <div className="relative w-full h-screen overflow-hidden bg-black text-white font-sans">
@@ -71,8 +95,8 @@ export default function ProductApp() {
         {screen === "driving" && <DrivingScreen />}
         {screen === "feedback" && <FeedbackScreen />}
         {screen === "tutorial" && <TutorialScreen />}
-        {screen === "auth" && <AuthStub />}
-        {screen === "history" && <HistoryStub />}
+        {screen === "auth" && <AuthScreen />}
+        {screen === "history" && <HistoryScreen />}
       </div>
     </ErrorBoundary>
   );

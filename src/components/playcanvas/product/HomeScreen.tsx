@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useDrivingStore } from "@/lib/store";
 import { HOME_CARDS, type HomeCard } from "@/lib/pcLessonCatalog";
+import { auth } from "@/lib/firebase";
 import { SHELL_STRINGS } from "./productStrings";
 
 // The hero background is the P2/P3 PlayCanvas showroom scene (static camera, no
@@ -12,8 +13,12 @@ const ShowroomHero = dynamic(() => import("./ShowroomHero"), { ssr: false });
 /**
  * P7a — product Home: the showroom hero as backdrop, lesson-select cards for
  * all nine LessonIds + the tutorial card + free mode, a live language dropdown,
- * and the PLAYER/GUEST header with Login/History links (auth/history are stubs
- * until P10, so user is always null → GUEST for now).
+ * and the PLAYER/GUEST header with Login/History/Logout links.
+ *
+ * P10: auth is real. `user` is populated by AuthScreen on sign-in and restored
+ * on reload by ProductApp's onAuthStateChanged listener; a signed-in user sees
+ * their name + History|Logout, a guest sees GUEST + Login|History (original
+ * ClientApp UserProfileHeader semantics).
  *
  * Routing semantics follow the original HomeScreen: tutorial → tutorial screen;
  * free-mode → setLesson (store puts missionState straight to "active") →
@@ -26,7 +31,18 @@ export function HomeScreen() {
   const language = useDrivingStore((s) => s.language);
   const setLanguage = useDrivingStore((s) => s.setLanguage);
   const user = useDrivingStore((s) => s.user);
+  const setUser = useDrivingStore((s) => s.setUser);
+  const setMissionHistory = useDrivingStore((s) => s.setMissionHistory);
   const t = SHELL_STRINGS[language];
+
+  // Original ClientApp logout semantics: sign out (fail-soft: `auth` is null
+  // when unconfigured — but then nobody can be logged in anyway), then clear
+  // the store's user + cached history.
+  const handleLogout = async () => {
+    if (auth) await auth.signOut();
+    setUser(null);
+    setMissionHistory([]);
+  };
 
   const handleSelect = (card: HomeCard) => {
     if (card.kind === "tutorial") {
@@ -68,7 +84,7 @@ export function HomeScreen() {
             </select>
           </div>
 
-          {/* Player header (always GUEST until P10 wires Firebase auth). */}
+          {/* Player header: name/GUEST + Login|History or Logout|History (P10). */}
           <div className="flex flex-col items-end gap-2">
             <div
               data-testid="player-header"
@@ -82,7 +98,7 @@ export function HomeScreen() {
               {user ? (
                 <button
                   data-testid="home-logout"
-                  onClick={() => setScreen("auth")}
+                  onClick={handleLogout}
                   className="text-slate-400 hover:text-red-400 transition-colors"
                 >
                   {t.logout}

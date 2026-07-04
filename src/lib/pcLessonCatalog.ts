@@ -127,7 +127,7 @@ export const HOME_CARDS: readonly HomeCard[] = [
   { id: "free-mode", label: { ja: "フリーモード", en: "Free Mode" }, sub: "FREE", desc: { ja: "街を自由に走行", en: "EXPLORE THE CITY" }, kind: "free" },
 ] as const;
 
-const FREE_MODE_TITLE: Localized = { ja: "フリーモード", en: "Free Mode" };
+export const FREE_MODE_TITLE: Localized = { ja: "フリーモード", en: "Free Mode" };
 
 /**
  * Localized display title for any lesson (drive HUD subtitle etc.). Graded
