@@ -299,6 +299,12 @@ Local decoder shipped at `public/lib/draco/` (`draco_wasm_wrapper.js` 58 KB glue
 Honest E2-branch conclusions the engine comparison needs on record (same class
 as E1's gaps — the two branches are deliberately at feature parity):
 
+- **Click-to-pause not ported** (original ClientApp pause overlay): deliberate —
+  Escape + exit button replace it; vision layer acquires camera on mount without
+  a pause state (see `VisionController` rationale in `src/components/playcanvas/product/VisionController.tsx:39-41`).
+  Same gap exists in E1 (parity, previously unrecorded).
+- **Headless-only VertexBuffer teardown race** during rapid scene remounts (P7b
+  sweep artifact): benign, never occurs in normal use; recorded for completeness.
 - **World build-out gap:** the s-curve / crank / crosswalk / traffic-light /
   railroad lesson areas are unbuilt; goals are reachable over the flat safety
   ground but the car reads **OFF TRACK** in the unbuilt zones. Only the straight
