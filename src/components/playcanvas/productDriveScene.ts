@@ -111,7 +111,9 @@ export function createProductDriveScene(
       // Original useMission guards: no grading while paused / replaying / free-mode.
       if (!st.isPaused && !st.isReplaying && st.currentLesson !== "free-mode") {
         const chassisEuler = base.vehicle.chassis.getEulerAngles();
-        const displaySpeedSigned = Math.abs(s.speedKmh); // display km/h
+        // Unsigned display speed in km/h — the frozen replay/scoring contract
+        // records the magnitude (reverse still counts as speed).
+        const displaySpeedKmh = Math.abs(s.speedKmh);
 
         // Record the replay frame (original Car.tsx contract: speed in km/h; head
         // snapshot; rotation is the chassis euler in radians — scoring reads only
@@ -121,7 +123,7 @@ export function createProductDriveScene(
           position: [s.x, s.y, s.z],
           rotation: [chassisEuler.x * DEG2RAD, chassisEuler.y * DEG2RAD, chassisEuler.z * DEG2RAD],
           steering: st.steeringAngle,
-          speed: displaySpeedSigned,
+          speed: displaySpeedKmh,
           headRotation: { ...st.headRotation },
         });
 
@@ -129,7 +131,7 @@ export function createProductDriveScene(
           lesson: st.currentLesson,
           position: { x: s.x, z: s.z },
           headYaw: st.headRotation.yaw,
-          speed: displaySpeedSigned,
+          speed: displaySpeedKmh,
           language: st.language,
         });
 

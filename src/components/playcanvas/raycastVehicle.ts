@@ -148,6 +148,9 @@ export class RaycastVehicle {
   private steerAngle = 0;
   private wheelEntities: (Entity | null)[] = [];
   private disposed = false;
+  /** Reusable scratch quaternion for per-wheel transform sync (avoids 4
+   *  allocations/frame — P12 alloc nit). */
+  private readonly wheelQuat = new Quat();
 
   /** Wheel index roles: 0=FL, 1=FR (steer), 2=RL, 3=RR (powered). */
   private static readonly STEER_WHEELS = [0, 1];
@@ -305,7 +308,8 @@ export class RaycastVehicle {
       const o = tr.getOrigin();
       const q = tr.getRotation();
       ent.setPosition(o.x(), o.y(), o.z());
-      ent.setRotation(new Quat(q.x(), q.y(), q.z(), q.w()));
+      this.wheelQuat.set(q.x(), q.y(), q.z(), q.w());
+      ent.setRotation(this.wheelQuat);
     }
   }
 

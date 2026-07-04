@@ -119,25 +119,46 @@
 
 ## 10. Performance Gate
 
-| # | Metric | Target |
-|---|---|---|
-| 10.1 | Frame rate | ≥ 60 fps steady at 1920×1200 on the target machine (Intel Core Ultra 7 255H + Intel Arc 140T) |
-| 10.2 | Measured fps | Recorded figure from the measurement method below |
-| 10.3 | Download size — models | Recorded figure from the measurement method below |
-| 10.4 | Download size — decoders | Draco decoder + KTX2 decoder payload, recorded separately |
-| 10.5 | Download size — MediaPipe | MediaPipe vision WASM + model files, recorded separately |
-| 10.6 | Total to first interactive | Sum of all above; must be ≤ 50 MB |
+Headed, real GPU (Arc 140T), 1920×1200, browser window foregrounded
+(`page.bringToFront()` — the E1 lesson: occluded Chrome throttles rAF). E1's
+recorded figures are shown for side-by-side.
+
+| # | Metric | Target | **E2-playcanvas (measured, 2026-07-04)** | E1-babylon (ref) |
+|---|---|---|---|---|
+| 10.1 | Frame rate | ≥ 60 fps steady at 1920×1200 on the target machine (Intel Core Ultra 7 255H + Intel Arc 140T) | ✅ home / keyboard-drive / replay = **60 fps steady**. ⚠️ vision-active drive = **49 fps median** (MediaPipe-bound; see note) | 60 / 60 / 60; vision 29 |
+| 10.2 | Measured fps | Recorded figure from the measurement method below | Home (showroom hero) **60/60/60** · Keyboard drive (isolated `/drive`, full world + mirror, no vision) **60/60/60** (drawCalls 99, 59.2 km/h) · Drive + vision (fake webcam, `isVisionReady`) **40/49/55** · Replay **60/60/60** (min/median/max) | 60/49-60 / 26-29-42 / 60 |
+| 10.3 | Download size — models | Recorded figure from the measurement method below | **2.97 MB** (CarConcept 1.21 + Quaternius world tiles/buildings/props) | 2.97 MB |
+| 10.4 | Download size — decoders | Draco decoder + KTX2 decoder payload, recorded separately | Draco **0.07 MB** (wasm 0.06 + js glue). No KTX2 (textures are .webp-in-GLB + one .hdr). HDRI 2k = **5.20 MB** (textures) | Draco 0.07; HDRI 5.20 |
+| 10.5 | Download size — MediaPipe | MediaPipe vision WASM + model files, recorded separately | **22.38 MB** CDN (jsdelivr `tasks-vision` wasm + googleapis models: pose_full, hand, face). **No ObjectDetector shipped** — E2 never included it (parity with E1's post-drop state, reached independently in P11) | 22.38 MB (detector dropped) |
+| 10.6 | Total to first interactive | Sum of all above; must be ≤ 50 MB | **31.93 MB** total to drive-ready (pure prod build; + Ammo physics wasm 0.33, app JS 0.95, other 0.03). First-interactive (home hero rendered) subtotal **7.42 MB**. **PASS ≤ 50 MB** | 32.58 MB; home 7.48 |
+
+> **fps note (10.1):** the identical PlayCanvas scene renders a rock-steady 60 fps
+> under keyboard driving on the ISOLATED `/drive` route (full world, rearview
+> mirror RTT active, no vision layer) — all 15 sample windows read 60 — so the
+> vision-active deficit is entirely the MediaPipe pipeline (face + hand + pose
+> landmarkers, one inference each per frame, on the shared iGPU), NOT PlayCanvas
+> rendering. E2's **49 fps median** with live vision is materially better than
+> E1's 29 (same three landmarkers, same no-detector config); reaching 60 with
+> live vision would need inference decoupled from the render loop (workers /
+> reduced cadence) — beyond this task's documented-perf-lever scope and out of
+> parity with the original app. **No tuning lever was applied** (measure → the
+> one short surface is inference-bound, not render-bound → nothing to tune
+> without an out-of-scope architecture change; every render surface already hits
+> 60). The keyboard-drive number was measured on `/drive` specifically because on
+> the product route the vision layer always mounts and MediaPipe's model load
+> transiently depresses the first seconds of driving (a measurement confound, not
+> a steady-state cost).
 
 ---
 
 ## 11. Build Quality
 
-| # | Feature | Acceptance criterion |
-|---|---|---|
-| 11.1 | type-check | `npm run type-check` passes with 0 errors |
-| 11.2 | lint | `npm run lint` passes with 0 errors |
-| 11.3 | Unit tests | The branch's equivalent of the seven `node --test` suites pass: scoring, checkpoint eval, replay interpolation, pedal decision, steering gear, foot-pedal recognition, car physics (re-authored per engine) |
-| 11.4 | Smoke test | `npm run smoke` (or engine equivalent) passes |
+| # | Feature | Acceptance criterion | **E2-playcanvas (2026-07-04)** |
+|---|---|---|---|
+| 11.1 | type-check | `npm run type-check` passes with 0 errors | ✅ PASS (0 errors) |
+| 11.2 | lint | `npm run lint` passes with 0 errors | ✅ PASS (0 errors; 2 pre-existing warnings live only in the FROZEN R3F originals `src/components/ui/FeedbackScreen.tsx` + `src/components/vision/VisionController.tsx` — not the PlayCanvas product files) |
+| 11.3 | Unit tests | The branch's equivalent of the seven `node --test` suites pass: scoring, checkpoint eval, replay interpolation, pedal decision, steering gear, foot-pedal recognition, car physics (re-authored per engine) | ✅ PASS **148/148** (`npm run test:unit`, 16 suites incl. `pcVehicleKernel`, `pcMissionGrading`, `pcDriveControls`, `pcDriveLayout`, `pcMirrorLayout`, `pcMissionLog`, `pcVisionStatus`, `pcLessonCatalog`, `pcUiStrings`, `replay`, `scoring`, `checkpointEval`, `pedalDecision`, `steeringGear`, `footPedalRecognition`, retired `carPhysics`). **Vehicle-physics note:** the shipped vehicle is Bullet's official `btRaycastVehicle` (via Ammo) wrapped in `raycastVehicle.ts` — welded to Ammo bodies + the dynamics world, so it has NO pure unit suite; it is verified by **headed driving + the e2e specs** (drive/reverse/steer/top-speed/goal observed live). Its load-bearing arithmetic (over-speed drag, speed-sensitive steer, km/h↔m/s) is extracted into the engine-free `src/lib/pcVehicleKernel.ts` and unit-tested there; `RaycastVehicle` calls those exact functions. |
+| 11.4 | Smoke test | `npm run smoke` (or engine equivalent) passes | ✅ e2e `npm run test:e2e` **5/5** (3 headless camera-denied fallback + 2 headed fake-webcam vision, incl. straight lesson to 100/100); pure + `NEXT_PUBLIC_E2E=1` production builds both compile clean |
 
 ---
 
@@ -246,4 +267,87 @@ Filled during P2/P3. Verified headed at 1920×1200 on the Arc 140T.
 
 ### Draco decoder (runtime, no CDN)
 
-Local decoder shipped at `public/lib/draco/` (`draco_wasm_wrapper.js` 58 KB glue + `draco_decoder.wasm` 192 KB; **250 KB total**, Apache-2.0, Google Draco glTF build). Wired via `pc.dracoInitialize({ jsUrl, wasmUrl, numWorkers: 1 })`. Counts toward the "decoders" line of the §10 download budget.
+Local decoder shipped at `public/lib/draco/` (`draco_wasm_wrapper.js` 58 KB glue + `draco_decoder.wasm` 192 KB; **250 KB total**, Apache-2.0, Google Draco glTF build). Wired via `pc.dracoInitialize({ jsUrl, wasmUrl, numWorkers: 1 })`. Counts toward the "decoders" line of the §10 download budget. (Transferred/encoded bytes over the wire = **0.07 MB**; the 250 KB figure is on-disk uncompressed.)
+
+---
+
+## E2-playcanvas — Engine effort & quirks (the trial's qualitative deliverable)
+
+- **Biggest E2 win — official vehicle physics.** Where E1 (Babylon) had to
+  HAND-BUILD a raycast vehicle from rigid bodies + manual suspension/grip/steer
+  forces (~400 lines fighting a neutral-steer yaw drift), PlayCanvas runs on Ammo
+  and Ammo ships Bullet's production `btRaycastVehicle`. `raycastVehicle.ts` is a
+  thin adapter (`setCoordinateSystem(0,1,2)`; drag-based 59.3 km/h cap). The
+  straight-line probe measured max |x| = 0.036 m over 165 m — **E1's whole drift
+  class is simply absent.**
+- **Capability FLAGs both resolved favourably (§ capability findings above):**
+  clearcoat EXISTS on `StandardMaterial`; `EnvLighting` prefilters IBL at RUNTIME
+  (the offline-cubemap FLAG was outdated for 2.20.5) — no offline artifact.
+- **Engine quirks found & worked around:** (a) `opacityMap` with per-pixel
+  variation renders INVISIBLE in 2.20.5 → contact shadow reworked via
+  `emissiveMap` + `BLEND_MULTIPLICATIVE`; (b) Quaternius kit GLBs import with
+  `metalness = 1` (dark albedo → black under IBL) → demetalized kit-wide, plus a
+  shared-default-material mutation bug fixed with per-entity materials; (c) the
+  engine's module-level Draco **JobQueue wedge** — a decode callback that throws
+  on a destroyed device permanently strands the single worker (fast lesson-click
+  mid-hero-decode), silently stalling all later world GLBs → root-fixed by
+  deferring `app.destroy()` until in-flight GLB loads settle
+  (`PlayCanvasCanvas.tsx`).
+
+## E2-playcanvas — Known Gaps (recorded at P12, NOT fixed here)
+
+Honest E2-branch conclusions the engine comparison needs on record (same class
+as E1's gaps — the two branches are deliberately at feature parity):
+
+- **World build-out gap:** the s-curve / crank / crosswalk / traffic-light /
+  railroad lesson areas are unbuilt; goals are reachable over the flat safety
+  ground but the car reads **OFF TRACK** in the unbuilt zones. Only the straight
+  + turn stubs are modelled (affects §2.5 traffic actors, parts of §5.2).
+- **Traffic light is a DOM widget** (§2.6), not a 3D signal in the world; it
+  still cycles (anchored at ACTIVE) and feeds the scoring's red-light check.
+- **Hero car is the placeholder box** in the drive AND replay scenes — the PBR
+  CarConcept (clearcoat/glass, §1.5–1.7) appears only in the showroom/home hero.
+- **Real-webcam drive-test pending** (§9.1–9.3): hands-steer, gear gestures, feet
+  pedals, and face→mirror checkpoints exercised only via fake webcam / keyboard
+  fallback so far (fake-stream e2e proves the pipeline runs; real hands cannot be
+  driven headless).
+- **Firebase real-config smoke pending** (§8): auth + history save/fetch verified
+  fail-soft and by record-shape tests, but not against a live Firebase project.
+- **three.js still ships at runtime for course/scoring math:** the D1.a "verbatim
+  core" decision keeps `course.ts` / `scoring.ts` / the store on
+  `THREE.CurvePath`/`THREE.Vector3`, so the three.js runtime is bundled even
+  though PlayCanvas renders the world. Its bytes are folded into the measured app
+  JS (§10.6, 0.95 MB) — not a separate line item (identical situation to E1).
+- **Disclosed bounded leak:** `btVehicleTuning` is one POD struct per vehicle
+  mount that this ammo.js build cannot `Ammo.destroy()` (the accessor throws
+  "Did you create it yourself?" because the vehicle copies its values by
+  reference at `addWheel`) — negligible and bounded; documented in
+  `raycastVehicle.ts`.
+
+## E2-playcanvas — P12 cleanup roll-up
+
+| Ledger item | Resolution |
+|---|---|
+| P8 review: `replayScene` duplicates ~140 lines of `driveScene` scene-assembly | **Factored.** The shared sky/IBL (runtime HDRI → `EnvLighting` atlas) + key-light block extracted to `driveSky.ts` (`setupDriveSkyAndSun`), consumed by both `buildDriveSceneBase` and `createReplayScene`. Kept in its own module (not re-exported from `driveScene`) so the replay chunk does not pull the vehicle/mirror/controls code. Strict-mode async dispose centralized. Verified at runtime by the headed vision e2e (drives to 100/100 → feedback replay). |
+| P4: per-wheel `new Quat()` per frame | **Fixed.** `RaycastVehicle` now reuses a single scratch `wheelQuat` (`.set()` + `setRotation`) in `syncWheels` — 4 allocations/frame → 0. |
+| P4/P7b: `__driveDebug` ungated on the `/drive` test route | **Decision: gate it** exactly like the product scene + `__drivingStore` (build-time `NEXT_PUBLIC_E2E === "1"` — dead-code-eliminated from prod — AND runtime `?e2e`). It exposes behaviour injection (`setInput`/`reset`), so keeping it out of the real deploy is a small hardening win. The on-screen `drive-fps` badge is untouched (rendered by `PlayCanvasCanvas`), so measurement + the `?e2e` e2e specs still work. |
+| P7b: `displaySpeedSigned` misleading name (value is unsigned) | **Renamed** to `displaySpeedKmh` with a clarifying comment (`productDriveScene.ts`). |
+| P4: `btVehicleTuning` POD leak | **Deferred with reason** (see Known Gaps) — `Ammo.destroy()` throws for this object in this build; bounded one-per-mount, documented. |
+
+---
+
+## Sign-Off Checklist (E2-playcanvas, P12)
+
+```
+E2-playcanvas P12 measurement sign-off (2026-07-04, headed, Arc 140T, 1920x1200):
+  fps (steady, headed, target GPU): home 60 / keyboard-drive 60 / replay 60 / vision-drive 49 (median)
+  download — models (MB): 2.97
+  download — decoders (MB): 0.07 (Draco; no KTX2)  [+ HDRI texture 5.20]
+  download — MediaPipe (MB): 22.38 (no ObjectDetector shipped)
+  download — total to drive-ready (MB): 31.93   (<= 50 budget: PASS; first-interactive/home 7.42)
+  type-check: PASS
+  lint: PASS (0 errors)
+  unit tests: PASS (148/148)
+  smoke / e2e: PASS (e2e 5/5)
+  builds: pure + NEXT_PUBLIC_E2E=1 both compile clean
+```

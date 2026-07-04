@@ -1,19 +1,17 @@
 import {
   Application,
-  Asset,
   Color,
   Entity,
-  EnvLighting,
   StandardMaterial,
-  Texture,
   Vec3,
   TONEMAP_ACES,
 } from "playcanvas";
-import { SHOWROOM_HDR_URL, type SceneHandle } from "./showroomScene";
+import { type SceneHandle } from "./showroomScene";
 import { RaycastVehicle, VEHICLE_TUNING, type VehicleInput } from "./raycastVehicle";
 import { ensurePhysicsWorld } from "./ammoPhysics";
 import { buildDriveWorld, type DriveWorldHandle } from "./driveWorld";
 import { setupRearviewMirror, type RearviewMirrorHandle } from "./rearviewMirror";
+import { setupDriveSkyAndSun } from "./driveSky";
 import { createDriveControls, normalizeKey, signedThrottle } from "@/lib/pcDriveControls";
 
 /**
@@ -28,7 +26,7 @@ import { createDriveControls, normalizeKey, signedThrottle } from "@/lib/pcDrive
  *
  *  • {@link createDriveScene} (this file): the /drive TEST scene. Local keyboard
  *    via the pure `pcDriveControls` contract (P6), a script-forceable input, and
- *    an UNGATED `window.__driveDebug` (fine for a test route; P12 gates it).
+ *    a `window.__driveDebug` double-gated (NEXT_PUBLIC_E2E + `?e2e`) since P12.
  *  • `createProductDriveScene` (productDriveScene.ts): the product driving
  *    screen. No listeners of its own — it consumes the STORE's
  *    steering/throttle/brake/gear each frame (the React shell writes them) and
@@ -96,37 +94,8 @@ export function buildDriveSceneBase(
   // runs before app.start(), so we must init it here — see ensurePhysicsWorld).
   ensurePhysicsWorld(app);
 
-  const scene = app.scene;
-  scene.exposure = 1.1;
-  scene.ambientLight = new Color(0.1, 0.11, 0.13);
-
-  // --- Outdoor sky + image-based lighting (runtime HDRI prefilter) ---------
-  // PlayCanvas' StandardMaterial diffuse needs an ambient/IBL source; a flat
-  // scene.ambientLight alone does not light it. So the drive world loads the
-  // shipped Poly Haven sky HDR, prefilters it into an environment atlas (the
-  // exact approach proven in showroomScene.ts) to drive both the visible
-  // skybox and surface lighting.
-  const generated: Texture[] = [];
-  const envAsset = new Asset("drive-hdr", "texture", { url: SHOWROOM_HDR_URL });
-  envAsset.on("load", () => {
-    if (isDisposed()) return;
-    const source = envAsset.resource as Texture;
-    const lightingSource = EnvLighting.generateLightingSource(source);
-    const envAtlas = EnvLighting.generateAtlas(lightingSource);
-    lightingSource.destroy();
-    generated.push(envAtlas);
-    // envAtlas drives ambient + glossy reflections. We keep the camera's
-    // clear-colour sky as the visible background (not scene.skybox, which needs
-    // a cubemap) — the atlas is what actually lights the diffuse surfaces.
-    scene.envAtlas = envAtlas;
-    scene.skyboxIntensity = 1.0;
-  });
-  let envRafId = requestAnimationFrame(() => {
-    envRafId = 0;
-    if (isDisposed()) return;
-    app.assets.add(envAsset);
-    app.assets.load(envAsset);
-  });
+  // --- Sky/IBL + key light (shared with the replay scene, see driveSky.ts) --
+  const sky = setupDriveSkyAndSun(app, isDisposed, "drive-hdr");
 
   // --- Camera (chase) ------------------------------------------------------
   const camera = new Entity("drive-camera");
@@ -139,17 +108,6 @@ export function buildDriveSceneBase(
   });
   camera.setPosition(0, 6, 24);
   app.root.addChild(camera);
-
-  // --- Lighting ------------------------------------------------------------
-  const sun = new Entity("sun");
-  sun.addComponent("light", {
-    type: "directional",
-    color: new Color(1.0, 0.97, 0.9),
-    intensity: 3.5,
-    castShadows: false,
-  });
-  sun.setEulerAngles(60, 20, 0);
-  app.root.addChild(sun);
 
   // --- Terrain: flat surround (visual + flat safety collider) --------------
   // A large flat ground around the road so off-road isn't empty void, and a
@@ -300,11 +258,7 @@ export function buildDriveSceneBase(
       ((app.stats as any)?.drawCalls?.total ?? 0) as number,
     resetToSpawn: () => vehicle.resetTo(SPAWN_POS, SPAWN_YAW),
     dispose() {
-      if (envRafId) cancelAnimationFrame(envRafId);
-      scene.envAtlas = null;
-      for (const tex of generated) tex.destroy();
-      envAsset.unload();
-      app.assets.remove(envAsset);
+      sky.dispose();
       mirror.dispose();
       world.dispose();
       vehicle.dispose();
@@ -318,7 +272,6 @@ export function buildDriveSceneBase(
       bodyMat.destroy();
       cabMat.destroy();
       wheelMat.destroy();
-      sun.destroy();
       camera.destroy();
     },
   };
@@ -367,35 +320,52 @@ export function createDriveScene(
   };
   app.on("update", onUpdate);
 
-  // --- Debug hook (ungated test route; P12 double-gates) -------------------
-  const debugApi: DriveDebugApi = {
-    getState: () => {
-      const s = base.vehicle.getState();
-      return {
-        ...s,
-        gear: controls.getGear(),
-        offTrack: base.world.isOffTrack(s.x, s.z),
-        drawCalls: base.drawCalls(),
-      };
-    },
-    setInput: (steer, throttle, brake) => {
-      forced = { steer, throttle, brake };
-    },
-    releaseInput: () => {
-      forced = null;
-    },
-    reset: () => base.resetToSpawn(),
-    setMirrorActive: (a) => base.mirror.setActive(a),
-    isMirrorActive: () => base.mirror.isActive(),
-  };
-  globalThis.__driveDebug = debugApi;
+  // --- Debug hook, double-gated like __drivingStore / the product scene -----
+  // P12 decision: the /drive TEST route's hook is now gated EXACTLY like the
+  // product scene (build-time NEXT_PUBLIC_E2E === "1" so prod bundles drop the
+  // block, plus runtime `?e2e`) — it exposes behaviour injection (setInput /
+  // reset), so keeping it out of the real deploy is a small hardening win. The
+  // on-screen `drive-fps` badge is unaffected (rendered by PlayCanvasCanvas), so
+  // the fps-measurement path still works, and the e2e specs load with `?e2e`.
+  let debugApi: DriveDebugApi | undefined;
+  if (process.env.NEXT_PUBLIC_E2E === "1" && typeof window !== "undefined") {
+    try {
+      if (new URLSearchParams(window.location.search).has("e2e")) {
+        debugApi = {
+          getState: () => {
+            const s = base.vehicle.getState();
+            return {
+              ...s,
+              gear: controls.getGear(),
+              offTrack: base.world.isOffTrack(s.x, s.z),
+              drawCalls: base.drawCalls(),
+            };
+          },
+          setInput: (steer, throttle, brake) => {
+            forced = { steer, throttle, brake };
+          },
+          releaseInput: () => {
+            forced = null;
+          },
+          reset: () => base.resetToSpawn(),
+          setMirrorActive: (a) => base.mirror.setActive(a),
+          isMirrorActive: () => base.mirror.isActive(),
+        };
+        globalThis.__driveDebug = debugApi;
+      }
+    } catch {
+      // location may be unavailable in some environments; ignore.
+    }
+  }
 
   return {
     dispose() {
       app.off("update", onUpdate);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
-      if (globalThis.__driveDebug === debugApi) globalThis.__driveDebug = undefined;
+      if (debugApi && globalThis.__driveDebug === debugApi) {
+        globalThis.__driveDebug = undefined;
+      }
       base.dispose();
     },
   };

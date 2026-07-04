@@ -1,17 +1,15 @@
 import {
   Application,
-  Asset,
   Color,
   Entity,
-  EnvLighting,
   StandardMaterial,
-  Texture,
   Vec3,
   TONEMAP_ACES,
 } from "playcanvas";
-import { SHOWROOM_HDR_URL, type SceneHandle } from "./showroomScene";
+import { type SceneHandle } from "./showroomScene";
 import { VEHICLE_TUNING } from "./raycastVehicle";
 import { buildDriveWorld } from "./driveWorld";
+import { setupDriveSkyAndSun } from "./driveSky";
 import { ensurePhysicsWorld } from "./ammoPhysics";
 import { useDrivingStore } from "@/lib/store";
 import { sampleReplay, replayDurationMs } from "@/lib/replay";
@@ -57,43 +55,10 @@ export function createReplayScene(
   // awaited loadAmmo(), so the global Ammo is present.
   ensurePhysicsWorld(app);
 
-  const scene = app.scene;
-  scene.exposure = 1.1;
-  scene.ambientLight = new Color(0.1, 0.11, 0.13);
-
-  // --- Sky + IBL (same runtime HDRI prefilter as the drive base) -----------
-  // StandardMaterial diffuse needs an IBL source; the flat ambient alone won't
-  // light it. Prefilter the shipped sky HDR into an environment atlas (the
-  // proven driveScene approach) so the world materials read correctly.
-  const generated: Texture[] = [];
-  const envAsset = new Asset("replay-hdr", "texture", { url: SHOWROOM_HDR_URL });
-  envAsset.on("load", () => {
-    if (isDisposed()) return;
-    const source = envAsset.resource as Texture;
-    const lightingSource = EnvLighting.generateLightingSource(source);
-    const envAtlas = EnvLighting.generateAtlas(lightingSource);
-    lightingSource.destroy();
-    generated.push(envAtlas);
-    scene.envAtlas = envAtlas;
-    scene.skyboxIntensity = 1.0;
-  });
-  let envRafId = requestAnimationFrame(() => {
-    envRafId = 0;
-    if (isDisposed()) return;
-    app.assets.add(envAsset);
-    app.assets.load(envAsset);
-  });
-
-  // --- Lighting ------------------------------------------------------------
-  const sun = new Entity("replay-sun");
-  sun.addComponent("light", {
-    type: "directional",
-    color: new Color(1.0, 0.97, 0.9),
-    intensity: 3.5,
-    castShadows: false,
-  });
-  sun.setEulerAngles(60, 20, 0);
-  app.root.addChild(sun);
+  // --- Sky/IBL + key light (shared with the drive base, see driveSky.ts) ----
+  // Same runtime HDRI prefilter as the drive scene: StandardMaterial diffuse
+  // needs an IBL source, so the world materials would go unlit without it.
+  const sky = setupDriveSkyAndSun(app, isDisposed, "replay-hdr");
 
   // --- Terrain: flat visual surround (no collider needed — car is kinematic) --
   const terrain = new Entity("replay-terrain");
@@ -316,11 +281,7 @@ export function createReplayScene(
       if (exposed && typeof window !== "undefined") {
         delete (globalThis as unknown as { __replayDebug?: unknown }).__replayDebug;
       }
-      if (envRafId) cancelAnimationFrame(envRafId);
-      scene.envAtlas = null;
-      for (const tex of generated) tex.destroy();
-      envAsset.unload();
-      app.assets.remove(envAsset);
+      sky.dispose();
       world.dispose();
       for (const w of wheelEntities) w.destroy();
       cab.destroy();
@@ -329,7 +290,6 @@ export function createReplayScene(
       carRoot.destroy();
       chaseCam.destroy();
       terrain.destroy();
-      sun.destroy();
       groundMat.destroy();
       bodyMat.destroy();
       cabMat.destroy();
