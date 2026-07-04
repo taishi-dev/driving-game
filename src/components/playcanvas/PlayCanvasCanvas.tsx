@@ -152,8 +152,58 @@ export default function PlayCanvasCanvas({
       window.clearInterval(fpsTimer);
       resizeObserver?.disconnect();
       window.removeEventListener("resize", onResize);
+
+      // [Draco-wedge root fix] Destroying the app while a container GLB is
+      // still mid-parse is what used to wedge the SHARED Draco decode
+      // pipeline for the rest of the session (fast-click off Home → every
+      // later world/car GLB silently stalled → empty drive/replay worlds).
+      // Mechanism (verified against playcanvas@2.20.5's draco-decoder.js):
+      // the glb parser's decode-completion callback creates vertex/index
+      // buffers on THIS app's graphics device; if the device is already
+      // destroyed it throws (`Cannot read properties of null (reading
+      // 'ARRAY_BUFFER')`) INSIDE the module-level JobQueue's worker message
+      // handler — before the queue dispatches waiting jobs and before the
+      // worker is returned to an idle tier. With its bookkeeping corrupted,
+      // the singleton queue never runs another job. The decoder offers no
+      // cancellation, so the root fix is sequencing: capture every asset
+      // still `loading` (BEFORE the scene dispose removes them from the
+      // registry — their load/error events still fire either way, the
+      // loader's completion closure holds the asset itself) and defer
+      // `app.destroy()` until they settle. Callbacks then land on a live
+      // device: no throw, pipeline stays healthy, and destroy() reclaims
+      // whatever GPU resources the tail of the parse created. Under React
+      // strict-mode's synchronous dev double-mount nothing has started
+      // loading yet (all loads are rAF-deferred), so this stays a fully
+      // synchronous destroy — the throwaway-mount behaviour is unchanged.
+      const pendingLoads = app.assets
+        .list()
+        .filter((a) => a.loading)
+        .map(
+          (a) =>
+            new Promise<void>((resolve) => {
+              a.once("load", () => resolve());
+              a.once("error", () => resolve());
+            }),
+        );
+
       sceneHandle?.dispose();
-      app.destroy();
+
+      if (pendingLoads.length === 0) {
+        app.destroy();
+      } else {
+        // Don't keep rendering to the detached canvas while we wait.
+        app.autoRender = false;
+        // Safety valve: never leak the app if a load hangs (e.g. network
+        // stall) — after 10s destroy anyway; at that point the decode jobs
+        // have long settled or failed at the fetch stage (which doesn't
+        // touch the device).
+        const timeout = new Promise<void>((resolve) => {
+          setTimeout(resolve, 10_000);
+        });
+        void Promise.race([Promise.all(pendingLoads), timeout]).then(() => {
+          app.destroy();
+        });
+      }
     };
   }, [buildScene, fit]);
 
