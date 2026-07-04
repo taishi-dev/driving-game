@@ -318,7 +318,7 @@ export function DrivingScreen() {
           top-20% per the original Dashboard, above the off-track warning (30%). */}
       {drivingFeedback && (
         <div
-          data-testid="drive-feedback"
+          data-testid="driving-feedback"
           className="absolute top-[20%] left-1/2 -translate-x-1/2 z-20 px-6 py-3 rounded-xl bg-black/70 border border-green-500/50 text-2xl font-bold text-green-300 pointer-events-none select-none"
         >
           {drivingFeedback}
