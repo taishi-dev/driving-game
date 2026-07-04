@@ -6,7 +6,7 @@ import { useDrivingStore } from "@/lib/store";
 import { MISSION_CHECKPOINTS } from "@/lib/mission/missions";
 import { getLessonTitle } from "@/lib/pcLessonCatalog";
 import { createReplayScene } from "../replayScene";
-import { SHELL_STRINGS } from "./productStrings";
+import { CHECKPOINT_NAMES, SHELL_STRINGS } from "./productStrings";
 
 // Ammo-gated PlayCanvas canvas (client-only), running the replay-review scene.
 // buildDriveWorld's static road colliders need the physics world, so the replay
@@ -51,8 +51,8 @@ const STRINGS = {
     typeSafety: "安全確認",
     typeSpeed: "速度制限",
     replay: "リプレイ",
-    chase: "CHASE",
-    driver: "DRIVER",
+    chase: "追従", // P9: was English "CHASE" leaking into ja (E1 canon: 追従/運転席)
+    driver: "運転席",
     noReplay: "この走行の記録はありません。",
   },
   en: {
@@ -79,20 +79,9 @@ const STRINGS = {
   },
 } as const;
 
-/**
- * Localized display names for the per-checkpoint result rows, keyed by checkpoint
- * id. The frozen `missions.ts` `label` field is MIXED language ("一時停止" vs
- * "Railroad Crossing Stop") and display-unreliable in either language, so — the
- * settled trial approach (E1 precedent) — the feedback list derives its own
- * bilingual names and NEVER renders `cp.label`. Covers every scored checkpoint id
- * in the frozen table; the type-name is the fallback for any future id.
- */
-const CHECKPOINT_NAMES: Record<string, { ja: string; en: string }> = {
-  "stop-1": { ja: "一時停止", en: "Stop at the line" },
-  "mirror-1": { ja: "安全確認", en: "Mirror safety check" },
-  "cw-safety-1": { ja: "横断歩道の安全確認", en: "Crosswalk safety check" },
-  "rr-stop-1": { ja: "踏切前の一時停止", en: "Stop before the crossing" },
-};
+// CHECKPOINT_NAMES (per-checkpoint result row labels) now lives in the pure
+// `productStrings.ts` (P9) so its coverage against the frozen missions table
+// can be locked by a `node --test` parity test — see tests/pcUiStrings.test.ts.
 
 export function FeedbackScreen() {
   const language = useDrivingStore((s) => s.language);

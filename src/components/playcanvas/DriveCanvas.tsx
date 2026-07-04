@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import PlayCanvasCanvas, { type SceneBuilder } from "./PlayCanvasCanvas";
 import { createDriveScene } from "./driveScene";
 import { loadAmmo } from "./ammoPhysics";
+import { useDrivingStore } from "@/lib/store";
+import { SHELL_STRINGS } from "./product/productStrings";
 
 /**
  * P4 — /drive canvas host.
@@ -33,6 +35,11 @@ export default function DriveCanvas({
 } = {}) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // P9: this gate is user-visible on every drive/replay screen entry (it flashes
+  // until the Ammo WASM module resolves), so — like the rest of the driving
+  // screen — it must localize instead of being English-only in both languages.
+  const language = useDrivingStore((s) => s.language);
+  const t = SHELL_STRINGS[language];
 
   useEffect(() => {
     let disposed = false;
@@ -62,7 +69,8 @@ export default function DriveCanvas({
           textAlign: "center",
         }}
       >
-        Failed to load physics (Ammo): {error}
+        {t.physicsFailedPrefix}
+        {error}
       </div>
     );
   }
@@ -79,7 +87,7 @@ export default function DriveCanvas({
           font: "600 14px/1.4 ui-monospace, monospace",
         }}
       >
-        Loading physics…
+        {t.physicsLoading}
       </div>
     );
   }

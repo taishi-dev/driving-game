@@ -2,6 +2,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { useDrivingStore } from "@/lib/store";
+import { SHELL_STRINGS } from "./productStrings";
 import { LanguageScreen } from "./LanguageScreen";
 import { HomeScreen } from "./HomeScreen";
 import { DrivingScreen } from "./DrivingScreen";
@@ -42,10 +43,14 @@ class ErrorBoundary extends Component<
 
   render() {
     if (this.state.hasError) {
+      // Class component: read the store snapshot directly (no hooks) rather
+      // than subscribing — a crash fallback doesn't need to react to a later
+      // language change. P9: this was English-only in both languages.
+      const t = SHELL_STRINGS[useDrivingStore.getState().language];
       return (
         <div className="absolute inset-0 z-50 p-10 bg-white text-red-600">
-          <h1 className="text-2xl font-bold">Something went wrong.</h1>
-          <p>Please reload the page. If the problem persists, contact support.</p>
+          <h1 className="text-2xl font-bold">{t.errorTitle}</h1>
+          <p>{t.errorBody}</p>
           {/* Raw error only in development — never expose stacks in production. */}
           {process.env.NODE_ENV !== "production" && <pre>{this.state.error}</pre>}
         </div>
