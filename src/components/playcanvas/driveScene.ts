@@ -4,6 +4,7 @@ import {
   Color,
   Entity,
   EnvLighting,
+  StandardMaterial,
   Texture,
   Vec3,
   TONEMAP_ACES,
@@ -135,14 +136,18 @@ export function createDriveScene(
   // the road the wheels ray those; both are FLAT boxes — never the crowned
   // visual tiles (the E1 camber-drift lesson). Off-track is reported separately
   // by the pure layout math, independent of which flat collider the wheels hit.
+  // NB: `render.material` on a primitive returns the ENGINE-WIDE shared default
+  // material. Mutating that getter would bleed onto every other primitive
+  // (terrain/body/cab/wheels), so each gets its OWN `new StandardMaterial()`.
   const terrain = new Entity("terrain");
   terrain.addComponent("render", { type: "plane" });
-  const groundMat = terrain.render!.material as import("playcanvas").StandardMaterial;
+  const groundMat = new StandardMaterial();
   groundMat.useMetalness = true;
-  groundMat.diffuse = new Color(0.22, 0.24, 0.22);
+  groundMat.diffuse = new Color(0.3, 0.32, 0.32);
   groundMat.metalness = 0.0;
-  groundMat.gloss = 0.2;
+  groundMat.gloss = 0.25;
   groundMat.update();
+  terrain.render!.material = groundMat;
   terrain.setLocalScale(600, 1, 600);
   terrain.setPosition(0, -0.02, -90);
   app.root.addChild(terrain);
@@ -187,12 +192,13 @@ export function createDriveScene(
   // collision halfExtents stay correct).
   const body = new Entity("chassis-body");
   body.addComponent("render", { type: "box" });
-  const bodyMat = body.render!.material as import("playcanvas").StandardMaterial;
+  const bodyMat = new StandardMaterial();
   bodyMat.useMetalness = true;
-  bodyMat.diffuse = new Color(0.6, 0.06, 0.07);
+  bodyMat.diffuse = new Color(0.72, 0.08, 0.09);
   bodyMat.metalness = 0.1;
   bodyMat.gloss = 0.6;
   bodyMat.update();
+  body.render!.material = bodyMat;
   body.setLocalScale(
     T.chassisHalfExtents.x * 2,
     T.chassisHalfExtents.y * 2,
@@ -202,24 +208,28 @@ export function createDriveScene(
   // A small cab so the car's facing is visible in screenshots.
   const cab = new Entity("chassis-cab");
   cab.addComponent("render", { type: "box" });
-  const cabMat = cab.render!.material as import("playcanvas").StandardMaterial;
-  cabMat.diffuse = new Color(0.1, 0.12, 0.16);
+  const cabMat = new StandardMaterial();
+  cabMat.diffuse = new Color(0.12, 0.14, 0.2);
   cabMat.update();
+  cab.render!.material = cabMat;
   cab.setLocalScale(T.chassisHalfExtents.x * 1.6, T.chassisHalfExtents.y * 1.2, T.chassisHalfExtents.z * 1.1);
   cab.setLocalPosition(0, T.chassisHalfExtents.y * 1.0, 0.4); // toward +Z (front)
   chassis.addChild(cab);
 
   // --- Visual wheels (synced from the Bullet vehicle each frame) -----------
+  // One shared tyre material for all four wheels (intentional reuse via an
+  // explicit instance — NOT the shared primitive default the other meshes hit).
+  const wheelMat = new StandardMaterial();
+  wheelMat.useMetalness = true;
+  wheelMat.diffuse = new Color(0.05, 0.05, 0.06);
+  wheelMat.metalness = 0.0;
+  wheelMat.gloss = 0.4;
+  wheelMat.update();
   const wheelEntities: Entity[] = [];
   for (let i = 0; i < 4; i++) {
     const w = new Entity(`wheel-${i}`);
     w.addComponent("render", { type: "cylinder" });
-    const wm = w.render!.material as import("playcanvas").StandardMaterial;
-    wm.useMetalness = true;
-    wm.diffuse = new Color(0.05, 0.05, 0.06);
-    wm.metalness = 0.0;
-    wm.gloss = 0.4;
-    wm.update();
+    w.render!.material = wheelMat;
     // Cylinder axis is local Y; wheels spin about X → rotate the mesh 90° about Z.
     // We sync world transform from Bullet each frame, so bake the axis fix into
     // a child mesh instead: simplest is to scale to a disc and orient at sync.
@@ -341,6 +351,7 @@ export function createDriveScene(
       groundMat.destroy();
       bodyMat.destroy();
       cabMat.destroy();
+      wheelMat.destroy();
       sun.destroy();
       camera.destroy();
     },

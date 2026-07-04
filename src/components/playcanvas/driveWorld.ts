@@ -67,14 +67,32 @@ interface Placement {
 }
 
 /**
- * Disable baked vertex-color tinting on an entity's materials. Quaternius GLBs
- * carry COLOR_0 data that PlayCanvas' glTF importer multiplies into the diffuse
- * (via `diffuseVertexColor`), washing the road/sidewalk a strong red — the exact
- * E1 tint bug. The source textures already carry the right concrete/asphalt
- * colour, so we turn every vertex-colour usage off. Materials are shared across
- * instances, so a `Set` de-dupes the work.
+ * Fix up the Quaternius GLB materials so they light correctly under the drive
+ * scene's sun + IBL. Two independent glTF-import problems are corrected in one
+ * de-duped pass (materials are shared across instances, so a `Set` avoids
+ * repeating the work):
+ *
+ *  1. VERTEX-COLOUR TINT. Quaternius GLBs carry COLOR_0 data that PlayCanvas'
+ *     importer multiplies into the diffuse (via `diffuseVertexColor`), washing
+ *     the road/sidewalk a strong red — the exact E1 tint bug. The source
+ *     textures already carry the right concrete/asphalt colour, so we turn
+ *     every vertex-colour usage off.
+ *
+ *  2. BOGUS FULL METALNESS (this round's black-world root cause). The kit's
+ *     glTF exports almost every surface — asphalt, concrete, brick, trim — with
+ *     `metallicFactor = 1` and `roughnessFactor = 0`, so PlayCanvas imports them
+ *     as perfect mirror-metals (`metalness = 1`, `gloss = 1`). A metal has NO
+ *     diffuse albedo: it renders as the environment reflection tinted by its
+ *     base colour. Bright-textured surfaces (brick/concrete) then mirror the
+ *     bright sky and merely LOOK lit, while the dark asphalt texture mirrors
+ *     almost nothing and renders pitch black — reading as a void the road
+ *     floats in. None of these surfaces are actually metal, so we force them
+ *     dielectric (`metalness = 0`, so the diffuse map becomes real albedo lit by
+ *     the sun + diffuse IBL) and knock the mirror gloss down to a matte concrete
+ *     sheen. Materials already authored dielectric (glass, road decals) keep
+ *     their tuned gloss.
  */
-function killVertexColors(entity: Entity, touched: Set<StandardMaterial>): void {
+function fixQuaterniusMaterial(entity: Entity, touched: Set<StandardMaterial>): void {
   const renders = entity.findComponents("render") as RenderComponent[];
   for (const r of renders) {
     for (const mi of r.meshInstances) {
@@ -87,6 +105,12 @@ function killVertexColors(entity: Entity, touched: Set<StandardMaterial>): void 
       mat.metalnessVertexColor = false;
       mat.glossVertexColor = false;
       mat.aoVertexColor = false;
+      // De-metalise: the base colour becomes true diffuse albedo again.
+      if (mat.metalness > 0) {
+        mat.metalness = 0;
+        mat.metalnessMap = null; // scalar 0 already wins, but drop the map too
+        if (mat.gloss > 0.6) mat.gloss = 0.45; // matte concrete/asphalt sheen
+      }
       mat.update();
     }
   }
@@ -158,7 +182,7 @@ export function buildDriveWorld(
     const template = resource.instantiateRenderEntity();
     app.root.addChild(template);
     app.root.syncHierarchy(); // resolve mesh-instance world transforms
-    killVertexColors(template, touchedMaterials);
+    fixQuaterniusMaterial(template, touchedMaterials);
     disposables.push(template);
 
     const renders = template.findComponents("render") as RenderComponent[];
@@ -195,7 +219,7 @@ export function buildDriveWorld(
     ent.setPosition(p.x, p.y, p.z);
     ent.setRotation(q);
     app.root.addChild(ent);
-    killVertexColors(ent, touchedMaterials);
+    fixQuaterniusMaterial(ent, touchedMaterials);
     disposables.push(ent);
   }
 
