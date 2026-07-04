@@ -213,3 +213,21 @@ E<n>-<engine> B12 measurement sign-off:
   unit tests: PASS (_/_ suites)
   smoke: PASS
 ```
+
+---
+
+## E3 · Cocos Creator — Trial Verdict: **EARLY-EXIT (code-first infeasible)**
+
+**Date:** 2026-07-04 · **Gate:** C0 feasibility spike · **Full evidence:** `.superpowers/sdd/c0-feasibility-report.md`
+
+Cocos Creator 3.8 **cannot** power our Next.js app code-first (no editor in the build loop). The C0 gate failed at criterion 1; the branch stops here as a valid, documented trial datum. It is **not eligible** for the Phase C comparison items above — none of §1–§11 were built. Two independent, primary-source-confirmed blockers:
+
+| C0 criterion | Result | Evidence |
+|---|---|---|
+| 1. Engine embed (code-first) | **FAIL** | No runnable Cocos 3.8 web runtime on npm: `cc` = C++ linter, `cocos-js`/`@cocos-creator-3d/engine` 404, `@cocos/creator-types@3.8.7` = types-only (644 `.d.ts`, 0 engine `.js`). `cocos-engine` README: engine "designed to only be the essential runtime library and not to be used independently." Build guide: `settings.json` + bundle `config.json` + MD5 asset bundles are editor-generated; `game.init` requires them. |
+| 2. Runtime GLB (Draco+WebP) | **FAIL** (independent) | Cocos has no runtime GLB/glTF loading — glTF is an edit-time editor import → native asset conversion. `assetManager.loadRemote` = native types only (texture/audio/text). Open request: `cocos-engine` Issue #16531. Our `public/models3d/*.glb` runtime pipeline is unsupported. |
+| 3. PBR + IBL | NOT TESTED | Gated behind criterion 1 (engine never boots code-first). |
+| 4. Bullet physics | NOT TESTED | Gated behind criterion 1. |
+| 5. License (recorded) | RISK | Runtime engine open-source (MIT). Cocos User Service Agreement: free **for games**; non-game apps (a driving-school **training simulator** plausibly qualifies) need **written authorization + possible fees**. |
+
+**What proceeding would require:** adopt an editor-in-the-loop build (breaks code-first parity with E1/E2), pre-import all models through the editor (abandon the shared runtime Draco+WebP GLB pipeline), plus custom clearcoat Surface Shader and hand-built Bullet raycast vehicle. Comparison basis: E1 (Babylon, COMPLETE) and E2 (PlayCanvas, COMPLETE) both embed code-first from npm and load GLBs at runtime; Cocos supports neither.
