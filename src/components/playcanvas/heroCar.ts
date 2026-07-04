@@ -24,7 +24,7 @@ let dracoConfigured = false;
  * an internal job queue), and this flag avoids re-posting the config under
  * React strict-mode double-mount. [C-draco]
  */
-function ensureDraco(): void {
+export function ensureDraco(): void {
   if (dracoConfigured) return;
   dracoInitialize({
     jsUrl: DRACO_GLUE_URL,

@@ -11,6 +11,7 @@ import {
 import { SHOWROOM_HDR_URL, type SceneHandle } from "./showroomScene";
 import { RaycastVehicle, VEHICLE_TUNING } from "./raycastVehicle";
 import { ensurePhysicsWorld } from "./ammoPhysics";
+import { buildDriveWorld } from "./driveWorld";
 
 /**
  * P4 — vehicle-physics TEST scene on /drive.
@@ -31,7 +32,12 @@ import { ensurePhysicsWorld } from "./ammoPhysics";
  */
 
 export interface DriveDebugApi {
-  getState: () => ReturnType<RaycastVehicle["getState"]> & { gear: string };
+  getState: () => ReturnType<RaycastVehicle["getState"]> & {
+    gear: string;
+    offTrack: boolean;
+    /** GL draw calls in the last rendered frame (instancing-benefit measurement). */
+    drawCalls: number;
+  };
   setInput: (steer: number, throttle: number, brake: number) => void;
   /** Clear any script-forced input and return control to the keyboard. */
   releaseInput: () => void;
@@ -117,36 +123,41 @@ export function createDriveScene(
   sun.setEulerAngles(60, 20, 0);
   app.root.addChild(sun);
 
-  // --- Flat ground: visual plane + STATIC box collider ---------------------
-  // The wheel rays hit the collider (a flat box), never a crowned visual — the
-  // hard E1 lesson, honoured from the start (the visual plane has NO collision).
-  const ground = new Entity("ground");
-  ground.addComponent("render", { type: "plane" });
-  const groundMat = ground.render!.material as import("playcanvas").StandardMaterial;
-  // Non-metalness (specular) workflow: reliably lit by ambient + the directional
-  // sun without needing an environment atlas (this test scene has none).
+  // --- Terrain: flat surround (visual + flat safety collider) --------------
+  // A large flat ground around the road so off-road isn't empty void, and a
+  // matching FLAT collider whose top sits 2 cm BELOW the road (Y=−0.02) so the
+  // car never falls into the void if it leaves the road strip. The road's own
+  // flat colliders (built by buildDriveWorld at Y=0) sit slightly higher, so on
+  // the road the wheels ray those; both are FLAT boxes — never the crowned
+  // visual tiles (the E1 camber-drift lesson). Off-track is reported separately
+  // by the pure layout math, independent of which flat collider the wheels hit.
+  const terrain = new Entity("terrain");
+  terrain.addComponent("render", { type: "plane" });
+  const groundMat = terrain.render!.material as import("playcanvas").StandardMaterial;
   groundMat.useMetalness = true;
-  groundMat.diffuse = new Color(0.42, 0.45, 0.42);
+  groundMat.diffuse = new Color(0.22, 0.24, 0.22);
   groundMat.metalness = 0.0;
-  groundMat.gloss = 0.25;
+  groundMat.gloss = 0.2;
   groundMat.update();
-  ground.setLocalScale(500, 1, 500);
-  ground.setPosition(0, 0, -90);
-  app.root.addChild(ground);
+  terrain.setLocalScale(600, 1, 600);
+  terrain.setPosition(0, -0.02, -90);
+  app.root.addChild(terrain);
 
-  const groundCollider = new Entity("ground-collider");
-  groundCollider.addComponent("collision", {
+  const terrainCollider = new Entity("terrain-collider");
+  terrainCollider.addComponent("collision", {
     type: "box",
-    halfExtents: new Vec3(250, 0.5, 250),
+    halfExtents: new Vec3(300, 0.5, 300),
   });
-  groundCollider.addComponent("rigidbody", {
+  terrainCollider.addComponent("rigidbody", {
     type: "static",
     friction: 1.0,
     restitution: 0.0,
   });
-  // Top face at Y=0 (box centre 0.5 below), so the ground surface is exactly Y=0.
-  groundCollider.setPosition(0, -0.5, -90);
-  app.root.addChild(groundCollider);
+  terrainCollider.setPosition(0, -0.52, -90); // top face at Y=−0.02
+  app.root.addChild(terrainCollider);
+
+  // --- Quaternius drivable world (road tiles + flat road colliders + props) --
+  const world = buildDriveWorld(app, isDisposed);
 
   // --- Chassis: box render (child, scaled) + box collision + dynamic body --
   const T = VEHICLE_TUNING;
@@ -277,7 +288,12 @@ export function createDriveScene(
 
   // --- Debug hook (ungated test route; P12 double-gates) -------------------
   const debugApi: DriveDebugApi = {
-    getState: () => ({ ...vehicle.getState(), gear }),
+    getState: () => {
+      const s = vehicle.getState();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const drawCalls = ((app.stats as any)?.drawCalls?.total ?? 0) as number;
+      return { ...s, gear, offTrack: world.isOffTrack(s.x, s.z), drawCalls };
+    },
     setInput: (steer, throttle, brake) => {
       forced = { steer, throttle, brake };
     },
@@ -299,13 +315,14 @@ export function createDriveScene(
       for (const tex of generated) tex.destroy();
       envAsset.unload();
       app.assets.remove(envAsset);
+      world.dispose();
       vehicle.dispose();
       for (const w of wheelEntities) w.destroy();
       cab.destroy();
       body.destroy();
       chassis.destroy();
-      groundCollider.destroy();
-      ground.destroy();
+      terrainCollider.destroy();
+      terrain.destroy();
       groundMat.destroy();
       bodyMat.destroy();
       cabMat.destroy();
