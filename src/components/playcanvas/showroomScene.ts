@@ -298,6 +298,14 @@ export function createShowroomScene(
   });
 
   // --- Hero car (P3) -------------------------------------------------------
+  // [hardening] loadHeroCar's `paint` param is left undefined here, so it
+  // falls back to the metalness/gloss/clearCoat values baked into
+  // heroCar.ts's defaults. Those defaults were tuned by eye specifically
+  // against THIS scene's lighting rig (skyboxIntensity=0.55 and
+  // exposure=1.15 above, plus the key/fill balance below) — this loader is
+  // also reused by the P4+ drive scenes, which run under different lighting,
+  // so re-validate (and pass an explicit `paint` override if needed) before
+  // assuming these same defaults look right there. [P4+ note]
   const heroCar: HeroCarHandle = loadHeroCar(app, isDisposed);
 
   return {

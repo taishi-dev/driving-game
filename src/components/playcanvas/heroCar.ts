@@ -41,6 +41,65 @@ export interface HeroCarHandle {
 }
 
 /**
+ * Overridable Paint-1 (body) tuning knobs. Defaults match the values this
+ * loader has always used, which were tuned by eye against the SHOWROOM
+ * scene's specific lighting rig (`showroomScene.ts`: `scene.skyboxIntensity
+ * = 0.55`, `scene.exposure = 1.15`, and that scene's key/fill balance). This
+ * loader is reused by the P4+ drive scenes, which will run under different
+ * lighting (outdoor sun, time-of-day, etc.) — re-validate these defaults
+ * (and override via this parameter if needed) whenever the car is dressed
+ * under a lighting rig other than the showroom's. [P4+ note]
+ */
+export interface HeroCarPaintOptions {
+  /** Body clearcoat base-coat metalness (0=dielectric diffuse, 1=fully metallic). */
+  metalness?: number;
+  /** Body base-coat gloss (specular highlight tightness). */
+  gloss?: number;
+  /** Body clearcoat layer intensity (0=none, 1=full mirror coat). */
+  clearCoat?: number;
+}
+
+/**
+ * Materials that carry the exported GLB's merged-across-the-wheel-track
+ * geometry: this model has only ONE node per wheel PART (rim, tire, brake
+ * pad, brake disc) rather than four (one per wheel), so each of these
+ * primitives' object-space vertices span from the front-left wheel position
+ * all the way to the opposite corner of the wheelbase/track instead of a
+ * single wheel's footprint. Verified directly against the GLB's own glTF
+ * JSON (accessor min/max + node transforms, no runtime needed): ALL SIX of
+ * these materials have near-identical, wheelbase-sized world AABBs (roughly
+ * 3-5m per axis, with min.y around -1.25 to -1.63) — including `Brake`/
+ * `Disc`, which an earlier pass assumed were harmless single-wheel-sized
+ * meshes but are in fact just as inflated as the rim/tire pair. Excluding by
+ * MATERIAL NAME (rather than by node name/position) survives a GLB
+ * re-export reordering or renaming nodes, since these material names are
+ * part of the model's authored material table, not a position-derived
+ * fallback like an unnamed node's engine-assigned `node_20`-style name.
+ */
+const SEATING_EXCLUDED_MATERIALS = new Set([
+  "Rim1",
+  "Rim2",
+  "Tireside",
+  "Tiretread",
+  "Brake",
+  "Disc",
+]);
+
+/**
+ * A seated car's lowest point (`min.y` of the seating-bounds union, before
+ * the seating offset is applied) should sit close to this model's natural
+ * ride height / wheel radius (baked in at ~0.38 per the seating comment
+ * below) — comfortably under a metre in this model's units. If a future GLB
+ * re-export introduces a NEW merged/oversized primitive not covered by
+ * {@link SEATING_EXCLUDED_MATERIALS} (e.g. a renamed or added wheel-track
+ * material), `min.y` will jump toward that primitive's inflated bounds
+ * (empirically ~-1.25 to -1.63 for the known offenders above) instead. This
+ * threshold sits safely between the known-good (~0.4) and known-bad
+ * (~1.3+) ranges.
+ */
+const SEATING_MIN_Y_SANITY_THRESHOLD = 1.0;
+
+/**
  * P3 hero car: load `CarConcept-draco-webp.glb` (Draco geometry + WebP textures)
  * via the container loader, seat it on the ground at the origin, and dress it to
  * the showroom bar.
@@ -59,8 +118,15 @@ export interface HeroCarHandle {
 export function loadHeroCar(
   app: Application,
   isDisposed: () => boolean,
+  paint?: HeroCarPaintOptions,
 ): HeroCarHandle {
   ensureDraco();
+
+  const {
+    metalness: paintMetalness = 0.6,
+    gloss: paintGloss = 0.93,
+    clearCoat: paintClearCoat = 0.55,
+  } = paint ?? {};
 
   let carRoot: Entity | null = null;
   let rafId = 0;
@@ -110,11 +176,17 @@ export function loadHeroCar(
           // metalness lets the saturated diffuse red respond to the key
           // light directly (the warm, bright highlight in the reference),
           // while the clearcoat above still supplies the glassy sheen.
+          //
+          // [hardening] metalness/gloss/clearCoat are overridable via the
+          // `paint` param (defaults below == the values this scene has
+          // always used) — see the {@link HeroCarPaintOptions} doc comment:
+          // they were tuned against THIS showroom's lighting rig and must
+          // be re-validated for the P4+ drive scenes' different lighting.
           mat.useMetalness = true;
           mat.diffuse.set(0.5, 0.009, 0.016);
-          mat.metalness = 0.6;
-          mat.gloss = 0.93; // tighter, brighter hotspot
-          mat.clearCoat = 0.55;
+          mat.metalness = paintMetalness;
+          mat.gloss = paintGloss; // tighter, brighter hotspot
+          mat.clearCoat = paintClearCoat;
           mat.clearCoatGloss = 0.93;
           mat.update();
         } else if (name.startsWith("Paint 2")) {
@@ -146,25 +218,27 @@ export function loadHeroCar(
     // y=0. Compute a world-space AABB by merging the mesh instances' bounds
     // (valid once the entity is parented and its transform is synced).
     //
-    // The "Wheel*"/brake meshes are excluded from this union: the exported
-    // GLB bakes all four wheels' geometry into a single merged primitive per
-    // part (one node named e.g. "WheelFrontLRim" carries ~23k vertices — far
-    // more than a single rim needs), so its object-space AABB spans the
-    // entire wheel track, not one wheel's footprint. Feeding that into a
+    // Mesh instances whose material is in SEATING_EXCLUDED_MATERIALS are
+    // skipped (see that constant's doc comment for the full story): the
+    // exported GLB bakes each wheel PART (rim, tire, brake pad, brake disc)
+    // into a single merged primitive spanning the whole wheel track/
+    // wheelbase rather than one wheel's footprint, so its object-space AABB
+    // is far larger than the actual part. Feeding any of those into the
     // per-instance world-transform union inflates the box to bigger than the
-    // whole car and drags min.y down to roughly -1.6, which used to seat the
-    // car floating well over a metre above the studio floor. The remaining
-    // body/interior meshes are ordinary single-part meshes and give a sane,
-    // reliable footprint; using their underbody line as the ground offset is
-    // consistent with the wheel hub height baked into the model (~0.38, i.e.
-    // close to a plausible wheel radius), which indicates this model already
-    // ships close to its own natural ride height.
+    // whole car and drags min.y down to roughly -1.3 to -1.6, which used to
+    // seat the car floating well over a metre above the studio floor. The
+    // remaining body/interior meshes are ordinary single-part meshes and
+    // give a sane, reliable footprint; using their underbody line as the
+    // ground offset is consistent with the wheel hub height baked into the
+    // model (~0.38, i.e. close to a plausible wheel radius), which indicates
+    // this model already ships close to its own natural ride height.
     app.root.syncHierarchy();
     const bounds = new BoundingBox();
     let first = true;
     for (const render of renders) {
       for (const mi of render.meshInstances) {
-        if (/^(Wheel|node_20)/.test(render.entity?.name ?? "")) continue;
+        const matName = (mi.material as StandardMaterial | null)?.name ?? "";
+        if (SEATING_EXCLUDED_MATERIALS.has(matName)) continue;
         if (first) {
           bounds.copy(mi.aabb);
           first = false;
@@ -176,6 +250,19 @@ export function loadHeroCar(
     if (!first) {
       const min = bounds.getMin();
       const center = bounds.center;
+      // Cheap re-export sanity check (see SEATING_MIN_Y_SANITY_THRESHOLD's
+      // doc comment): don't throw — a warning still lets the showroom (and
+      // any P4+ scene reusing this loader) render rather than hard-fail,
+      // but flags that the car likely looks like it's floating/sunken.
+      if (Math.abs(min.y) > SEATING_MIN_Y_SANITY_THRESHOLD) {
+        console.warn(
+          `[heroCar] seating bounds min.y=${min.y.toFixed(3)} is farther ` +
+            `from 0 than expected (>${SEATING_MIN_Y_SANITY_THRESHOLD}); the ` +
+            "car may render floating or sunken into the floor. This usually " +
+            "means a GLB re-export introduced a new merged/oversized " +
+            "primitive not covered by SEATING_EXCLUDED_MATERIALS.",
+        );
+      }
       const pos = entity.getPosition();
       entity.setPosition(pos.x - center.x, pos.y - min.y, pos.z - center.z);
     }
