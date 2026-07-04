@@ -21,6 +21,10 @@ const HUD_STRINGS = {
 // Ammo-gated PlayCanvas canvas (client-only), driving the store-wired scene.
 const DriveCanvas = dynamic(() => import("../DriveCanvas"), { ssr: false });
 
+// P11 webcam vision layer (self-positioned overlay: preview + localized status +
+// camera-denied fallback). Client-only; mounted only while the driving screen is up.
+const VisionController = dynamic(() => import("./VisionController"), { ssr: false });
+
 /**
  * Traffic-light signal cycle, verbatim from the original `RoadProps.tsx`
  * SIGNAL_CYCLE (green 7s → yellow 2s → red 6s). Scoring's red-light check
@@ -66,6 +70,7 @@ export function DrivingScreen() {
   const isOffTrack = useDrivingStore((s) => s.isOffTrack);
   const drivingFeedback = useDrivingStore((s) => s.drivingFeedback);
   const setMissionState = useDrivingStore((s) => s.setMissionState);
+  const setHeadRotation = useDrivingStore((s) => s.setHeadRotation);
   const t = SHELL_STRINGS[language];
   const hud = HUD_STRINGS[language];
 
@@ -181,6 +186,12 @@ export function DrivingScreen() {
       <div className="absolute inset-0 z-0">
         <DriveCanvas buildScene={createProductDriveScene} />
       </div>
+
+      {/* P11 webcam vision layer: hands→steering/gear, face→head/gaze,
+          feet→pedals (calibrated), plus the localized status panel and the
+          camera-denied keyboard-fallback overlay. Self-positioned (top-right,
+          clearing the exit button). */}
+      <VisionController />
 
       {/* Top-left: lesson title + a small key hint (full HUD arrives in P8). */}
       <div className="absolute top-14 left-3 z-10 pointer-events-none select-none">
@@ -322,7 +333,17 @@ export function DrivingScreen() {
             <p className="text-lg leading-relaxed text-slate-300 mb-10">{briefing.desc}</p>
             <button
               data-testid="briefing-start"
-              onClick={() => setMissionState("active")}
+              onClick={() => {
+                // Per-run head reset (E1 lesson): graded lessons — the only ones
+                // with mirror/safety checkpoints — always enter "active" through
+                // this button. The frozen setMissionState("active") does not touch
+                // headRotation, so clear it here so a stale yaw from a prior run
+                // can't leak into this run's checkpoint grading. A live camera
+                // overwrites yaw next frame; with no camera it stays 0, exactly
+                // what grading expects.
+                setHeadRotation({ pitch: 0, yaw: 0, roll: 0 });
+                setMissionState("active");
+              }}
               className="px-10 py-3 text-xl font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-lg transition-colors"
             >
               {t.startMission}

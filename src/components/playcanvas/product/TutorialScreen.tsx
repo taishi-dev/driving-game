@@ -1,7 +1,12 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { useDrivingStore } from "@/lib/store";
+
+// P11: the vision pipeline runs while the tutorial is open so the steering bar
+// (step 3) and foot calibration (step 4) respond to the camera. Client-only.
+const VisionController = dynamic(() => import("./VisionController"), { ssr: false });
 
 /**
  * P7b — the tutorial flow, ported DOM-native from the original
@@ -158,8 +163,14 @@ export function TutorialScreen() {
 
   return (
     <div className="relative w-full h-full bg-slate-900 text-white overflow-hidden flex flex-col items-center justify-center">
-      {/* P11 mounts the VisionController camera preview here (reduced opacity),
-          exactly as the original tutorial showed the feed behind the card. */}
+      {/* P11: the vision preview + status render at reduced opacity behind the
+          card. `pointer-events-none` dims interaction with the panel chrome, but
+          the camera-error overlay re-enables its own pointer events (see
+          VisionController), so the Retry button stays clickable — the E1 tutorial
+          defect (Retry unreachable under the wrapper) fixed here. */}
+      <div className="opacity-60 pointer-events-none">
+        <VisionController />
+      </div>
 
       <div className="relative z-10 bg-slate-800/90 p-8 rounded-xl max-w-2xl w-full shadow-2xl border border-slate-700 backdrop-blur-sm max-h-full overflow-y-auto">
         {/* Step indicator */}
