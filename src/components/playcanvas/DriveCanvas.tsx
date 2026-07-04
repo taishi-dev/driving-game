@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import PlayCanvasCanvas from "./PlayCanvasCanvas";
+import PlayCanvasCanvas, { type SceneBuilder } from "./PlayCanvasCanvas";
 import { createDriveScene } from "./driveScene";
 import { loadAmmo } from "./ammoPhysics";
 
@@ -17,8 +17,17 @@ import { loadAmmo } from "./ammoPhysics";
  * Strict-mode safe: `loadAmmo()` memoises its promise and `WasmModule` caches
  * the instance, so the dev double-mount just re-resolves instantly; a `disposed`
  * guard drops the async `setReady` if we unmounted first.
+ *
+ * P7a: `buildScene` selects the scene — default is the /drive TEST scene; the
+ * product driving screen passes `createProductDriveScene` (store-wired).
  */
-export default function DriveCanvas() {
+export default function DriveCanvas({
+  buildScene = createDriveScene,
+  showFps = true,
+}: {
+  buildScene?: SceneBuilder;
+  showFps?: boolean;
+} = {}) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,5 +81,5 @@ export default function DriveCanvas() {
     );
   }
 
-  return <PlayCanvasCanvas buildScene={createDriveScene} />;
+  return <PlayCanvasCanvas buildScene={buildScene} showFps={showFps} />;
 }

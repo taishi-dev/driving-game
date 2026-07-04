@@ -29,6 +29,12 @@ interface PlayCanvasCanvasProps {
    * give it its own scene.
    */
   buildScene?: SceneBuilder;
+  /**
+   * Show the FPS badge (default true — the scaffold/test routes keep it). The
+   * product Home hero passes false so the badge doesn't sit under the title;
+   * the product driving screen keeps it (E1 parity: `drive-fps` testid).
+   */
+  showFps?: boolean;
 }
 
 /**
@@ -58,6 +64,7 @@ interface PlayCanvasCanvasProps {
  */
 export default function PlayCanvasCanvas({
   buildScene,
+  showFps = true,
 }: PlayCanvasCanvasProps = {}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [fps, setFps] = useState(0);
@@ -142,23 +149,26 @@ export default function PlayCanvasCanvas({
           touchAction: "none",
         }}
       />
-      <div
-        style={{
-          position: "absolute",
-          top: 12,
-          left: 12,
-          padding: "4px 10px",
-          borderRadius: 6,
-          font: "600 13px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace",
-          color: "#e6f0ff",
-          background: "rgba(0,0,0,0.45)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          pointerEvents: "none",
-          userSelect: "none",
-        }}
-      >
-        {fps} FPS
-      </div>
+      {showFps && (
+        <div
+          data-testid="drive-fps"
+          style={{
+            position: "absolute",
+            top: 12,
+            left: 12,
+            padding: "4px 10px",
+            borderRadius: 6,
+            font: "600 13px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace",
+            color: "#e6f0ff",
+            background: "rgba(0,0,0,0.45)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            pointerEvents: "none",
+            userSelect: "none",
+          }}
+        >
+          {fps} FPS
+        </div>
+      )}
     </div>
   );
 }

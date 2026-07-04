@@ -10,30 +10,33 @@ import {
   TONEMAP_ACES,
 } from "playcanvas";
 import { SHOWROOM_HDR_URL, type SceneHandle } from "./showroomScene";
-import { RaycastVehicle, VEHICLE_TUNING } from "./raycastVehicle";
+import { RaycastVehicle, VEHICLE_TUNING, type VehicleInput } from "./raycastVehicle";
 import { ensurePhysicsWorld } from "./ammoPhysics";
-import { buildDriveWorld } from "./driveWorld";
-import { setupRearviewMirror } from "./rearviewMirror";
+import { buildDriveWorld, type DriveWorldHandle } from "./driveWorld";
+import { setupRearviewMirror, type RearviewMirrorHandle } from "./rearviewMirror";
 import { createDriveControls, normalizeKey, signedThrottle } from "@/lib/pcDriveControls";
 
 /**
- * P4 — vehicle-physics TEST scene on /drive.
+ * P4/P5 — the drivable world scene, split (P7a) into a reusable BASE builder and
+ * the /drive TEST wrapper.
  *
- * A deliberately minimal world (flat lit ground + a box "car") whose only job is
- * to prove the official Ammo `btRaycastVehicle` drives / turns / brakes / settles
- * and — critically — that the physics world survives React strict-mode's
- * destroy→recreate (see the lifecycle verdict in `ammoPhysics.ts`). P5 swaps the
- * flat ground for the Quaternius world (keeping the FLAT collider boxes as the
- * wheel-ray surface); P5b adds the rearview mirror.
+ * {@link buildDriveSceneBase} assembles everything both consumers share: physics
+ * world, sky/IBL, sun, terrain, the Quaternius world, the chassis + wheels +
+ * official Ammo `btRaycastVehicle`, the rearview mirror, and the chase camera.
+ * It deliberately owns NO input policy and NO frame loop — that's what
+ * distinguishes the two consumers:
  *
- * Controls are LOCAL to this test scene and go through the shared pure
- * `pcDriveControls` contract (P6) — the SAME module the product driving screen
- * wires the keyboard through, so the test route and the product feel identical:
+ *  • {@link createDriveScene} (this file): the /drive TEST scene. Local keyboard
+ *    via the pure `pcDriveControls` contract (P6), a script-forceable input, and
+ *    an UNGATED `window.__driveDebug` (fine for a test route; P12 gates it).
+ *  • `createProductDriveScene` (productDriveScene.ts): the product driving
+ *    screen. No listeners of its own — it consumes the STORE's
+ *    steering/throttle/brake/gear each frame (the React shell writes them) and
+ *    writes back telemetry; its `__driveDebug` is double-gated like
+ *    `__drivingStore` (NEXT_PUBLIC_E2E + `?e2e`).
+ *
+ * Controls on /drive (same keys the product wires through the same module):
  *   W / ↑ = gas, S / ↓ = brake, A/D or ←/→ = steer, 1/2/3 = gear P/D/R, R = reset.
- *
- * `window.__driveDebug.getState()` is exposed UNGATED here — fine for a test
- * route; P12 double-gates it behind NEXT_PUBLIC_E2E + `?e2e` like the product
- * store hook. The scripted straight-line probe reads it.
  */
 
 export interface DriveDebugApi {
@@ -44,7 +47,7 @@ export interface DriveDebugApi {
     drawCalls: number;
   };
   setInput: (steer: number, throttle: number, brake: number) => void;
-  /** Clear any script-forced input and return control to the keyboard. */
+  /** Clear any script-forced input and return control to the keyboard/store. */
   releaseInput: () => void;
   reset: () => void;
   /** Toggle the rearview mirror (P7's graded checkpoints use this hook). */
@@ -59,14 +62,30 @@ declare global {
 const SPAWN_POS = new Vec3(0, VEHICLE_TUNING.spawnHeight, 12);
 const SPAWN_YAW = 180; // face −Z (local +Z → world −Z); see raycastVehicle coordinate note
 
+/** Everything the shared world/vehicle base hands its consumer. */
+export interface DriveSceneBase {
+  vehicle: RaycastVehicle;
+  world: DriveWorldHandle;
+  mirror: RearviewMirrorHandle;
+  /** Advance the smoothed chase camera one frame. */
+  updateCamera: (dt: number) => void;
+  /** GL draw calls in the last rendered frame. */
+  drawCalls: () => number;
+  /** Teleport the car back to the spawn pose, at rest. */
+  resetToSpawn: () => void;
+  /** Dispose everything the base created (consumer removes its own listeners first). */
+  dispose: () => void;
+}
+
 /**
- * Build the P4 drive test scene onto the running Application. `isDisposed` is the
- * strict-mode probe (async work landing after unmount is dropped).
+ * Build the shared drive world + vehicle onto the running Application.
+ * `isDisposed` is the strict-mode probe (async work landing after unmount is
+ * dropped). The caller owns the frame loop and input policy.
  */
-export function createDriveScene(
+export function buildDriveSceneBase(
   app: Application,
   isDisposed: () => boolean,
-): SceneHandle {
+): DriveSceneBase {
   // Create the physics world BEFORE any rigidbody entity is added (the builder
   // runs before app.start(), so we must init it here — see ensurePhysicsWorld).
   ensurePhysicsWorld(app);
@@ -80,8 +99,7 @@ export function createDriveScene(
   // scene.ambientLight alone does not light it. So the drive world loads the
   // shipped Poly Haven sky HDR, prefilters it into an environment atlas (the
   // exact approach proven in showroomScene.ts) to drive both the visible
-  // skybox and surface lighting. P5 keeps this and lays the Quaternius world
-  // under it.
+  // skybox and surface lighting.
   const generated: Texture[] = [];
   const envAsset = new Asset("drive-hdr", "texture", { url: SHOWROOM_HDR_URL });
   envAsset.on("load", () => {
@@ -249,28 +267,6 @@ export function createDriveScene(
     T.chassisHalfExtents.z,
   );
 
-  // --- Keyboard state (via the shared pure pcDriveControls contract) -------
-  const controls = createDriveControls();
-  // Script-forced input (probe). null = keyboard drives.
-  let forced: { steer: number; throttle: number; brake: number } | null = null;
-
-  const onKeyDown = (e: KeyboardEvent) => {
-    controls.keyDown(e.key);
-    // Reset is a test-scene-only convenience, not part of the drive contract.
-    if (normalizeKey(e.key) === "r") vehicle.resetTo(SPAWN_POS, SPAWN_YAW);
-  };
-  const onKeyUp = (e: KeyboardEvent) => {
-    controls.keyUp(e.key);
-  };
-  window.addEventListener("keydown", onKeyDown);
-  window.addEventListener("keyup", onKeyUp);
-
-  function computeKeyboardInput() {
-    const { gas, brake, steer } = controls.getInput();
-    // signedThrottle applies the gear sign (P → 0, D → +, R → −).
-    return { steer, throttle: signedThrottle(controls.getGear(), gas), brake };
-  }
-
   // --- Chase camera --------------------------------------------------------
   const camOffsetLocal = new Vec3(0, 3.2, -8.5); // above + behind (local −Z = behind)
   const camTargetLocal = new Vec3(0, 1.0, 4); // look ahead of the car
@@ -288,43 +284,16 @@ export function createDriveScene(
     camera.lookAt(targetPos);
   }
 
-  // --- Frame loop ----------------------------------------------------------
-  const onUpdate = (dt: number) => {
-    if (isDisposed()) return;
-    // PlayCanvas fires 'update' with dt already in SECONDS.
-    const input = forced ?? computeKeyboardInput();
-    vehicle.setInput(input);
-    vehicle.update(dt);
-    updateCamera(dt);
-  };
-  app.on("update", onUpdate);
-
-  // --- Debug hook (ungated test route; P12 double-gates) -------------------
-  const debugApi: DriveDebugApi = {
-    getState: () => {
-      const s = vehicle.getState();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const drawCalls = ((app.stats as any)?.drawCalls?.total ?? 0) as number;
-      return { ...s, gear: controls.getGear(), offTrack: world.isOffTrack(s.x, s.z), drawCalls };
-    },
-    setInput: (steer, throttle, brake) => {
-      forced = { steer, throttle, brake };
-    },
-    releaseInput: () => {
-      forced = null;
-    },
-    reset: () => vehicle.resetTo(SPAWN_POS, SPAWN_YAW),
-    setMirrorActive: (a) => mirror.setActive(a),
-    isMirrorActive: () => mirror.isActive(),
-  };
-  globalThis.__driveDebug = debugApi;
-
   return {
+    vehicle,
+    world,
+    mirror,
+    updateCamera,
+    drawCalls: () =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ((app.stats as any)?.drawCalls?.total ?? 0) as number,
+    resetToSpawn: () => vehicle.resetTo(SPAWN_POS, SPAWN_YAW),
     dispose() {
-      app.off("update", onUpdate);
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
-      if (globalThis.__driveDebug === debugApi) globalThis.__driveDebug = undefined;
       if (envRafId) cancelAnimationFrame(envRafId);
       scene.envAtlas = null;
       for (const tex of generated) tex.destroy();
@@ -345,6 +314,83 @@ export function createDriveScene(
       wheelMat.destroy();
       sun.destroy();
       camera.destroy();
+    },
+  };
+}
+
+/**
+ * Build the P4 drive TEST scene (/drive route) onto the running Application:
+ * the shared base + local keyboard controls + an UNGATED `__driveDebug`.
+ */
+export function createDriveScene(
+  app: Application,
+  isDisposed: () => boolean,
+): SceneHandle {
+  const base = buildDriveSceneBase(app, isDisposed);
+
+  // --- Keyboard state (via the shared pure pcDriveControls contract) -------
+  const controls = createDriveControls();
+  // Script-forced input (probe). null = keyboard drives.
+  let forced: VehicleInput | null = null;
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    controls.keyDown(e.key);
+    // Reset is a test-scene-only convenience, not part of the drive contract.
+    if (normalizeKey(e.key) === "r") base.resetToSpawn();
+  };
+  const onKeyUp = (e: KeyboardEvent) => {
+    controls.keyUp(e.key);
+  };
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
+
+  function computeKeyboardInput(): VehicleInput {
+    const { gas, brake, steer } = controls.getInput();
+    // signedThrottle applies the gear sign (P → 0, D → +, R → −).
+    return { steer, throttle: signedThrottle(controls.getGear(), gas), brake };
+  }
+
+  // --- Frame loop ----------------------------------------------------------
+  const onUpdate = (dt: number) => {
+    if (isDisposed()) return;
+    // PlayCanvas fires 'update' with dt already in SECONDS.
+    const input = forced ?? computeKeyboardInput();
+    base.vehicle.setInput(input);
+    base.vehicle.update(dt);
+    base.updateCamera(dt);
+  };
+  app.on("update", onUpdate);
+
+  // --- Debug hook (ungated test route; P12 double-gates) -------------------
+  const debugApi: DriveDebugApi = {
+    getState: () => {
+      const s = base.vehicle.getState();
+      return {
+        ...s,
+        gear: controls.getGear(),
+        offTrack: base.world.isOffTrack(s.x, s.z),
+        drawCalls: base.drawCalls(),
+      };
+    },
+    setInput: (steer, throttle, brake) => {
+      forced = { steer, throttle, brake };
+    },
+    releaseInput: () => {
+      forced = null;
+    },
+    reset: () => base.resetToSpawn(),
+    setMirrorActive: (a) => base.mirror.setActive(a),
+    isMirrorActive: () => base.mirror.isActive(),
+  };
+  globalThis.__driveDebug = debugApi;
+
+  return {
+    dispose() {
+      app.off("update", onUpdate);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      if (globalThis.__driveDebug === debugApi) globalThis.__driveDebug = undefined;
+      base.dispose();
     },
   };
 }
