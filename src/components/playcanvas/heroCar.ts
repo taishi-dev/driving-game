@@ -87,12 +87,35 @@ export function loadHeroCar(
 
         if (name.startsWith("Paint 1")) {
           // Main body: carmine red, mirror-clearcoat.
+          //
+          // [round-2 fix] clearCoat is an ACHROMATIC dielectric layer over the
+          // tinted base coat -- physically correct for real automotive
+          // lacquer, but at clearCoat=1/clearCoatGloss=0.97 (near-mirror) the
+          // curved body mirrors wide swaths of the (bright, hazy) sky HDRI
+          // as a colourless wash, desaturating the whole car toward pink
+          // instead of reading as deep red with a tight bright highlight.
+          // Softening the coat and backing off scene.skyboxIntensity (see
+          // showroomScene.ts) keeps a punchy specular hotspot from the key
+          // light while letting the tinted base coat read through.
+          //
+          // [round-2 fix 2] `metalness=1` is a FULLY metallic BRDF: it has NO
+          // diffuse/Lambertian term at all, so every bit of the body's colour
+          // comes only from tinted specular reflections of the environment.
+          // With a mostly-grey/hazy HDRI that reads as a flat, desaturated
+          // salmon rather than a vivid red -- there is no "flat red paint"
+          // term feeding off the key light directly. Real automotive
+          // metallic lacquer is closer to a low-metalness base coat (colour
+          // flake suspended in a dielectric binder) with the achromatic
+          // clearcoat layered on top for the mirror-like gloss. Dropping
+          // metalness lets the saturated diffuse red respond to the key
+          // light directly (the warm, bright highlight in the reference),
+          // while the clearcoat above still supplies the glassy sheen.
           mat.useMetalness = true;
-          mat.diffuse.set(0.67, 0, 0);
-          mat.metalness = 1;
-          mat.gloss = 0.78; // base coat roughness ~0.25
-          mat.clearCoat = 1;
-          mat.clearCoatGloss = 0.97; // clearcoat roughness ~0.03 (glassy)
+          mat.diffuse.set(0.5, 0.009, 0.016);
+          mat.metalness = 0.6;
+          mat.gloss = 0.93; // tighter, brighter hotspot
+          mat.clearCoat = 0.55;
+          mat.clearCoatGloss = 0.93;
           mat.update();
         } else if (name.startsWith("Paint 2")) {
           // Secondary panels / lower trim: dark carmine accent, light clearcoat.

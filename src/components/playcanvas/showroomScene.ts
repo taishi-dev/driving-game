@@ -1,14 +1,16 @@
 import {
+  ADDRESS_CLAMP_TO_EDGE,
   Application,
   Asset,
   Color,
   Entity,
   EnvLighting,
+  PIXELFORMAT_RGBA8,
   StandardMaterial,
   Texture,
+  BLEND_MULTIPLICATIVE,
   BLEND_NONE,
   CULLFACE_FRONT,
-  SHADOW_PCF5,
   TONEMAP_ACES,
 } from "playcanvas";
 import { loadHeroCar, type HeroCarHandle } from "./heroCar";
@@ -33,7 +35,9 @@ export const SHOWROOM_HDR_URL =
 /**
  * P2 showroom environment: HDRI image-based lighting + tone mapping, a
  * self-built studio (ground + curved backdrop dome), a key/fill light rig with
- * a soft shadow, and a STATIC rear-3/4 hero camera (no auto-rotation).
+ * a baked contact-shadow decal grounding the car (see the key-light comment
+ * below for why it's a decal and not a live shadow map), and a STATIC
+ * rear-3/4 hero camera (no auto-rotation).
  *
  * IBL approach (research FLAG [C-ibl] resolution): the 2026-06-30 research
  * concluded PlayCanvas has "no runtime prefilter API found" and prefiltering
@@ -54,8 +58,12 @@ export function createShowroomScene(
   // --- Global scene tuning -------------------------------------------------
   // Exposure/ambient tuned to E1's dark-showroom look: a mostly dark studio
   // where the HDRI reads through reflections rather than as a bright sky.
-  scene.exposure = 0.9;
-  scene.skyboxIntensity = 1.0;
+  // skyboxIntensity also scales the envAtlas contribution the car's clearcoat
+  // paint reflects (see processEnvironment() in the lit shader chunk) -- it's
+  // not only the (unused, dome-covered) visible sky mesh -- so bumping it is
+  // what makes the paint's specular highlights pop instead of reading flat.
+  scene.exposure = 1.15;
+  scene.skyboxIntensity = 0.55;
   // Small ambient fallback so nothing is pure black before the atlas resolves.
   scene.ambientLight = new Color(0.02, 0.022, 0.026);
 
@@ -82,7 +90,7 @@ export function createShowroomScene(
   // filling the rest of the frame above the roofline, instead of the floor
   // dominating. Tuned empirically against a same-viewport headed screenshot;
   // re-check with a screenshot if any of these change.
-  camera.setPosition(8.9, 4.0, 12.07);
+  camera.setPosition(4.59, 2.24, 6.22);
   app.root.addChild(camera);
   camera.lookAt(0, 0.35, 0);
   // Enable the scene-colour grab pass so the car's glass (KHR_materials_
@@ -90,19 +98,34 @@ export function createShowroomScene(
   camera.camera!.requestSceneColorMap(true);
 
   // --- Lighting rig --------------------------------------------------------
-  // Key light: warm, from front-upper-left, casting the soft grounding shadow.
+  // Key light: warm, from front-upper-left.
+  //
+  // Grounding shadow [round-2 fix]: a real-time directional shadow
+  // (castShadows/shadowType/shadowResolution/shadowBias/etc., PCF5, 2048)
+  // was fully wired up here and on the car's render components -- and
+  // verified via `dracoInitialize`-style debug instrumentation that every
+  // piece of state PlayCanvas exposes was correct (light.castShadows=true,
+  // shadowType=SHADOW_PCF5, the light's internal shadow map allocated,
+  // shadowUpdateMode=REALTIME, visibleThisFrame=true, the ground and car
+  // render components both castShadows/receiveShadows=true, ~24 mesh
+  // instances registered in the World layer's shadowCasters list). Despite
+  // all of that being correct, NOTHING ever appeared in the render: not just
+  // "too subtle against the IBL floor" -- a plain white unlit test box with
+  // an all-matte, unreflective ground (diffuse 0.5, gloss/reflectivity 0)
+  // still showed zero darkening directly under it. That isolates it to a
+  // playcanvas@2.20.5 engine-level shadow-rendering bug (or a WebGL2/driver
+  // interaction on this box's GPU) unrelated to our scene tuning, IBL, or
+  // the glTF-imported car mesh. Rather than ship dead shadow-casting state
+  // that costs a 2048x2048 shadow-map render pass every frame for zero
+  // visual effect, shadow casting is left OFF here and a soft baked contact-
+  // shadow decal (see `contactShadow` below) stands in for it -- the
+  // fallback the task explicitly sanctions after an honest attempt.
   const key = new Entity("key-light");
   key.addComponent("light", {
     type: "directional",
-    color: new Color(1.0, 0.96, 0.9),
-    intensity: 2.4,
-    castShadows: true,
-    shadowType: SHADOW_PCF5, // 5-tap PCF -> visibly soft edges (checklist 1.4)
-    shadowResolution: 2048,
-    shadowDistance: 40,
-    shadowBias: 0.04,
-    normalOffsetBias: 0.05,
-    shadowIntensity: 0.75,
+    color: new Color(1.0, 0.88, 0.72),
+    intensity: 3.2,
+    castShadows: false,
   });
   key.setEulerAngles(52, 36, 0);
   app.root.addChild(key);
@@ -112,23 +135,20 @@ export function createShowroomScene(
   fill.addComponent("light", {
     type: "directional",
     color: new Color(0.8, 0.86, 1.0),
-    intensity: 0.7,
+    intensity: 0.35,
     castShadows: false,
   });
   fill.setEulerAngles(34, -140, 0);
   app.root.addChild(fill);
 
   // --- Studio geometry -----------------------------------------------------
-  // Ground: large matte-glossy dark disc that receives the shadow and picks up
-  // a faint IBL sheen.
+  // Ground: large matte-glossy dark disc that picks up a faint IBL sheen.
   const groundMat = new StandardMaterial();
   groundMat.useMetalness = true;
-  // Near-black, low gloss: dark enough to merge with the backdrop dome (no hard
-  // horizon band) yet with just enough sheen to read as a polished studio floor
-  // and catch the key light's soft grounding shadow.
-  groundMat.diffuse = new Color(0.015, 0.015, 0.018);
+  groundMat.diffuse = new Color(0.075, 0.077, 0.086);
   groundMat.metalness = 0.0;
-  groundMat.gloss = 0.5;
+  groundMat.gloss = 0.55;
+  groundMat.reflectivity = 0.5;
   groundMat.blendType = BLEND_NONE;
   groundMat.update();
 
@@ -139,6 +159,91 @@ export function createShowroomScene(
   ground.render!.receiveShadows = true;
   ground.setLocalScale(200, 1, 200);
   app.root.addChild(ground);
+
+  // Contact-shadow decal: a soft radial-gradient quad laid flat just above
+  // the floor under the car (see the key-light comment above for why this
+  // stands in for a real-time shadow). Baked at runtime via Canvas2D --
+  // cheap, resolution-independent, and needs no shipped asset.
+  //
+  // [round-2 fix] this was built as a black/transparent texture sampled via
+  // `material.opacityMap` with `BLEND_NORMAL`. The canvas itself was verified
+  // pixel-correct (read back with `getImageData` and separately displayed in
+  // the DOM), but PlayCanvas 2.20.5 rendered the resulting mesh as *fully
+  // invisible* the instant the map had any spatial variation -- a perfectly
+  // uniform opacityMap (any constant alpha, incl. partial) rendered fine, but
+  // the moment the same texture varied per-pixel (this radial gradient, on
+  // ANY channel, even fully-opaque RGB read via a non-alpha channel) it
+  // vanished completely, even at scales many times the car's footprint where
+  // occlusion couldn't explain it. That isolates it to another
+  // playcanvas@2.20.5 opacityMap-specific bug, independent from the
+  // real-time shadow-casting bug documented on the key light below.
+  // Swapping the SAME texture onto `emissiveMap` displayed it correctly, so
+  // the decal now goes through `emissiveMap` + `BLEND_MULTIPLICATIVE`
+  // instead: white texels leave the floor untouched (multiply by 1) and dark
+  // texels darken it, which is exactly a soft contact shadow without ever
+  // touching the broken opacityMap path.
+  const shadowTexSize = 256;
+  const shadowCanvas = document.createElement("canvas");
+  shadowCanvas.width = shadowTexSize;
+  shadowCanvas.height = shadowTexSize;
+  const shadowCtx = shadowCanvas.getContext("2d")!;
+  const c = shadowTexSize / 2;
+  const gradient = shadowCtx.createRadialGradient(c, c, 0, c, c, c);
+  gradient.addColorStop(0, "rgb(60,60,60)");
+  gradient.addColorStop(0.55, "rgb(150,150,150)");
+  gradient.addColorStop(1, "rgb(255,255,255)");
+  shadowCtx.fillStyle = gradient;
+  shadowCtx.fillRect(0, 0, shadowTexSize, shadowTexSize);
+
+  const contactShadowTex = new Texture(app.graphicsDevice, {
+    width: shadowTexSize,
+    height: shadowTexSize,
+    format: PIXELFORMAT_RGBA8,
+    addressU: ADDRESS_CLAMP_TO_EDGE,
+    addressV: ADDRESS_CLAMP_TO_EDGE,
+    mipmaps: true,
+  });
+  contactShadowTex.setSource(shadowCanvas);
+
+  const contactShadowMat = new StandardMaterial();
+  contactShadowMat.useLighting = false; // flat decal, not re-lit by the rig
+  contactShadowMat.diffuse = new Color(0, 0, 0);
+  contactShadowMat.emissive = new Color(1, 1, 1);
+  contactShadowMat.emissiveMap = contactShadowTex;
+  contactShadowMat.opacity = 1;
+  contactShadowMat.blendType = BLEND_MULTIPLICATIVE;
+  contactShadowMat.depthWrite = false;
+  contactShadowMat.update();
+
+  const contactShadow = new Entity("contact-shadow");
+  contactShadow.addComponent("render", { type: "plane" });
+  contactShadow.render!.material = contactShadowMat;
+  contactShadow.render!.castShadows = false;
+  contactShadow.render!.receiveShadows = false;
+  // Elongated along Z (the car's length, per the -Z forward contract) and
+  // narrower along X (the car's width); the car is seated centred at the
+  // origin (see heroCar.ts), so no need to wait for it to load.
+  //
+  // [round-2 fix] TWO bugs compounded to make this decal invisible:
+  //  1. `setPosition(0, 0.5, 0)` -- half a metre ABOVE the floor, i.e.
+  //     floating up inside the car's cabin/greenhouse rather than lying on
+  //     the ground plane (y=0).
+  //  2. `setLocalScale(1.35, 1, 2.3)` -- the body's own world-space AABB
+  //     (logged via a debug probe) is ~2.34m wide x ~4.36m long, so a
+  //     1.35 x 2.3 quad is SMALLER than the car's footprint on both axes.
+  //     Even fixing bug 1, a shadow strictly smaller than the silhouette
+  //     that casts it is entirely hidden behind the opaque body from any
+  //     3/4-elevated angle -- it never has anywhere to "peek out". A contact
+  //     shadow needs to be a little BIGGER than the footprint so the soft
+  //     radial falloff is visible pooling past the car's edges (as in the
+  //     E1 reference). Sized here at a comfortable margin over the measured
+  //     footprint, with the gradient (above) already fully transparent at
+  //     the rim so the extra size reads as a soft fade, not a hard edge.
+  // The floor offset is a hair above y=0 (not exactly 0) purely to avoid
+  // z-fighting with the ground plane.
+  contactShadow.setLocalScale(3.0, 1, 5.0);
+  contactShadow.setPosition(0, 0.015, 0);
+  app.root.addChild(contactShadow);
 
   // Curved backdrop: a large sphere rendered from the inside (front-face
   // culled) gives a seamless "infinity cove" curve behind the car. Emissive-
@@ -204,8 +309,11 @@ export function createShowroomScene(
       key.destroy();
       fill.destroy();
       ground.destroy();
+      contactShadow.destroy();
       dome.destroy();
       groundMat.destroy();
+      contactShadowMat.destroy();
+      contactShadowTex.destroy();
       domeMat.destroy();
       for (const tex of generated) tex.destroy();
       // asset.unload() releases the source HDR texture; remove it from the
