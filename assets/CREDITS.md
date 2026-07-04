@@ -145,6 +145,26 @@ build, shipped locally at `public/lib/draco/` so there is no CDN fetch at runtim
 Total **~250 KB**. License: **Apache-2.0** (https://github.com/google/draco/blob/master/LICENSE);
 recorded in `public/lib/draco/DRACO.license`. Wired via `pc.dracoInitialize`.
 
+### Ammo.js physics WASM (E2-playcanvas, P4)
+
+Vehicle physics uses the official PlayCanvas raycast-vehicle pattern [C-veh] on
+Ammo.js (Bullet Physics), loaded via `pc.WasmModule.getInstance('Ammo')` and
+shipped locally at `public/lib/ammo/` (no CDN fetch at runtime):
+
+| File | Size | Purpose |
+|---|---|---|
+| `ammo.wasm.js` | 441 KB | Emscripten glue (defines the global `Ammo` factory) |
+| `ammo.wasm.wasm` | 731 KB | WebAssembly Bullet build (incl. `btRaycastVehicle`) |
+
+Total **~1.15 MB**. License: **zlib** (Bullet Physics / ammo.js), recorded in
+`public/lib/ammo/AMMO.license`. Provenance: canonical **kripken/ammo.js**
+`builds/ammo.wasm.{js,wasm}`. This specific build is required (not three.js's
+slimmer examples copy) because PlayCanvas' rigidbody system calls
+`Ammo.addFunction(...)` to wire the collision-tick callback — kripken's build
+exports `addFunction`, three's does not (and PlayCanvas throws on it). Verified
+to export `addFunction`, `btRaycastVehicle`, `btDefaultVehicleRaycaster`, and
+`btVehicleTuning`.
+
 ### KTX2 note
 
 KTX2 GPU texture compression (`gltf-transform uastc` / `gltf-transform etc1s`) requires
