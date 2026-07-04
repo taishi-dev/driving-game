@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect } from "react";
-import { useDrivingStore } from "@/lib/store";
+import { useCallback, useEffect, useState } from "react";
+import { useDrivingStore, type SignalState } from "@/lib/store";
 import { createDriveControls } from "@/lib/pcDriveControls";
 import { getBriefing, getLessonTitle } from "@/lib/pcLessonCatalog";
 import { createProductDriveScene } from "../productDriveScene";
@@ -10,6 +10,17 @@ import { SHELL_STRINGS } from "./productStrings";
 
 // Ammo-gated PlayCanvas canvas (client-only), driving the store-wired scene.
 const DriveCanvas = dynamic(() => import("../DriveCanvas"), { ssr: false });
+
+/**
+ * Traffic-light signal cycle, verbatim from the original `RoadProps.tsx`
+ * SIGNAL_CYCLE (green 7s → yellow 2s → red 6s). Scoring's red-light check
+ * (frozen scoring.ts) replays against the `signalStateLogs` this cycle writes.
+ */
+const SIGNAL_CYCLE: readonly { state: SignalState; durationMs: number }[] = [
+  { state: "green", durationMs: 7000 },
+  { state: "yellow", durationMs: 2000 },
+  { state: "red", durationMs: 6000 },
+];
 
 /**
  * P7a — the product driving screen.
@@ -39,8 +50,13 @@ export function DrivingScreen() {
   const currentLesson = useDrivingStore((s) => s.currentLesson);
   const speed = useDrivingStore((s) => s.speed);
   const gear = useDrivingStore((s) => s.gear);
+  const drivingFeedback = useDrivingStore((s) => s.drivingFeedback);
   const setMissionState = useDrivingStore((s) => s.setMissionState);
   const t = SHELL_STRINGS[language];
+
+  // Traffic-light lesson only: the current signal, cycled by SIGNAL_CYCLE and
+  // rendered as a DOM widget (the world has no 3D signal model yet).
+  const [signal, setSignal] = useState<SignalState | null>(null);
 
   const exitToHome = useCallback(() => {
     const st = useDrivingStore.getState();
@@ -100,6 +116,40 @@ export function DrivingScreen() {
     };
   }, [exitToHome]);
 
+  // Traffic-light signal cycle. DELIBERATE deviation from the original (and E1):
+  // the original anchored the cycle at the TrafficLight component's mount, but
+  // setMissionState("active") wipes signalStateLogs, so the first "green" log was
+  // lost. Anchoring the cycle at missionState === "active" (after that wipe)
+  // preserves the initial-state log and is a strictly better anchor — the E1
+  // known edge, fixed here. Logs write to signalStateLogs for scoring's
+  // red-light check; the local `signal` state drives the widget.
+  const active = missionState === "active";
+  useEffect(() => {
+    if (currentLesson !== "traffic-light" || !active) return;
+    let index = 0;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const cycle = () => {
+      if (cancelled) return;
+      const { state, durationMs } = SIGNAL_CYCLE[index];
+      try {
+        useDrivingStore
+          .getState()
+          .addSignalStateLog({ time: Date.now(), checkpointId: "signal-1", state });
+      } catch {
+        // Never break the drive on a logging failure (original behavior).
+      }
+      setSignal(state);
+      index = (index + 1) % SIGNAL_CYCLE.length;
+      timer = setTimeout(cycle, durationMs);
+    };
+    cycle();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [currentLesson, active]);
+
   const briefing = missionState === "briefing" ? getBriefing(currentLesson, language) : null;
 
   return (
@@ -143,6 +193,39 @@ export function DrivingScreen() {
           </div>
         </div>
       </div>
+
+      {/* Traffic-light signal widget (traffic-light lesson only). Drives the same
+          SIGNAL_CYCLE that scoring's red-light check replays. */}
+      {signal && active && (
+        <div
+          data-testid="drive-signal"
+          data-signal={signal}
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex gap-2.5 px-4 py-2.5 rounded-xl bg-slate-900/85 border border-white/15 pointer-events-none select-none"
+        >
+          {(["green", "yellow", "red"] as const).map((c) => (
+            <div
+              key={c}
+              className={`w-6 h-6 rounded-full ${
+                c === "green" ? "bg-green-500" : c === "yellow" ? "bg-yellow-500" : "bg-red-500"
+              }`}
+              style={{
+                opacity: signal === c ? 1 : 0.15,
+                boxShadow: signal === c ? "0 0 14px currentColor" : "none",
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Driving-feedback toast (checkpoint OK / safety-check flashes, 2s each). */}
+      {drivingFeedback && (
+        <div
+          data-testid="drive-feedback"
+          className="absolute top-1/3 left-1/2 -translate-x-1/2 z-20 px-6 py-3 rounded-xl bg-black/70 border border-green-500/50 text-2xl font-bold text-green-300 pointer-events-none select-none"
+        >
+          {drivingFeedback}
+        </div>
+      )}
 
       {/* Briefing overlay (graded lessons only) */}
       {briefing && (

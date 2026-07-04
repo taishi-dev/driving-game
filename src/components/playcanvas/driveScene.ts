@@ -53,6 +53,12 @@ export interface DriveDebugApi {
   /** Toggle the rearview mirror (P7's graded checkpoints use this hook). */
   setMirrorActive: (active: boolean) => void;
   isMirrorActive: () => boolean;
+  /**
+   * P7b goal-sweep aid: zero-velocity chassis placement for programmatic
+   * grading checks (e.g. teleport into a stop zone, then to the goal). Only the
+   * product scene provides it (double-gated like the rest of the hook).
+   */
+  teleport?: (x: number, z: number, yawDegrees?: number) => void;
 }
 
 declare global {

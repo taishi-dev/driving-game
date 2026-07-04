@@ -1,9 +1,17 @@
-import { Application } from "playcanvas";
+import { Application, Vec3 } from "playcanvas";
 import type { SceneHandle } from "./showroomScene";
-import type { VehicleInput } from "./raycastVehicle";
+import { VEHICLE_TUNING, type VehicleInput } from "./raycastVehicle";
 import { buildDriveSceneBase, type DriveDebugApi } from "./driveScene";
 import { signedThrottle } from "@/lib/pcDriveControls";
-import { useDrivingStore } from "@/lib/store";
+import { useDrivingStore, type ReplayFrame } from "@/lib/store";
+import { getCoursePath } from "@/lib/course";
+import {
+  createGradingState,
+  stepMissionGrading,
+  type GradingState,
+} from "@/lib/pcMissionGrading";
+
+const DEG2RAD = Math.PI / 180;
 
 /**
  * P7a — the PRODUCT drive scene: the shared drive-world base (driveScene.ts)
@@ -43,6 +51,20 @@ export function createProductDriveScene(
   let lastDisplaySpeed = -1;
   let lastOffTrack: boolean | null = null;
 
+  // --- P7b mission grading runtime -----------------------------------------
+  // The engine-agnostic reducer (pcMissionGrading) is the pure heart of the
+  // original useMission; this block is the PlayCanvas wiring (the counterpart of
+  // MissionController/useMission). While the mission is "active" (not paused /
+  // replaying / free-mode) it records a ReplayFrame and advances the reducer,
+  // dispatching the results to the frozen store: cleared checkpoints →
+  // addClearedCheckpoint + a 2s driving-feedback toast; goal reached → snapshot
+  // replayData BEFORE scoring (calculateMissionResult reads it), then
+  // success + feedback screen — the original useMission order, preserved.
+  let grading: GradingState = createGradingState();
+  let frames: ReplayFrame[] = [];
+  let wasActive = false;
+  const feedbackTimers: ReturnType<typeof setTimeout>[] = [];
+
   const onUpdate = (dt: number) => {
     if (isDisposed()) return;
     const st = useDrivingStore.getState();
@@ -73,6 +95,66 @@ export function createProductDriveScene(
       lastOffTrack = offTrack;
       st.setOffTrack(offTrack);
     }
+
+    // --- Mission grading (after physics/telemetry, mirroring useMission) -----
+    if (st.missionState !== "active") {
+      // A fresh run re-initialises local grading + recording on its first active
+      // frame (below); the store side (clearedCheckpointIds / feedbackLogs /
+      // deviationPenalty) is reset in setMissionState("active").
+      wasActive = false;
+    } else {
+      if (!wasActive) {
+        wasActive = true;
+        grading = createGradingState();
+        frames = [];
+      }
+      // Original useMission guards: no grading while paused / replaying / free-mode.
+      if (!st.isPaused && !st.isReplaying && st.currentLesson !== "free-mode") {
+        const chassisEuler = base.vehicle.chassis.getEulerAngles();
+        const displaySpeedSigned = Math.abs(s.speedKmh); // display km/h
+
+        // Record the replay frame (original Car.tsx contract: speed in km/h; head
+        // snapshot; rotation is the chassis euler in radians — scoring reads only
+        // position/speed/timestamp, P8 replays the rotation).
+        frames.push({
+          timestamp: Date.now(),
+          position: [s.x, s.y, s.z],
+          rotation: [chassisEuler.x * DEG2RAD, chassisEuler.y * DEG2RAD, chassisEuler.z * DEG2RAD],
+          steering: st.steeringAngle,
+          speed: displaySpeedSigned,
+          headRotation: { ...st.headRotation },
+        });
+
+        const result = stepMissionGrading(grading, {
+          lesson: st.currentLesson,
+          position: { x: s.x, z: s.z },
+          headYaw: st.headRotation.yaw,
+          speed: displaySpeedSigned,
+          language: st.language,
+        });
+
+        for (const c of result.cleared) {
+          st.addClearedCheckpoint(c.id);
+          if (c.feedback) {
+            st.setDrivingFeedback(c.feedback);
+            feedbackTimers.push(
+              setTimeout(() => useDrivingStore.getState().setDrivingFeedback(null), 2000),
+            );
+          }
+        }
+
+        if (result.goalReached) {
+          // Order preserved from useMission: snapshot replay BEFORE scoring (the
+          // store's calculateMissionResult reads replayData), then score, then the
+          // success transition, then the feedback screen.
+          useDrivingStore.setState({ replayData: frames });
+          st.calculateMissionResult(getCoursePath(st.currentLesson));
+          st.setMissionState("success");
+          st.setScreen("feedback");
+          wasActive = false;
+        }
+      }
+    }
   };
   app.on("update", onUpdate);
 
@@ -100,6 +182,10 @@ export function createProductDriveScene(
           reset: () => base.resetToSpawn(),
           setMirrorActive: (a) => base.mirror.setActive(a),
           isMirrorActive: () => base.mirror.isActive(),
+          // P7b goal-sweep aid: zero-velocity placement (resetTo zeroes momentum),
+          // so a teleport into a stop zone reads as stopped for the grader.
+          teleport: (x, z, yawDegrees = 180) =>
+            base.vehicle.resetTo(new Vec3(x, VEHICLE_TUNING.spawnHeight, z), yawDegrees),
         };
         globalThis.__driveDebug = debugApi;
       }
@@ -111,6 +197,9 @@ export function createProductDriveScene(
   return {
     dispose() {
       app.off("update", onUpdate);
+      // Cancel pending driving-feedback toast timers (original useMission unmount).
+      feedbackTimers.forEach(clearTimeout);
+      feedbackTimers.length = 0;
       if (debugApi && globalThis.__driveDebug === debugApi) {
         globalThis.__driveDebug = undefined;
       }

@@ -5,10 +5,10 @@ import { useDrivingStore } from "@/lib/store";
 import { SHELL_STRINGS } from "./productStrings";
 
 /**
- * P7a — minimal localized stubs for the screens that graduate in later tasks:
- * feedback (P7b grading + P8 replay review), tutorial (P7b), auth + history
- * (P10 Firebase). Each renders its localized title, a "next task" note, and a
- * back-home action carrying the E1 testid its real version will keep — so the
+ * P7a — minimal localized stubs for the screens that graduate in later tasks.
+ * feedback + tutorial graduated in P7b; auth + history remain stubs until P10
+ * (Firebase). Each renders its localized title, a "next task" note, and a
+ * back-home action carrying the testid its real version will keep — so the
  * e2e drivers written now don't churn when the screens are fleshed out.
  * Back-home wording here is the settled に form (ホームに戻る); only the driving
  * screen uses へ.
@@ -43,18 +43,6 @@ function StubShell({
       </div>
     </div>
   );
-}
-
-/** Feedback graduates in P7b (score) + P8 (replay review). */
-export function FeedbackStub() {
-  const language = useDrivingStore((s) => s.language);
-  return <StubShell title={SHELL_STRINGS[language].feedbackTitle} backTestId="feedback-home" />;
-}
-
-/** Tutorial graduates in P7b (DOM tutorial, ja/en). */
-export function TutorialStub() {
-  const language = useDrivingStore((s) => s.language);
-  return <StubShell title={SHELL_STRINGS[language].tutorialTitle} backTestId="tutorial-home" />;
 }
 
 /** Auth graduates in P10 (Firebase, fail-soft guest path). */

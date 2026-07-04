@@ -5,7 +5,9 @@ import { useDrivingStore } from "@/lib/store";
 import { LanguageScreen } from "./LanguageScreen";
 import { HomeScreen } from "./HomeScreen";
 import { DrivingScreen } from "./DrivingScreen";
-import { FeedbackStub, TutorialStub, AuthStub, HistoryStub } from "./StubScreens";
+import { FeedbackScreen } from "./FeedbackScreen";
+import { TutorialScreen } from "./TutorialScreen";
+import { AuthStub, HistoryStub } from "./StubScreens";
 
 /**
  * P7a — the PlayCanvas product shell, mounted at `/`.
@@ -16,8 +18,8 @@ import { FeedbackStub, TutorialStub, AuthStub, HistoryStub } from "./StubScreens
  * picker; returning visitors start on Home — that decision lives in store.ts'
  * `screen` initializer, not here.
  *
- * feedback / tutorial / auth / history are minimal localized STUBS for now and
- * graduate in later tasks (feedback P7b+P8, tutorial P7b, auth+history P10).
+ * feedback (P7b score/results; P8 adds the replay scene) and tutorial (P7b) are
+ * now real screens; auth / history remain minimal localized STUBS until P10.
  * Firebase auth restore is also P10 — until then the header is always GUEST.
  */
 
@@ -62,8 +64,8 @@ export default function ProductApp() {
         {screen === "language" && <LanguageScreen />}
         {screen === "home" && <HomeScreen />}
         {screen === "driving" && <DrivingScreen />}
-        {screen === "feedback" && <FeedbackStub />}
-        {screen === "tutorial" && <TutorialStub />}
+        {screen === "feedback" && <FeedbackScreen />}
+        {screen === "tutorial" && <TutorialScreen />}
         {screen === "auth" && <AuthStub />}
         {screen === "history" && <HistoryStub />}
       </div>
