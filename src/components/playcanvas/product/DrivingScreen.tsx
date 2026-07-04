@@ -8,6 +8,16 @@ import { getBriefing, getLessonTitle } from "@/lib/pcLessonCatalog";
 import { createProductDriveScene } from "../productDriveScene";
 import { SHELL_STRINGS } from "./productStrings";
 
+/**
+ * P8 — HUD labels + off-track overlay strings (ja/en). Kept local to the driving
+ * screen (E1 precedent) rather than in SHELL_STRINGS, which is shell chrome;
+ * P9's i18n pass consolidates every screen's strings.
+ */
+const HUD_STRINGS = {
+  ja: { speed: "速度", throttle: "アクセル", brake: "ブレーキ", steer: "ハンドル", warning: "警告", offTrack: "コース外" },
+  en: { speed: "SPEED", throttle: "THROTTLE", brake: "BRAKE", steer: "STEER", warning: "WARNING", offTrack: "OFF TRACK" },
+} as const;
+
 // Ammo-gated PlayCanvas canvas (client-only), driving the store-wired scene.
 const DriveCanvas = dynamic(() => import("../DriveCanvas"), { ssr: false });
 
@@ -50,9 +60,22 @@ export function DrivingScreen() {
   const currentLesson = useDrivingStore((s) => s.currentLesson);
   const speed = useDrivingStore((s) => s.speed);
   const gear = useDrivingStore((s) => s.gear);
+  const throttle = useDrivingStore((s) => s.throttle);
+  const brake = useDrivingStore((s) => s.brake);
+  const steeringAngle = useDrivingStore((s) => s.steeringAngle);
+  const isOffTrack = useDrivingStore((s) => s.isOffTrack);
   const drivingFeedback = useDrivingStore((s) => s.drivingFeedback);
   const setMissionState = useDrivingStore((s) => s.setMissionState);
   const t = SHELL_STRINGS[language];
+  const hud = HUD_STRINGS[language];
+
+  // Steering position normalized to [-1, 1] for the HUD indicator. The store's
+  // steeringAngle is on the settled two-source scale: the webcam layer (P11)
+  // writes ±1.0 (full lock), the keyboard writes ±0.6 (intentionally partial,
+  // matching the original app). ±1.0 is the canonical full-lock scale, so
+  // normalize by it directly — a full vision lock rails, keyboard reads ~60%.
+  // The clamp guards overshoot.
+  const steerNorm = Math.max(-1, Math.min(1, steeringAngle));
 
   // Traffic-light lesson only: the current signal, cycled by SIGNAL_CYCLE and
   // rendered as a DOM widget (the world has no 3D signal model yet).
@@ -178,21 +201,84 @@ export function DrivingScreen() {
         {t.exitHome}
       </button>
 
-      {/* Basic HUD: speed + gear (P8 grows this into the full product HUD). */}
+      {/* Full product HUD: speed + gear + throttle/brake bars + steering
+          indicator + off-track badge (bottom-right). Throttle/brake/steer read
+          live from the store (the same fields the webcam layer writes in P11);
+          the steer indicator is normalized to ±1.0 full-lock. */}
       <div className="absolute bottom-6 right-6 z-10 flex items-end gap-4 pointer-events-none select-none">
-        <div className="px-5 py-3 bg-slate-900/80 border border-slate-700 rounded-lg text-right">
-          <div data-testid="hud-speed" className="text-4xl font-black font-mono text-white leading-none">
-            {speed}
-            <span className="text-sm font-bold text-slate-400 ml-1">{t.speedUnit}</span>
+        {isOffTrack && (
+          <div className="px-3 py-1 rounded bg-red-600/80 text-sm font-bold font-mono animate-pulse">
+            {hud.offTrack}
           </div>
-        </div>
-        <div className="px-4 py-3 bg-slate-900/80 border border-slate-700 rounded-lg text-center">
-          <div className="text-[10px] font-bold text-slate-400 tracking-widest">{t.gearLabel}</div>
-          <div data-testid="hud-gear" className="text-3xl font-black font-mono text-blue-400 leading-none">
-            {gear}
+        )}
+        <div className="px-5 py-3 bg-slate-900/80 border border-slate-700 rounded-lg font-mono min-w-[210px]">
+          {/* Speed + gear */}
+          <div className="flex items-end justify-between">
+            <div>
+              <div className="text-[10px] text-slate-400 tracking-widest">{hud.speed}</div>
+              <div data-testid="hud-speed" className="text-4xl font-black text-white leading-none">
+                {speed}
+                <span className="text-sm font-bold text-slate-400 ml-1">{t.speedUnit}</span>
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-[10px] font-bold text-slate-400 tracking-widest">{t.gearLabel}</div>
+              <div data-testid="hud-gear" className="text-3xl font-black text-blue-400 leading-none">
+                {gear}
+              </div>
+            </div>
+          </div>
+
+          {/* Throttle / brake bars (live from the store) */}
+          <div className="mt-3 space-y-1.5">
+            <div className="flex items-center gap-2" data-testid="hud-throttle" data-value={throttle.toFixed(2)}>
+              <span className="text-[10px] w-16 text-slate-400">{hud.throttle}</span>
+              <div className="flex-1 h-2 rounded bg-white/10 overflow-hidden">
+                <div
+                  className="h-full bg-green-500 transition-[width] duration-75"
+                  style={{ width: `${Math.round(Math.max(0, Math.min(1, throttle)) * 100)}%` }}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2" data-testid="hud-brake" data-value={brake.toFixed(2)}>
+              <span className="text-[10px] w-16 text-slate-400">{hud.brake}</span>
+              <div className="flex-1 h-2 rounded bg-white/10 overflow-hidden">
+                <div
+                  className="h-full bg-red-500 transition-[width] duration-75"
+                  style={{ width: `${Math.round(Math.max(0, Math.min(1, brake)) * 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Steering indicator: centered track with a thumb tracking steerNorm. */}
+          <div className="mt-3" data-testid="hud-steer" data-value={steerNorm.toFixed(2)}>
+            <div className="text-[10px] text-slate-400 mb-1">{hud.steer}</div>
+            <div className="relative h-2 rounded bg-white/10">
+              <div className="absolute left-1/2 top-0 h-full w-px bg-white/40" />
+              <div
+                className="absolute top-1/2 h-3 w-3 -translate-y-1/2 -translate-x-1/2 rounded-full bg-blue-400 shadow transition-[left] duration-75"
+                style={{ left: `${50 + steerNorm * 50}%` }}
+              />
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Off-track WARNING (centered, blinking) — the original Dashboard's
+          off-track overlay (WARNING / OFF TRACK at top-30%, blink). Complements
+          the compact OFF TRACK badge in the HUD above. */}
+      {isOffTrack && (
+        <div
+          data-testid="offtrack-warning"
+          className="absolute top-[30%] left-1/2 -translate-x-1/2 z-20 text-center pointer-events-none select-none animate-pulse"
+        >
+          <div className="text-2xl font-bold tracking-[0.25em] px-5 py-2 rounded border-2 border-red-500 bg-red-950/50 text-red-400">
+            {hud.warning}
+          </div>
+          <div className="text-sm mt-1 text-red-400">{hud.offTrack}</div>
+        </div>
+      )}
 
       {/* Traffic-light signal widget (traffic-light lesson only). Drives the same
           SIGNAL_CYCLE that scoring's red-light check replays. */}
@@ -217,11 +303,12 @@ export function DrivingScreen() {
         </div>
       )}
 
-      {/* Driving-feedback toast (checkpoint OK / safety-check flashes, 2s each). */}
+      {/* Driving-feedback toast (checkpoint OK / safety-check flashes, 2s each).
+          top-20% per the original Dashboard, above the off-track warning (30%). */}
       {drivingFeedback && (
         <div
           data-testid="drive-feedback"
-          className="absolute top-1/3 left-1/2 -translate-x-1/2 z-20 px-6 py-3 rounded-xl bg-black/70 border border-green-500/50 text-2xl font-bold text-green-300 pointer-events-none select-none"
+          className="absolute top-[20%] left-1/2 -translate-x-1/2 z-20 px-6 py-3 rounded-xl bg-black/70 border border-green-500/50 text-2xl font-bold text-green-300 pointer-events-none select-none"
         >
           {drivingFeedback}
         </div>
