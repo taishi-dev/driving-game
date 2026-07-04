@@ -1,9 +1,17 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import { useEffect } from "react";
 import { useDrivingStore } from "@/lib/store";
 import { MISSION_CHECKPOINTS } from "@/lib/mission/missions";
 import { getLessonTitle } from "@/lib/pcLessonCatalog";
+import { createReplayScene } from "../replayScene";
 import { SHELL_STRINGS } from "./productStrings";
+
+// Ammo-gated PlayCanvas canvas (client-only), running the replay-review scene.
+// buildDriveWorld's static road colliders need the physics world, so the replay
+// scene reuses the same loadAmmo() gate the drive scene does (see replayScene).
+const DriveCanvas = dynamic(() => import("../DriveCanvas"), { ssr: false });
 
 /**
  * P7b — the graded feedback screen (graduates the P7a FeedbackStub). Shows what
@@ -43,7 +51,9 @@ const STRINGS = {
     typeSafety: "安全確認",
     typeSpeed: "速度制限",
     replay: "リプレイ",
-    replaySoon: "リプレイビューは次のタスクで実装されます。",
+    chase: "CHASE",
+    driver: "DRIVER",
+    noReplay: "この走行の記録はありません。",
   },
   en: {
     missionFeedback: "Mission Feedback",
@@ -63,7 +73,9 @@ const STRINGS = {
     typeSafety: "Safety check",
     typeSpeed: "Speed limit",
     replay: "REPLAY",
-    replaySoon: "The replay view is implemented in a later task.",
+    chase: "CHASE",
+    driver: "DRIVER",
+    noReplay: "No recording is available for this drive.",
   },
 } as const;
 
@@ -90,11 +102,26 @@ export function FeedbackScreen() {
   const deviationPenalty = useDrivingStore((s) => s.deviationPenalty);
   const missionStartTime = useDrivingStore((s) => s.missionStartTime);
   const missionEndTime = useDrivingStore((s) => s.missionEndTime);
+  const replayData = useDrivingStore((s) => s.replayData);
+  const replayViewMode = useDrivingStore((s) => s.replayViewMode);
+  const setReplayViewMode = useDrivingStore((s) => s.setReplayViewMode);
+  const setIsReplaying = useDrivingStore((s) => s.setIsReplaying);
   const setScreen = useDrivingStore((s) => s.setScreen);
   const setMissionState = useDrivingStore((s) => s.setMissionState);
   const clearReplayData = useDrivingStore((s) => s.clearReplayData);
   const t = STRINGS[language];
   const shell = SHELL_STRINGS[language];
+
+  const hasReplay = replayData.length > 0;
+
+  // Mark the replay flag while this screen shows a recorded run (convention
+  // parity with the original: `isReplaying` = a replay is on screen). Cleared on
+  // unmount — the driving scene's grading loop already skips grading when set.
+  useEffect(() => {
+    if (!hasReplay) return;
+    setIsReplaying(true);
+    return () => setIsReplaying(false);
+  }, [hasReplay, setIsReplaying]);
 
   const kaizenLogs = feedbackLogs.filter((l) => l.type === "KAIZEN");
 
@@ -153,12 +180,52 @@ export function FeedbackScreen() {
       </div>
 
       <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Left: replay-review PLACEHOLDER (the 3D replay scene lands in P8). */}
-        <div className="w-1/2 relative border-r border-slate-700 bg-black flex items-center justify-center">
-          <div className="absolute top-4 left-4 z-10 bg-black/60 px-3 py-1 rounded text-xs font-mono text-red-500/70">
-            ● {t.replay}
-          </div>
-          <p className="text-slate-600 text-sm px-8 text-center">{t.replaySoon}</p>
+        {/* Left: 3D replay-review view. Plays the recorded run through the world
+            (kinematic car, timestamp-interpolated playback via replayScene). */}
+        <div className="w-1/2 relative border-r border-slate-700 bg-black">
+          {hasReplay ? (
+            <div className="absolute inset-0" data-testid="replay-canvas">
+              {/* fit="container": the replay lives in a half-width panel, so the
+                  canvas must track its ELEMENT size, not the window. */}
+              <DriveCanvas buildScene={createReplayScene} showFps fit="container" />
+            </div>
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm px-8 text-center">
+              {t.noReplay}
+            </div>
+          )}
+
+          {/* Replay overlay: recording badge + chase/driver camera toggle.
+              Top-RIGHT of the panel — the canvas's FPS badge owns the top-left. */}
+          {hasReplay && (
+            <div className="absolute top-4 right-4 z-10 flex gap-2 items-center">
+              <div className="bg-black/60 px-3 py-1 rounded text-xs font-mono text-red-500 animate-pulse">
+                ● {t.replay}
+              </div>
+              <div className="flex bg-slate-800/80 rounded p-1 border border-slate-600">
+                <button
+                  onClick={() => setReplayViewMode("chase")}
+                  data-testid="replay-chase"
+                  data-active={replayViewMode === "chase"}
+                  className={`px-3 py-1 rounded text-xs font-bold transition-colors ${
+                    replayViewMode === "chase" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {t.chase}
+                </button>
+                <button
+                  onClick={() => setReplayViewMode("driver")}
+                  data-testid="replay-driver"
+                  data-active={replayViewMode === "driver"}
+                  className={`px-3 py-1 rounded text-xs font-bold transition-colors ${
+                    replayViewMode === "driver" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {t.driver}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right: score + AI feedback + per-checkpoint results (scrolls). */}

@@ -230,6 +230,11 @@ export function buildDriveWorld(
       if (isDisposed()) return;
       use(asset.resource as ContainerResource);
     });
+    // Surface load/parse failures — without this a failed GLB (e.g. a wedged
+    // decode pipeline) leaves the world silently empty.
+    asset.on("error", (err: unknown) => {
+      console.error(`[driveWorld] GLB load failed: ${file}`, err);
+    });
     assets.push(asset);
     app.assets.add(asset);
     app.assets.load(asset);

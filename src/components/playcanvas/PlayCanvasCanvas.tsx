@@ -6,6 +6,7 @@ import {
   Color,
   Entity,
   FILLMODE_FILL_WINDOW,
+  FILLMODE_NONE,
   RESOLUTION_AUTO,
 } from "playcanvas";
 import type { SceneHandle } from "./showroomScene";
@@ -35,6 +36,16 @@ interface PlayCanvasCanvasProps {
    * the product driving screen keeps it (E1 parity: `drive-fps` testid).
    */
   showFps?: boolean;
+  /**
+   * How the canvas sizes itself (default "window"). Full-screen scenes keep
+   * "window" (FILLMODE_FILL_WINDOW — the engine styles the canvas to the window
+   * size). Panel-embedded scenes (P8's feedback replay lives in a HALF-width
+   * panel) MUST pass "container": FILLMODE_FILL_WINDOW would style the canvas to
+   * the full window, so the render's centre lands at the panel's clipped edge.
+   * "container" uses FILLMODE_NONE (CSS keeps the canvas at 100% of its parent)
+   * + `updateCanvasSize()` so the backbuffer tracks the ELEMENT size instead.
+   */
+  fit?: "window" | "container";
 }
 
 /**
@@ -65,6 +76,7 @@ interface PlayCanvasCanvasProps {
 export default function PlayCanvasCanvas({
   buildScene,
   showFps = true,
+  fit = "window",
 }: PlayCanvasCanvasProps = {}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [fps, setFps] = useState(0);
@@ -79,7 +91,7 @@ export default function PlayCanvasCanvas({
       graphicsDeviceOptions: { antialias: true },
     });
 
-    app.setCanvasFillMode(FILLMODE_FILL_WINDOW);
+    app.setCanvasFillMode(fit === "container" ? FILLMODE_NONE : FILLMODE_FILL_WINDOW);
     app.setCanvasResolution(RESOLUTION_AUTO);
 
     // hiDPI decision (P1 review note): cap the backbuffer at 2x CSS pixels.
@@ -106,10 +118,26 @@ export default function PlayCanvasCanvas({
 
     app.start();
 
+    // Container fit: with FILLMODE_NONE the engine never touches the canvas
+    // style (CSS keeps it at 100% of the parent) — `updateCanvasSize()` syncs
+    // the backbuffer to the element's CLIENT size (RESOLUTION_AUTO path). Run
+    // it once now (the element has been laid out before this effect) and on
+    // every element resize via ResizeObserver (covers window resizes AND panel
+    // layout changes). Window fit keeps the original resizeCanvas-on-window-
+    // resize behaviour.
     const onResize = () => {
       if (disposed) return;
-      app.resizeCanvas();
+      if (fit === "container") app.updateCanvasSize();
+      else app.resizeCanvas();
     };
+    let resizeObserver: ResizeObserver | null = null;
+    if (fit === "container") {
+      app.updateCanvasSize();
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(onResize);
+        resizeObserver.observe(canvas);
+      }
+    }
     window.addEventListener("resize", onResize);
 
     // FPS readout — sampled on a timer so React re-renders ~2x/sec, not per
@@ -122,11 +150,12 @@ export default function PlayCanvasCanvas({
     return () => {
       disposed = true;
       window.clearInterval(fpsTimer);
+      resizeObserver?.disconnect();
       window.removeEventListener("resize", onResize);
       sceneHandle?.dispose();
       app.destroy();
     };
-  }, [buildScene]);
+  }, [buildScene, fit]);
 
   return (
     <div

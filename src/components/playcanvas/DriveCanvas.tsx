@@ -24,9 +24,12 @@ import { loadAmmo } from "./ammoPhysics";
 export default function DriveCanvas({
   buildScene = createDriveScene,
   showFps = true,
+  fit = "window",
 }: {
   buildScene?: SceneBuilder;
   showFps?: boolean;
+  /** Canvas sizing (see PlayCanvasCanvas) — the panel-embedded replay passes "container". */
+  fit?: "window" | "container";
 } = {}) {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,5 +84,5 @@ export default function DriveCanvas({
     );
   }
 
-  return <PlayCanvasCanvas buildScene={buildScene} showFps={showFps} />;
+  return <PlayCanvasCanvas buildScene={buildScene} showFps={showFps} fit={fit} />;
 }
