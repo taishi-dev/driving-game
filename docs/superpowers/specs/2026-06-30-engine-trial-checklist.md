@@ -342,6 +342,46 @@ as E1's gaps — the two branches are deliberately at feature parity):
 
 ---
 
+## Phase C — Comparison Consolidation & Verdict (2026-07-04)
+
+**Winner: E2-playcanvas.** Decided on the measured axes; the user explicitly
+waived the subjective driven-judgment axis (C2/C3) on 2026-07-04 ("No verdict,
+Phase C"), so the hybrid criterion (fps + download + driven) reduces to its
+objective half plus the recorded qualitative engine-effort findings.
+
+### Consolidated comparison
+
+| Axis | E1-babylon | E2-playcanvas | E3-cocos | Verdict |
+|---|---|---|---|---|
+| fps — home / keyboard-drive / replay (headed, Arc 140T, 1920×1200) | 60 / 60 / 60 | 60 / 60 / 60 | — (early exit) | tie |
+| fps — vision-active drive (median) | **29** | **49** | — | **E2** (both MediaPipe-bound; E2 leaves ~70% more headroom) |
+| Download to drive-ready (≤ 50 MB budget) | 32.58 MB | **31.93 MB** | — | E2 (slightly) |
+| Vehicle physics effort/risk | Hand-built Havok raycast vehicle; needed a physics root-cause round (order-dependent velocity reads → veer) | Official Bullet `btRaycastVehicle` via Ammo; drove straight on first integration (max drift 0.036 m / 165 m) | — | **E2** |
+| Engine capability gaps hit | None blocking; clearcoat/compression all native | Three quirks, all worked around or root-fixed (opacityMap bug, kit metalness=1, Draco JobQueue wedge) | No runtime glTF loading (**disqualifying**) | E1 cleanest engine surface; E2's quirks all resolved |
+| Final whole-branch review | READY 0C/0I; 159/159 unit, e2e 5/5 | READY 0C/0I; 148/148 unit, e2e 5/5 | — | tie |
+| Scoring parity vs original | proven (frozen core) | proven (8-lesson sweep reproduces E1/original scores exactly) | — | tie |
+| Driven judgment (C2) | *waived by user* | *waived by user* | — | — |
+
+**E3-cocos early-exit (C0 feasibility gate, adversarially verified + upheld):**
+Cocos has no runtime glTF/GLB loading (editor import-time only; engine issue
+#16531 open), which is architecturally incompatible with the runtime
+`public/models3d` pipeline; secondary findings: no drop-in npm/CDN runtime and
+a games-only free-license nuance for a training-sim product. Recorded as a
+valid trial datum; not eligible for the comparison.
+
+**Decision basis:** E2 wins or ties every measured axis and won the
+vehicle-physics effort axis decisively. E1's sole edge (a quirk-free engine
+surface) did not translate into a better measured result. Per plan C4, only
+`E2-playcanvas/feature/full-port` merges to `main`; E1/E3 branches are closed
+unmerged (retained as refs for the trial record).
+
+**Deferred to post-merge (recorded, not blockers):** real-webcam drive-test and
+Firebase real-config smoke on the winner (see Known Gaps), plus the winner
+follow-ups in the E2 ledger (world build-out, DOM traffic light, hero-car swap
+into drive/replay, decoupled vision inference for 60 fps with webcam active).
+
+---
+
 ## Sign-Off Checklist (E2-playcanvas, P12)
 
 ```

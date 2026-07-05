@@ -1,10 +1,10 @@
 # ADR 0003 — Replace Three.js/React Three Fiber via Three-Engine Full-Port Trial
 
-**Status:** Accepted  
-**Date:** 2026-06-30  
+**Status:** Accepted — **Outcome decided: PlayCanvas (E2)**  
+**Date:** 2026-06-30 (outcome recorded 2026-07-04)  
 **Author:** taishi  
 **Branch:** `engine-trial/foundation` (not yet merged to `main`)  
-**Will be updated by:** Phase C (C5) with the chosen engine and measured basis
+**Will be updated by:** ~~Phase C (C5) with the chosen engine and measured basis~~ Done — see *Outcome* below
 
 ---
 
@@ -134,3 +134,33 @@ concludes:
 - Phase C measures and decides the winner.
 - Only the winning branch is merged to `main` (via PR to the taishi-dev/driving-game fork, per project convention).
 - This ADR is updated in Phase C (C5) with the chosen engine and the measured basis for the choice.
+
+---
+
+## Outcome (Phase C, 2026-07-04)
+
+**Chosen engine: PlayCanvas** (`E2-playcanvas/feature/full-port` merges to `main`).
+
+Measured basis (headed, real GPU — Intel Arc 140T, 1920×1200, production builds):
+
+| Metric | E1-babylon | E2-playcanvas |
+|---|---|---|
+| fps home / keyboard-drive / replay | 60 / 60 / 60 | 60 / 60 / 60 |
+| fps vision-active drive (median) | 29 | **49** |
+| Download to drive-ready | 32.58 MB | **31.93 MB** (budget ≤ 50 MB) |
+| Vehicle physics | hand-built Havok raycast vehicle (needed a veer root-cause round) | official Bullet `btRaycastVehicle` (straight on first integration) |
+| Final review / gates | READY 0C/0I; 159/159 unit, e2e 5/5 | READY 0C/0I; 148/148 unit, e2e 5/5 |
+
+The subjective driven-judgment axis was **explicitly waived by the user**
+(2026-07-04), reducing the hybrid criterion to the measured axes — on which E2
+wins or ties everything. **E3-cocos exited early** at its C0 feasibility gate:
+no runtime glTF/GLB loading in Cocos (editor import-time only), architecturally
+incompatible with the runtime asset pipeline; a games-only license nuance for a
+training-sim product was a secondary finding. Full consolidation lives in
+`docs/superpowers/specs/2026-06-30-engine-trial-checklist.md` (Phase C section).
+
+Both finished branches carry the same recorded, deliberate gaps (world
+build-out beyond straight+turn, DOM traffic light, placeholder box car in
+drive/replay, click-to-pause dropped); these transfer to `main` as follow-up
+work on the winner, alongside the pending real-webcam drive-test and live
+Firebase smoke.
