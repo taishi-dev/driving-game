@@ -8,6 +8,7 @@ import {
   StandardMaterial,
   dracoInitialize,
 } from "playcanvas";
+import { heroCarUniformScale } from "@/lib/pcHeroCarFit";
 
 /** Shipped Draco+WebP hero car (see assets/CREDITS.md). */
 export const HERO_CAR_URL = "/models3d/CarConcept-draco-webp.glb";
@@ -38,6 +39,30 @@ export interface HeroCarHandle {
   /** The instantiated car entity, or null until the GLB finishes loading. */
   getEntity(): Entity | null;
   dispose(): void;
+}
+
+/**
+ * Mount the loaded car on a vehicle chassis instead of free-standing in the
+ * showroom. The visual is uniformly scaled to the chassis footprint
+ * (`pcHeroCarFit`), seated so its underbody line sits on the rest-pose ground
+ * plane (`groundLocalY`, chassis-local), and left facing local +Z — the
+ * raycast-vehicle chassis' forward axis — so the loader's usual 180° flip is
+ * NOT applied. The GLB's wheel meshes are hidden: they are merged
+ * across-the-track primitives (see {@link SEATING_EXCLUDED_MATERIALS}) that
+ * can never spin or steer per-wheel, so the Bullet-synced wheel entities stay
+ * the moving wheels.
+ */
+export interface HeroCarMountOptions {
+  /** Chassis entity to parent the visual under (scale 1, physics-owned). */
+  parent: Entity;
+  /** Full chassis collision-box width (m). */
+  chassisWidth: number;
+  /** Full chassis collision-box length (m). */
+  chassisLength: number;
+  /** Chassis-local Y of the ground plane at suspension rest. */
+  groundLocalY: number;
+  /** Called once the car is mounted (e.g. to remove a placeholder). */
+  onMounted?: () => void;
 }
 
 /**
@@ -119,6 +144,7 @@ export function loadHeroCar(
   app: Application,
   isDisposed: () => boolean,
   paint?: HeroCarPaintOptions,
+  mount?: HeroCarMountOptions,
 ): HeroCarHandle {
   ensureDraco();
 
@@ -206,11 +232,12 @@ export function loadHeroCar(
       }
     }
 
-    // The CarConcept model is authored facing +Z; rotate 180° so it faces -Z,
-    // matching the coordinate contract (forward = -Z) that the P4+ drive scenes
-    // reuse. In the showroom this also turns the +Z hero camera into a rear-3/4
-    // view.
-    entity.setLocalEulerAngles(0, 180, 0);
+    // The CarConcept model is authored facing +Z. Free-standing (showroom):
+    // rotate 180° so it faces -Z, matching the world coordinate contract
+    // (forward = -Z); the hero camera sits on the -Z side for a front-3/4 view.
+    // Mounted on a chassis: leave it at 0° — the raycast-vehicle chassis'
+    // LOCAL +Z is its forward axis (the chassis itself spawns yaw-180).
+    entity.setLocalEulerAngles(0, mount ? 0 : 180, 0);
 
     app.root.addChild(entity);
 
@@ -263,8 +290,31 @@ export function loadHeroCar(
             "primitive not covered by SEATING_EXCLUDED_MATERIALS.",
         );
       }
-      const pos = entity.getPosition();
-      entity.setPosition(pos.x - center.x, pos.y - min.y, pos.z - center.z);
+      if (mount) {
+        // Chassis mount: fit the body to the chassis footprint with ONE
+        // uniform factor and seat the underbody line on the rest-pose ground
+        // plane in chassis space. The GLB's own wheels STAY VISIBLE (they seat
+        // perfectly with the body, exactly like the showroom) — they are
+        // merged across-the-track primitives that can never spin or steer, an
+        // accepted visual deviation; the scene hides its placeholder wheel
+        // cylinders via `onMounted` (mismatched arches looked far worse than
+        // non-spinning wheels at chase-camera distance).
+        const size = bounds.halfExtents;
+        const s = heroCarUniformScale(
+          size.x * 2,
+          size.z * 2,
+          mount.chassisWidth,
+          mount.chassisLength,
+        );
+        app.root.removeChild(entity);
+        mount.parent.addChild(entity);
+        entity.setLocalScale(s, s, s);
+        entity.setLocalPosition(-center.x * s, mount.groundLocalY - min.y * s, -center.z * s);
+        mount.onMounted?.();
+      } else {
+        const pos = entity.getPosition();
+        entity.setPosition(pos.x - center.x, pos.y - min.y, pos.z - center.z);
+      }
     }
 
     carRoot = entity;
