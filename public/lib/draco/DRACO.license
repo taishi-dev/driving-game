@@ -1,0 +1,5 @@
+Draco 3D Data Compression decoder (glTF build).
+Source: https://github.com/google/draco (gltf_2.0_draco_extension branch)
+License: Apache License 2.0 — https://github.com/google/draco/blob/master/LICENSE
+Bundled here for runtime Draco decoding by PlayCanvas (pc.dracoInitialize);
+no CDN fetch at runtime. Files: draco_wasm_wrapper.js (glue) + draco_decoder.wasm.

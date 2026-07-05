@@ -14,7 +14,7 @@ type E2EState = {
 type E2EStore = { getState: () => E2EState };
 type E2EWindow = Window & { __drivingStore?: E2EStore };
 
-const STEER_AMOUNT = 0.6; // mirrors KeyboardControls.tsx
+const STEER_AMOUNT = 0.6; // keyboard partial-lock (pcDriveControls)
 
 // Force getUserMedia to reject with NotAllowedError BEFORE app scripts run, so:
 //  (1) the vision loop never starts and therefore never overrides steering, and
@@ -47,8 +47,9 @@ async function startFreeDrive(page: Page): Promise<void> {
   // Skip the first-launch language picker: a fresh browser has no saved
   // language, so the store routes to the LanguageScreen picker instead of Home
   // and the Free Mode button is absent. Seed "ja" so it goes straight to Home
-  // with the button labelled フリーモード. (The camera-denied overlay text is
-  // hardcoded English regardless of language — see the assertions below.)
+  // with the button labelled フリーモード. (P11: the camera-denied overlay is
+  // now localized via pcVisionStatus, so the overlay assertions below use the
+  // Japanese strings.)
   await page.addInitScript(() => localStorage.setItem("language", "ja"));
   await page.goto("/?e2e=1");
   await page.getByRole("button", { name: /フリーモード/ }).click();
@@ -57,7 +58,7 @@ async function startFreeDrive(page: Page): Promise<void> {
     undefined,
     { timeout: 30_000 },
   );
-  // Let KeyboardControls' effect attach its window keydown/keyup listeners.
+  // Let the driving screen's keyboard effect attach its window keydown/keyup listeners.
   await page.waitForTimeout(500);
 }
 
@@ -93,28 +94,33 @@ test("camera-denied shows the keyboard-fallback overlay", async ({ page }) => {
   await denyCamera(page);
   await startFreeDrive(page);
 
-  await expect(page.getByText("📷 Camera unavailable")).toBeVisible({
+  // P11: the overlay is localized (pcVisionStatus.ts); the page runs in Japanese.
+  await expect(page.getByText("📷 カメラを利用できません")).toBeVisible({
     timeout: 15_000,
   });
   await expect(
-    page.getByText("Camera access was denied", { exact: false }),
+    page.getByText("カメラへのアクセスが拒否されました", { exact: false }),
   ).toBeVisible();
 });
 
-// End-to-end proof that mission grading still fires after being relocated out of
-// Car.tsx into MissionController/useMission: drive the straight lesson forward to
-// its goal and assert the success + feedback transition. Guards the mount-order /
-// transform-timing contract. The straight lesson has the lightest scene (highest
-// frame rate, so the real-time drive is as quick as possible on headless CI); the
-// poll resolves as soon as the goal fires, so the generous timeout only caps the
-// failure case, it doesn't slow the happy path.
+// End-to-end proof that mission grading fires: enter the straight lesson, place
+// the car just short of the goal (the productDriveScene `__driveDebug.teleport`
+// aid — zero-velocity chassis placement), then DRIVE the last stretch with the
+// keyboard until the goal triggers success + feedback.
+//
+// P11 note: the driving screen now (faithfully to the original) mounts the
+// vision layer even when the camera is denied, and its MediaPipe model
+// loading/contexts cut headless-SwiftShader frame rates to a few FPS. The scene
+// clamps the physics delta (productDriveScene), so below that clamp sim time
+// runs slower than wall clock and a FULL real-time drive can no longer finish
+// inside any sane headless budget. Teleporting near the goal keeps this test's
+// actual subject — goal detection -> success -> feedback -> replay frames —
+// while making the wall clock FPS-independent. The full-length real-time
+// keyboard drive to 100/100 is covered by the HEADED fake-webcam spec
+// (webcam-vision.spec.ts), per the P11 brief's headed verification loop.
 test("reaching a lesson goal triggers success + feedback (grading relocation)", async ({
   page,
 }) => {
-  // Headroom: the car physics advances per-frame (no delta), so the wall-clock to
-  // the goal scales with headless-CI frame rate. The scene's shadow pass + reflection
-  // environment lower that frame rate, so this cap is set generously above the happy
-  // path (which resolves the moment the goal fires — the timeout only bounds failure).
   test.setTimeout(160_000);
   await denyCamera(page);
   await page.addInitScript(() => localStorage.setItem("language", "ja"));
@@ -135,10 +141,22 @@ test("reaching a lesson goal triggers success + feedback (grading relocation)", 
     undefined,
     { timeout: 30_000 },
   );
-  // Let the Scene/Car mount and KeyboardControls attach its listeners.
+  // Wait for the scene + debug hook (set once the PlayCanvas scene resolves),
+  // then let the keyboard effect attach its listeners.
+  await page.waitForFunction(
+    () => Boolean((window as unknown as { __driveDebug?: unknown }).__driveDebug),
+    undefined,
+    { timeout: 60_000 },
+  );
   await page.waitForTimeout(800);
 
-  // Drive forward (the car faces -z; ArrowUp = throttle) until the goal fires.
+  // Place the car just short of the straight goal (goal box center z=-150 —
+  // missions.ts), then drive the last stretch forward (the car faces -z;
+  // ArrowUp = throttle) until the goal fires.
+  await page.evaluate(() => {
+    (window as unknown as { __driveDebug: { teleport: (x: number, z: number) => void } })
+      .__driveDebug.teleport(0, -138);
+  });
   await page.keyboard.down("ArrowUp");
   await expect
     .poll(() => page.evaluate(() => (window as unknown as E2EWindow).__drivingStore!.getState().screen), {

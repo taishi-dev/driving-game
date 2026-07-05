@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Static/vendored assets are never linted (e.g. the minified Draco decoder
+    // glue shipped under public/lib/draco for runtime glTF Draco decoding).
+    "public/lib/**",
   ]),
   {
     rules: {

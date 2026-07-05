@@ -1,0 +1,17 @@
+Ammo.js — Bullet Physics (btRaycastVehicle etc.) compiled to WebAssembly.
+Source: https://github.com/kripken/ammo.js (builds/ammo.wasm.{js,wasm}, main branch)
+License: zlib License (Bullet Physics / ammo.js) — permissive, redistribution OK.
+Header of ammo.wasm.js: "This is ammo.js, a port of Bullet Physics to JavaScript. zlib licensed."
+
+Bundled here for runtime physics via PlayCanvas (pc.WasmModule.getInstance('Ammo'));
+no CDN fetch at runtime. Files:
+  - ammo.wasm.js   (Emscripten glue; defines global `Ammo` factory)  ~441 KB
+  - ammo.wasm.wasm (WebAssembly Bullet build; includes btRaycastVehicle) ~731 KB
+
+Why this specific build (not three.js's examples copy): PlayCanvas'
+RigidBodyComponentSystem.onLibraryLoaded() calls `Ammo.addFunction(...)` to wire
+the internal collision-tick callback. The kripken/ammo.js `builds/ammo.wasm.js`
+exports `addFunction` (built with the emscripten runtime method exported);
+three.js's slimmer examples build does NOT, and PlayCanvas throws on it. Verified
+this build exports addFunction + btRaycastVehicle + btDefaultVehicleRaycaster +
+btVehicleTuning (required for the official raycast-vehicle pattern [C-veh]).
