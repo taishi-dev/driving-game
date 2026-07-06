@@ -1,6 +1,7 @@
 import {
   Application,
   Asset,
+  Color,
   ContainerResource,
   Entity,
   Mat4,
@@ -15,6 +16,7 @@ import {
 } from "playcanvas";
 import { ensureDraco } from "./heroCar";
 import {
+  CORRIDOR_WIDTH,
   ROAD_Y,
   STRAIGHT_START_Z,
   STRAIGHT_TILE_COUNT,
@@ -22,6 +24,10 @@ import {
   TURN_Z,
   checkCoordinateContract,
   isOnRoad,
+  lessonBuildings,
+  lessonCorridorColliders,
+  lessonProps,
+  lessonWorldPatches,
   roadColliders,
 } from "@/lib/pcDriveLayout";
 
@@ -133,6 +139,12 @@ function placementMatrix(p: Placement): Mat4 {
 export function buildDriveWorld(
   app: Application,
   isDisposed: () => boolean,
+  /**
+   * Current lesson: corridor lessons (s-curve / crank) get their paved corridor
+   * + extra flat colliders; crosswalk / railroad / traffic-light get their
+   * checkpoint dressing. Undefined = base world only (the /drive test route).
+   */
+  lesson?: string,
 ): DriveWorldHandle {
   // 0. Quaternius GLBs are Draco-compressed; configure the local decoder (the
   //    /drive route doesn't load the hero car, so nothing else has yet). This
@@ -158,8 +170,9 @@ export function buildDriveWorld(
   let rafId = 0;
 
   // 2. FLAT road colliders (physics ground + wheel-ray surface). Invisible; the
-  //    ONLY entities in the world with a collision component.
-  for (const b of roadColliders()) {
+  //    ONLY entities in the world with a collision component. Corridor lessons
+  //    add their corridor's flat boxes to the same list.
+  for (const b of [...roadColliders(), ...lessonCorridorColliders(lesson)]) {
     const box = new Entity(b.name);
     box.addComponent("collision", {
       type: "box",
@@ -269,33 +282,118 @@ export function buildDriveWorld(
       placeOne(r, { x: -3, y: ROAD_Y, z: -33, rotY: 0 });
     });
 
-    // Buildings alongside the straight (one-offs).
-    const buildings: Array<[string, Placement]> = [
-      ["Building_Large_2.glb", { x: -18, y: 0, z: -30, rotY: 0 }],
-      ["Building_Medium_2_001.glb", { x: -18, y: 0, z: -80, rotY: 0 }],
-      ["Building_Small_1.glb", { x: 12, y: 0, z: -30, rotY: Math.PI }],
-      ["Building_Large_2.glb", { x: 18, y: 0, z: -80, rotY: Math.PI }],
-      ["Building_Small_1.glb", { x: -14, y: 0, z: -140, rotY: 0 }],
-      ["Building_Medium_2_001.glb", { x: 14, y: 0, z: -140, rotY: Math.PI }],
-    ];
-    for (const [file, p] of buildings) loadGlb(file, (r) => placeOne(r, p));
+    // Buildings + curbside props (one-offs). Placement data lives in the pure
+    // layer, filtered so nothing stands in the active lesson's corridor.
+    for (const b of lessonBuildings(lesson)) {
+      loadGlb(b.file, (r) => placeOne(r, { x: b.x, y: 0, z: b.z, rotY: b.rotY }));
+    }
+    for (const p of lessonProps(lesson)) {
+      loadGlb(p.file, (r) => placeOne(r, { x: p.x, y: 0, z: p.z, rotY: p.rotY }));
+    }
 
-    // Props: bollards + planters along the curbs (one-offs).
-    const props: Array<[string, Placement]> = [
-      ["Prop_Bollard.glb", { x: -4, y: 0, z: 10, rotY: 0 }],
-      ["Prop_Bollard.glb", { x: -4, y: 0, z: -10, rotY: 0 }],
-      ["Prop_Bollard.glb", { x: 4, y: 0, z: 10, rotY: 0 }],
-      ["Prop_Bollard.glb", { x: 4, y: 0, z: -10, rotY: 0 }],
-      ["Prop_Planter_Single.glb", { x: -5, y: 0, z: -50, rotY: 0 }],
-      ["Prop_Planter_Single.glb", { x: 5, y: 0, z: -50, rotY: 0 }],
-      ["Prop_Planter_Single.glb", { x: -5, y: 0, z: -100, rotY: 0 }],
-      ["Prop_Planter_Single.glb", { x: 5, y: 0, z: -100, rotY: 0 }],
-    ];
-    for (const [file, p] of props) loadGlb(file, (r) => placeOne(r, p));
+    // ── Lesson build-out (pure placement data from pcDriveLayout) ────────────
+    const patches = lessonWorldPatches(lesson);
+
+    // Corridor paving: Street_Asphalt_9x9 per corridor point, oriented along
+    // the path (instanced — one draw call for the whole corridor). Alternate a
+    // few-mm Y offset so overlapping coplanar patches never Z-fight.
+    //
+    // MESH QUIRK (verified with gltf-transform inspect): this tile's pivot is
+    // at a CORNER (bbox −9..0 on X and Z) and its surface plane lies at
+    // y = −0.15 relative to the pivot. Compensate: shift by the rotated
+    // (+4.5, +4.5) local half-size so the tile is CENTRED on the patch point,
+    // and lift by +0.155 so the surface lands just above ROAD_Y (and above the
+    // terrain at −0.02) instead of 15 cm underground.
+    const asphalt = patches.filter((p) => p.kind === "asphalt");
+    if (asphalt.length > 0) {
+      const placements: Placement[] = asphalt.map((p, i) => {
+        const yaw = (p.yawDeg * Math.PI) / 180;
+        const cos = Math.cos(yaw);
+        const sin = Math.sin(yaw);
+        return {
+          x: p.cx + 4.5 * cos + 4.5 * sin,
+          y: ROAD_Y + 0.155 + (i % 2) * 0.004,
+          z: p.cz - 4.5 * sin + 4.5 * cos,
+          rotY: yaw,
+        };
+      });
+      loadGlb("Street_Asphalt_9x9.glb", (r) => placeInstanced(r, placements));
+    }
+
+    // Crosswalk stripes. MESH QUIRK (gltf-transform inspect): the decal is
+    // centred in X/Z but its surface plane lies at y = −0.148 (same −0.15
+    // convention as the asphalt tile), and its LONG axis (11.4 m) runs along
+    // Z — rotate 90° so the band spans ACROSS our −Z road, and lift it so the
+    // stripes sit just above the road surface instead of underground.
+    for (const p of patches.filter((q) => q.kind === "crosswalk")) {
+      loadGlb("Decal_Crosswalk_Wide.glb", (r) =>
+        placeOne(r, {
+          x: p.cx,
+          y: ROAD_Y + 0.168,
+          z: p.cz,
+          rotY: ((p.yawDeg + 90) * Math.PI) / 180,
+        }),
+      );
+    }
+
+    // Railroad dressing (primitives — the kit has no rail pieces): rails as
+    // flat dark strips across the road, crossbuck X-signs at the curbs.
+    const railPatches = patches.filter((q) => q.kind === "rail");
+    const buckPatches = patches.filter((q) => q.kind === "crossbuck");
+    if (railPatches.length === 0 && buckPatches.length === 0) return;
+    const railMat = new StandardMaterial();
+    railMat.useMetalness = true;
+    railMat.diffuse = new Color(0.25, 0.24, 0.23);
+    railMat.metalness = 0.8;
+    railMat.gloss = 0.6;
+    railMat.update();
+    disposables.push(railMat);
+    const buckMat = new StandardMaterial();
+    buckMat.diffuse = new Color(0.92, 0.92, 0.9);
+    buckMat.update();
+    disposables.push(buckMat);
+    const postMat = new StandardMaterial();
+    postMat.useMetalness = true;
+    postMat.diffuse = new Color(0.35, 0.37, 0.38);
+    postMat.metalness = 0.6;
+    postMat.gloss = 0.5;
+    postMat.update();
+    disposables.push(postMat);
+
+    for (const p of railPatches) {
+      const rail = new Entity("rr-rail");
+      rail.addComponent("render", { type: "box" });
+      rail.render!.material = railMat;
+      rail.setLocalScale(CORRIDOR_WIDTH + 3, 0.06, 0.3);
+      rail.setPosition(p.cx, ROAD_Y + 0.03, p.cz);
+      app.root.addChild(rail);
+      disposables.push(rail);
+    }
+    for (const p of buckPatches) {
+      const buck = new Entity("rr-crossbuck");
+      const post = new Entity("rr-post");
+      post.addComponent("render", { type: "cylinder" });
+      post.render!.material = postMat;
+      post.setLocalScale(0.15, 3.2, 0.15);
+      post.setLocalPosition(0, 1.6, 0);
+      buck.addChild(post);
+      for (const angle of [45, -45]) {
+        const slat = new Entity("rr-slat");
+        slat.addComponent("render", { type: "box" });
+        slat.render!.material = buckMat;
+        slat.setLocalScale(1.5, 0.22, 0.08);
+        slat.setLocalEulerAngles(0, 0, angle);
+        slat.setLocalPosition(0, 3.0, 0);
+        buck.addChild(slat);
+      }
+      buck.setPosition(p.cx, ROAD_Y, p.cz);
+      app.root.addChild(buck);
+      disposables.push(buck);
+    }
   });
 
   return {
-    isOffTrack: (x, z) => !isOnRoad(x, z),
+    isOffTrack: (x, z) => !isOnRoad(x, z, 0, lesson),
     dispose() {
       if (rafId) cancelAnimationFrame(rafId);
       for (let i = disposables.length - 1; i >= 0; i--) disposables[i].destroy();

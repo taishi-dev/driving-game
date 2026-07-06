@@ -41,7 +41,11 @@ export function createProductDriveScene(
   app: Application,
   isDisposed: () => boolean,
 ): SceneHandle {
-  const base = buildDriveSceneBase(app, isDisposed);
+  // The lesson is fixed for the lifetime of this scene (the driving screen
+  // remounts the canvas per lesson) — it drives the world's per-lesson
+  // build-out (corridor paving/colliders, checkpoint dressing, off-track).
+  const sceneLesson = useDrivingStore.getState().currentLesson;
+  const base = buildDriveSceneBase(app, isDisposed, sceneLesson);
 
   // 3D traffic signal at the frozen signal-1 stop line (traffic-light lesson
   // only). Pure view: the lit lamp derives from the store's signalStateLogs

@@ -91,6 +91,8 @@ export interface DriveSceneBase {
 export function buildDriveSceneBase(
   app: Application,
   isDisposed: () => boolean,
+  /** Current lesson — drives the world's per-lesson build-out (see driveWorld). */
+  lesson?: string,
 ): DriveSceneBase {
   // Create the physics world BEFORE any rigidbody entity is added (the builder
   // runs before app.start(), so we must init it here — see ensurePhysicsWorld).
@@ -153,7 +155,7 @@ export function buildDriveSceneBase(
   app.root.addChild(terrainCollider);
 
   // --- Quaternius drivable world (road tiles + flat road colliders + props) --
-  const world = buildDriveWorld(app, isDisposed);
+  const world = buildDriveWorld(app, isDisposed, lesson);
 
   // --- Chassis: box render (child, scaled) + box collision + dynamic body --
   const T = VEHICLE_TUNING;
