@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { useDrivingStore, type SignalState } from "@/lib/store";
 import { createDriveControls } from "@/lib/pcDriveControls";
 import { getBriefing, getLessonTitle } from "@/lib/pcLessonCatalog";
@@ -82,10 +82,6 @@ export function DrivingScreen() {
   // The clamp guards overshoot.
   const steerNorm = Math.max(-1, Math.min(1, steeringAngle));
 
-  // Traffic-light lesson only: the current signal, cycled by SIGNAL_CYCLE and
-  // rendered as a DOM widget (the world has no 3D signal model yet).
-  const [signal, setSignal] = useState<SignalState | null>(null);
-
   const exitToHome = useCallback(() => {
     const st = useDrivingStore.getState();
     // Zero the live control fields so nothing carries into the next session.
@@ -150,7 +146,8 @@ export function DrivingScreen() {
   // lost. Anchoring the cycle at missionState === "active" (after that wipe)
   // preserves the initial-state log and is a strictly better anchor — the E1
   // known edge, fixed here. Logs write to signalStateLogs for scoring's
-  // red-light check; the local `signal` state drives the widget.
+  // red-light check; the 3D signal in the scene derives its lit lamp from the
+  // same logs (pcSignalView), so this effect is the ONLY clock.
   const active = missionState === "active";
   useEffect(() => {
     if (currentLesson !== "traffic-light" || !active) return;
@@ -167,7 +164,6 @@ export function DrivingScreen() {
       } catch {
         // Never break the drive on a logging failure (original behavior).
       }
-      setSignal(state);
       index = (index + 1) % SIGNAL_CYCLE.length;
       timer = setTimeout(cycle, durationMs);
     };
@@ -288,29 +284,6 @@ export function DrivingScreen() {
             {hud.warning}
           </div>
           <div className="text-sm mt-1 text-red-400">{hud.offTrack}</div>
-        </div>
-      )}
-
-      {/* Traffic-light signal widget (traffic-light lesson only). Drives the same
-          SIGNAL_CYCLE that scoring's red-light check replays. */}
-      {signal && active && (
-        <div
-          data-testid="drive-signal"
-          data-signal={signal}
-          className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex gap-2.5 px-4 py-2.5 rounded-xl bg-slate-900/85 border border-white/15 pointer-events-none select-none"
-        >
-          {(["green", "yellow", "red"] as const).map((c) => (
-            <div
-              key={c}
-              className={`w-6 h-6 rounded-full ${
-                c === "green" ? "bg-green-500" : c === "yellow" ? "bg-yellow-500" : "bg-red-500"
-              }`}
-              style={{
-                opacity: signal === c ? 1 : 0.15,
-                boxShadow: signal === c ? "0 0 14px currentColor" : "none",
-              }}
-            />
-          ))}
         </div>
       )}
 
