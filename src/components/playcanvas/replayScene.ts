@@ -11,6 +11,8 @@ import { VEHICLE_TUNING } from "./raycastVehicle";
 import { buildDriveWorld } from "./driveWorld";
 import { setupDriveSkyAndSun } from "./driveSky";
 import { ensurePhysicsWorld } from "./ammoPhysics";
+import { loadHeroCar } from "./heroCar";
+import { chassisGroundLocalY } from "@/lib/pcHeroCarFit";
 import { useDrivingStore } from "@/lib/store";
 import { sampleReplay, replayDurationMs } from "@/lib/replay";
 
@@ -142,6 +144,24 @@ export function createReplayScene(
     wheelEntities.push(w);
   }
 
+  // The PBR hero car replaces the box rig once its GLB lands (box stays as the
+  // streaming placeholder). Same fit/seat math as the drive scene — the
+  // recorded transform is the CHASSIS pose, so the ground plane offset is the
+  // drive car's rest-pose one.
+  const heroCar = loadHeroCar(app, isDisposed, undefined, {
+    parent: carRoot,
+    chassisWidth: T.chassisHalfExtents.x * 2,
+    chassisLength: T.chassisHalfExtents.z * 2,
+    groundLocalY: chassisGroundLocalY(T.wheelConnectionY, T.suspensionRest, T.wheelRadius),
+    onMounted: () => {
+      body.enabled = false;
+      cab.enabled = false;
+      // The GLB's own (static) wheels replace the cosmetic cylinders — see
+      // the mount note in heroCar.ts.
+      for (const w of wheelEntities) w.enabled = false;
+    },
+  });
+
   // --- Chase camera (top-level, smoothed each frame) -----------------------
   // Same offsets as the drive base's chase (local −Z = behind, +Z = forward).
   const chaseCam = new Entity("replay-chase-camera");
@@ -154,6 +174,8 @@ export function createReplayScene(
   });
   chaseCam.setPosition(0, 6, 24);
   app.root.addChild(chaseCam);
+  // Grab pass for the hero car's transmission glass (same as the drive scene).
+  chaseCam.camera!.requestSceneColorMap(true);
 
   // --- Driver camera (parented to the car, at the cabin, looking forward) --
   // A camera looks down its local −Z; the car's forward is local +Z, so the
@@ -174,6 +196,7 @@ export function createReplayScene(
   driverCam.setLocalEulerAngles(0, 180, 0);
   driverCam.enabled = false;
   carRoot.addChild(driverCam);
+  driverCam.camera!.requestSceneColorMap(true);
 
   const camOffsetLocal = new Vec3(0, 3.2, -8.5); // above + behind
   const camTargetLocal = new Vec3(0, 1.0, 4); // look ahead of the car
@@ -284,6 +307,7 @@ export function createReplayScene(
       sky.dispose();
       world.dispose();
       for (const w of wheelEntities) w.destroy();
+      heroCar.dispose();
       cab.destroy();
       body.destroy();
       driverCam.destroy();

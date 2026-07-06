@@ -9,6 +9,8 @@ import {
 import { type SceneHandle } from "./showroomScene";
 import { RaycastVehicle, VEHICLE_TUNING, type VehicleInput } from "./raycastVehicle";
 import { ensurePhysicsWorld } from "./ammoPhysics";
+import { loadHeroCar } from "./heroCar";
+import { chassisGroundLocalY } from "@/lib/pcHeroCarFit";
 import { buildDriveWorld, type DriveWorldHandle } from "./driveWorld";
 import { setupRearviewMirror, type RearviewMirrorHandle } from "./rearviewMirror";
 import { setupDriveSkyAndSun } from "./driveSky";
@@ -108,6 +110,10 @@ export function buildDriveSceneBase(
   });
   camera.setPosition(0, 6, 24);
   app.root.addChild(camera);
+  // Scene-colour grab pass: the hero car's glass (KHR_materials_transmission →
+  // useDynamicRefraction) needs it; without it the glass renders as an opaque
+  // fallback (observed as a solid pink roof) and errors per frame.
+  camera.camera!.requestSceneColorMap(true);
 
   // --- Terrain: flat surround (visual + flat safety collider) --------------
   // A large flat ground around the road so off-road isn't empty void, and a
@@ -169,8 +175,10 @@ export function buildDriveSceneBase(
   chassis.setEulerAngles(0, SPAWN_YAW, 0);
   app.root.addChild(chassis);
 
-  // Visual body as a scaled child (keeps the chassis entity at scale 1 so the
-  // collision halfExtents stay correct).
+  // Visual body: the PBR hero car (GLB), mounted as a scale-fitted child (the
+  // chassis entity itself stays at scale 1 so the collision halfExtents stay
+  // correct). While the GLB streams in, a simple box body+cab placeholder keeps
+  // the car visible from frame one; `onMounted` swaps it out.
   const body = new Entity("chassis-body");
   body.addComponent("render", { type: "box" });
   const bodyMat = new StandardMaterial();
@@ -186,7 +194,7 @@ export function buildDriveSceneBase(
     T.chassisHalfExtents.z * 2,
   );
   chassis.addChild(body);
-  // A small cab so the car's facing is visible in screenshots.
+  // A small cab so the placeholder's facing is visible.
   const cab = new Entity("chassis-cab");
   cab.addComponent("render", { type: "box" });
   const cabMat = new StandardMaterial();
@@ -222,6 +230,20 @@ export function buildDriveSceneBase(
   // --- The vehicle ---------------------------------------------------------
   const vehicle = new RaycastVehicle(app, chassis);
   vehicle.attachWheelEntities(wheelEntities);
+
+  const heroCar = loadHeroCar(app, isDisposed, undefined, {
+    parent: chassis,
+    chassisWidth: T.chassisHalfExtents.x * 2,
+    chassisLength: T.chassisHalfExtents.z * 2,
+    groundLocalY: chassisGroundLocalY(T.wheelConnectionY, T.suspensionRest, T.wheelRadius),
+    onMounted: () => {
+      body.enabled = false;
+      cab.enabled = false;
+      // The GLB's own (static) wheels replace the synced cylinders visually —
+      // see the mount note in heroCar.ts.
+      for (const w of wheelEntities) w.enabled = false;
+    },
+  });
 
   // --- Rearview mirror (P5b) -----------------------------------------------
   const mirror = setupRearviewMirror(
@@ -263,6 +285,7 @@ export function buildDriveSceneBase(
       world.dispose();
       vehicle.dispose();
       for (const w of wheelEntities) w.destroy();
+      heroCar.dispose();
       cab.destroy();
       body.destroy();
       chassis.destroy();

@@ -37,7 +37,7 @@ export const SHOWROOM_HDR_URL =
  * self-built studio (ground + curved backdrop dome), a key/fill light rig with
  * a baked contact-shadow decal grounding the car (see the key-light comment
  * below for why it's a decal and not a live shadow map), and a STATIC
- * rear-3/4 hero camera (no auto-rotation).
+ * front-3/4 hero camera (no auto-rotation).
  *
  * IBL approach (research FLAG [C-ibl] resolution): the 2026-06-30 research
  * concluded PlayCanvas has "no runtime prefilter API found" and prefiltering
@@ -80,17 +80,17 @@ export function createShowroomScene(
     // on the camera in 2.x (checklist 1.3 sRGB output) so we leave it.
     toneMapping: TONEMAP_ACES,
   });
-  // Rear-3/4 view: car faces -Z (forward, per the coordinate contract), so the
-  // camera sits behind (+Z) and to the +X side, elevated and looking DOWN at
-  // the car (mirrors the E1 reference hero shot: rear-3/4, seen from slightly
-  // above). Distance + fov are tuned so the car fills the mid-frame at a
+  // Front-3/4 view (user request 2026-07-05: Select Course must show the car's
+  // FRONT): car faces -Z (forward, per the coordinate contract), so the camera
+  // sits in front (-Z) and to the +X side, elevated and looking DOWN at the
+  // car. Distance + fov are tuned so the car fills the mid-frame at a
   // moderate size; the lookAt target is aimed low (near the wheel/rocker
   // line, well below the car's visual centre) so the car's body renders
   // above screen-centre with a modest floor strip below it and the backdrop
   // filling the rest of the frame above the roofline, instead of the floor
   // dominating. Tuned empirically against a same-viewport headed screenshot;
   // re-check with a screenshot if any of these change.
-  camera.setPosition(4.59, 2.24, 6.22);
+  camera.setPosition(4.59, 2.24, -6.22);
   app.root.addChild(camera);
   camera.lookAt(0, 0.35, 0);
   // Enable the scene-colour grab pass so the car's glass (KHR_materials_
