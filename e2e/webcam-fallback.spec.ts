@@ -71,20 +71,39 @@ function steeringAngle(page: Page): Promise<number> {
 test("keyboard steering works as the fallback when the camera is unavailable", async ({
   page,
 }) => {
+  // TEMP DIAGNOSTICS (revert before merge): surface page errors + console and
+  // steering traces on the CI runner where this fails but never reproduces
+  // locally.
+  const diag: string[] = [];
+  page.on("pageerror", (e) => diag.push(`PAGEERROR: ${e}`));
+  page.on("console", (m) => {
+    if (m.type() === "error" || m.type() === "warning") diag.push(`console.${m.type()}: ${m.text()}`);
+  });
   await denyCamera(page);
   await startFreeDrive(page);
 
-  expect(await steeringAngle(page)).toBe(0);
+  try {
+    expect(await steeringAngle(page)).toBe(0);
 
-  await page.keyboard.down("ArrowRight");
-  await expect.poll(() => steeringAngle(page)).toBe(STEER_AMOUNT);
-  await page.keyboard.up("ArrowRight");
-  await expect.poll(() => steeringAngle(page)).toBe(0);
+    await page.keyboard.down("ArrowRight");
+    await expect.poll(() => steeringAngle(page)).toBe(STEER_AMOUNT);
+    await page.keyboard.up("ArrowRight");
+    await expect.poll(() => steeringAngle(page)).toBe(0);
 
-  await page.keyboard.down("ArrowLeft");
-  await expect.poll(() => steeringAngle(page)).toBe(-STEER_AMOUNT);
-  await page.keyboard.up("ArrowLeft");
-  await expect.poll(() => steeringAngle(page)).toBe(0);
+    await page.keyboard.down("ArrowLeft");
+    await expect.poll(() => steeringAngle(page)).toBe(-STEER_AMOUNT);
+    await page.keyboard.up("ArrowLeft");
+    await expect.poll(() => steeringAngle(page)).toBe(0);
+  } finally {
+    const final = await page
+      .evaluate(() => {
+        const s = (window as unknown as E2EWindow).__drivingStore!.getState();
+        return { steering: s.steeringAngle, screen: s.screen, mission: s.missionState };
+      })
+      .catch((e) => `evaluate failed: ${e}`);
+    console.log(`[diag] final state: ${JSON.stringify(final)}`);
+    console.log(`[diag] events (${diag.length}):\n${diag.join("\n")}`);
+  }
 });
 
 // Camera acquisition is decoupled from MediaPipe model loading (see
