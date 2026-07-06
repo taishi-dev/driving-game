@@ -68,42 +68,33 @@ function steeringAngle(page: Page): Promise<number> {
   );
 }
 
+// Poll budget for the steering assertions: on CI's headless SwiftShader the
+// drive camera's scene-colour grab pass (hero-car glass) resolves via
+// ReadPixels — a full GPU-pipeline stall per frame ("GPU stall due to
+// ReadPixels" driver warnings) that stretches frames to seconds and delays
+// input processing by the same amount (diagnosed on this spec's CI-only
+// failures: the store value always ARRIVED, seconds after the default 5 s poll
+// gave up). The subject here is that keyboard input writes the store at all —
+// not input latency on a software GPU — so give the polls headroom.
+const STEER_POLL = { timeout: 20_000 } as const;
+
 test("keyboard steering works as the fallback when the camera is unavailable", async ({
   page,
 }) => {
-  // TEMP DIAGNOSTICS (revert before merge): surface page errors + console and
-  // steering traces on the CI runner where this fails but never reproduces
-  // locally.
-  const diag: string[] = [];
-  page.on("pageerror", (e) => diag.push(`PAGEERROR: ${e}`));
-  page.on("console", (m) => {
-    if (m.type() === "error" || m.type() === "warning") diag.push(`console.${m.type()}: ${m.text()}`);
-  });
   await denyCamera(page);
   await startFreeDrive(page);
 
-  try {
-    expect(await steeringAngle(page)).toBe(0);
+  expect(await steeringAngle(page)).toBe(0);
 
-    await page.keyboard.down("ArrowRight");
-    await expect.poll(() => steeringAngle(page)).toBe(STEER_AMOUNT);
-    await page.keyboard.up("ArrowRight");
-    await expect.poll(() => steeringAngle(page)).toBe(0);
+  await page.keyboard.down("ArrowRight");
+  await expect.poll(() => steeringAngle(page), STEER_POLL).toBe(STEER_AMOUNT);
+  await page.keyboard.up("ArrowRight");
+  await expect.poll(() => steeringAngle(page), STEER_POLL).toBe(0);
 
-    await page.keyboard.down("ArrowLeft");
-    await expect.poll(() => steeringAngle(page)).toBe(-STEER_AMOUNT);
-    await page.keyboard.up("ArrowLeft");
-    await expect.poll(() => steeringAngle(page)).toBe(0);
-  } finally {
-    const final = await page
-      .evaluate(() => {
-        const s = (window as unknown as E2EWindow).__drivingStore!.getState();
-        return { steering: s.steeringAngle, screen: s.screen, mission: s.missionState };
-      })
-      .catch((e) => `evaluate failed: ${e}`);
-    console.log(`[diag] final state: ${JSON.stringify(final)}`);
-    console.log(`[diag] events (${diag.length}):\n${diag.join("\n")}`);
-  }
+  await page.keyboard.down("ArrowLeft");
+  await expect.poll(() => steeringAngle(page), STEER_POLL).toBe(-STEER_AMOUNT);
+  await page.keyboard.up("ArrowLeft");
+  await expect.poll(() => steeringAngle(page), STEER_POLL).toBe(0);
 });
 
 // Camera acquisition is decoupled from MediaPipe model loading (see
