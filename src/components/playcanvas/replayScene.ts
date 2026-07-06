@@ -77,7 +77,8 @@ export function createReplayScene(
   app.root.addChild(terrain);
 
   // --- The world (same builder + coordinate contract as the drive) ---------
-  const world = buildDriveWorld(app, isDisposed);
+  // The replayed lesson's world (same per-lesson build-out as the drive).
+  const world = buildDriveWorld(app, isDisposed, useDrivingStore.getState().currentLesson);
 
   // --- Kinematic car: a visual-only rig sharing the drive car's proportions.
   //     No rigidbody — its transform is set from the recording each frame. -----

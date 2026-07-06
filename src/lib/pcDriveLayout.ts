@@ -168,14 +168,140 @@ export function roadColliders(): ColliderBox[] {
   ];
 }
 
+// ─── Lesson corridors (world build-out) ──────────────────────────────────────
+// The s-curve and crank lessons run OFF the straight/turn roads (their frozen
+// course geometry overlaps the straight area spatially), so their corridors are
+// paved per-lesson: the world builder passes the current lesson and gets that
+// lesson's extra colliders + visual patches. Off-track is HUD-only (scoring's
+// deviation penalty replays the frozen course path), so corridors can never
+// change a score.
+
+/** Full corridor width (m) — a little wider than the tiled road for the curve. */
+export const CORRIDOR_WIDTH = 7;
+
+/** [x, z] pairs. */
+export type PolyPoint = readonly [number, number];
+
+/**
+ * The frozen s-curve course (course.ts CatmullRom through (0,20) (0,0) (14,-30)
+ * (-14,-60) (0,-100), centripetal, tension 0.5) sampled at 25 equally-spaced
+ * points. BAKED DATA, not a re-implementation — the corridor test re-samples
+ * the live course and fails if these drift off it.
+ */
+export const SCURVE_POLYLINE: readonly PolyPoint[] = [
+  [0.0, 20.0],
+  [-0.29, 14.23],
+  [-0.68, 8.47],
+  [-0.46, 2.7],
+  [0.95, -2.87],
+  [3.7, -7.95],
+  [6.9, -12.76],
+  [10.07, -17.59],
+  [12.78, -22.68],
+  [14.12, -28.27],
+  [12.5, -33.72],
+  [8.71, -38.05],
+  [4.24, -41.72],
+  [-0.41, -45.14],
+  [-5.02, -48.62],
+  [-9.35, -52.44],
+  [-12.87, -57.0],
+  [-14.32, -62.53],
+  [-13.76, -68.26],
+  [-12.08, -73.79],
+  [-9.82, -79.1],
+  [-7.28, -84.29],
+  [-4.67, -89.44],
+  [-2.17, -94.65],
+  [0.0, -100.0],
+];
+
+/**
+ * The frozen crank course's leg/corner skeleton (course.ts: r=4, xR=16, xL=-8;
+ * straight in, jog right, down, jog left, straight out). Corners are cut as
+ * simple diagonals — the corridor inflation covers the bezier arcs.
+ */
+export const CRANK_POLYLINE: readonly PolyPoint[] = [
+  [0, 20],
+  [0, -15],
+  [4, -19],
+  [12, -19],
+  [16, -23],
+  [16, -55],
+  [12, -59],
+  [-4, -59],
+  [-8, -63],
+  [-8, -100],
+];
+
+/** Subdivide so no segment exceeds `maxStep` (endpoints preserved). */
+export function densifyPolyline(poly: readonly PolyPoint[], maxStep: number): PolyPoint[] {
+  const out: PolyPoint[] = [];
+  for (let i = 0; i < poly.length - 1; i++) {
+    const [x0, z0] = poly[i];
+    const [x1, z1] = poly[i + 1];
+    const len = Math.hypot(x1 - x0, z1 - z0);
+    const n = Math.max(1, Math.ceil(len / maxStep));
+    for (let k = 0; k < n; k++) {
+      out.push([x0 + ((x1 - x0) * k) / n, z0 + ((z1 - z0) * k) / n]);
+    }
+  }
+  out.push(poly[poly.length - 1]);
+  return out;
+}
+
+/**
+ * One flat collider per polyline segment: the segment's AABB inflated by the
+ * corridor width on both axes. Diagonal segments get generous cover — exactly
+ * what a training-yard corridor wants.
+ */
+export function corridorColliders(
+  poly: readonly PolyPoint[],
+  width: number,
+  name: string,
+): ColliderBox[] {
+  const cy = -COLLIDER_THICKNESS / 2;
+  const boxes: ColliderBox[] = [];
+  for (let i = 0; i < poly.length - 1; i++) {
+    const [x0, z0] = poly[i];
+    const [x1, z1] = poly[i + 1];
+    boxes.push({
+      name: `${name}_${i}`,
+      cx: (x0 + x1) / 2,
+      cy,
+      cz: (z0 + z1) / 2,
+      sx: Math.abs(x1 - x0) + width,
+      sy: COLLIDER_THICKNESS,
+      sz: Math.abs(z1 - z0) + width,
+    });
+  }
+  return boxes;
+}
+
+/** Max corridor sampling step (m) — also the asphalt-patch spacing. */
+const CORRIDOR_STEP = 6;
+
+function lessonCorridor(lesson: string | undefined): PolyPoint[] | null {
+  if (lesson === "s-curve") return densifyPolyline(SCURVE_POLYLINE, CORRIDOR_STEP);
+  if (lesson === "crank") return densifyPolyline(CRANK_POLYLINE, CORRIDOR_STEP);
+  return null;
+}
+
+/** Extra flat colliders for the lesson's corridor (empty for road lessons). */
+export function lessonCorridorColliders(lesson: string | undefined): ColliderBox[] {
+  const poly = lessonCorridor(lesson);
+  return poly ? corridorColliders(poly, CORRIDOR_WIDTH, `corridor_${lesson}`) : [];
+}
+
 /**
  * Is world point (x,z) on the driveable road — i.e. inside the XZ footprint of
  * ANY road collider (optionally shrunk by `margin` so a car with its centre
  * exactly on the edge still counts as off)? This is the off-track predicate the
- * scene exposes: `offTrack = !isOnRoad(chassis.x, chassis.z)`.
+ * scene exposes: `offTrack = !isOnRoad(chassis.x, chassis.z, margin, lesson)`.
  */
-export function isOnRoad(x: number, z: number, margin = 0): boolean {
-  for (const b of roadColliders()) {
+export function isOnRoad(x: number, z: number, margin = 0, lesson?: string): boolean {
+  const boxes = [...roadColliders(), ...lessonCorridorColliders(lesson)];
+  for (const b of boxes) {
     const hx = b.sx / 2 - margin;
     const hz = b.sz / 2 - margin;
     if (x >= b.cx - hx && x <= b.cx + hx && z >= b.cz - hz && z <= b.cz + hz) {
@@ -183,6 +309,127 @@ export function isOnRoad(x: number, z: number, margin = 0): boolean {
     }
   }
   return false;
+}
+
+// ─── Visual patches per lesson ───────────────────────────────────────────────
+
+export interface WorldPatch {
+  /**
+   * asphalt = Street_Asphalt_9x9 ground patch; crosswalk = stripe decal across
+   * the road; rail = one rail across the road; crossbuck = the X-sign post at
+   * the roadside.
+   */
+  kind: "asphalt" | "crosswalk" | "rail" | "crossbuck";
+  cx: number;
+  cz: number;
+  /** Yaw (degrees) about +Y; 0 faces the patch "along −Z". */
+  yawDeg: number;
+}
+
+// ─── Buildings & props (lesson-filtered placement data) ──────────────────────
+// The base city dressing was authored for the straight/turn roads; corridor
+// lessons drive THROUGH parts of it (e.g. the building at (12,−30) stands on
+// the s-curve apex). The world builder therefore takes its building/prop lists
+// from here, filtered so nothing overlaps the active lesson's corridor.
+
+export interface WorldItem {
+  file: string;
+  x: number;
+  z: number;
+  /** Yaw in radians (kept in the builder's convention). */
+  rotY: number;
+  /** Approximate footprint half-size (m) used for corridor clearance. */
+  half: number;
+}
+
+const BASE_BUILDINGS: readonly WorldItem[] = [
+  { file: "Building_Large_2.glb", x: -18, z: -30, rotY: 0, half: 8 },
+  { file: "Building_Medium_2_001.glb", x: -18, z: -80, rotY: 0, half: 8 },
+  { file: "Building_Small_1.glb", x: 12, z: -30, rotY: Math.PI, half: 8 },
+  { file: "Building_Large_2.glb", x: 18, z: -80, rotY: Math.PI, half: 8 },
+  { file: "Building_Small_1.glb", x: -14, z: -140, rotY: 0, half: 8 },
+  { file: "Building_Medium_2_001.glb", x: 14, z: -140, rotY: Math.PI, half: 8 },
+];
+
+const BASE_PROPS: readonly WorldItem[] = [
+  { file: "Prop_Bollard.glb", x: -4, z: 10, rotY: 0, half: 1 },
+  { file: "Prop_Bollard.glb", x: -4, z: -10, rotY: 0, half: 1 },
+  { file: "Prop_Bollard.glb", x: 4, z: 10, rotY: 0, half: 1 },
+  { file: "Prop_Bollard.glb", x: 4, z: -10, rotY: 0, half: 1 },
+  { file: "Prop_Planter_Single.glb", x: -5, z: -50, rotY: 0, half: 1 },
+  { file: "Prop_Planter_Single.glb", x: 5, z: -50, rotY: 0, half: 1 },
+  { file: "Prop_Planter_Single.glb", x: -5, z: -100, rotY: 0, half: 1 },
+  { file: "Prop_Planter_Single.glb", x: 5, z: -100, rotY: 0, half: 1 },
+];
+
+function clearsCorridor(item: WorldItem, boxes: ColliderBox[]): boolean {
+  return !boxes.some(
+    (b) =>
+      Math.abs(item.x - b.cx) < item.half + b.sx / 2 &&
+      Math.abs(item.z - b.cz) < item.half + b.sz / 2,
+  );
+}
+
+/** Buildings that don't stand in the lesson's corridor. */
+export function lessonBuildings(lesson: string | undefined): WorldItem[] {
+  const boxes = lessonCorridorColliders(lesson);
+  return BASE_BUILDINGS.filter((b) => clearsCorridor(b, boxes));
+}
+
+/** Curbside props that don't stand in the lesson's corridor. */
+export function lessonProps(lesson: string | undefined): WorldItem[] {
+  const boxes = lessonCorridorColliders(lesson);
+  return BASE_PROPS.filter((p) => clearsCorridor(p, boxes));
+}
+
+/** Yaw (deg) of the segment leaving point i (last point reuses the previous). */
+function pointYaws(poly: readonly PolyPoint[]): number[] {
+  const yaws: number[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[Math.min(i, poly.length - 2)];
+    const b = poly[Math.min(i + 1, poly.length - 1)];
+    yaws.push((Math.atan2(b[0] - a[0], -(b[1] - a[1])) * 180) / Math.PI);
+  }
+  return yaws;
+}
+
+/**
+ * The lesson's extra world visuals. Corridor lessons pave one asphalt patch per
+ * densified point (oriented along the path); crosswalk / railroad / traffic-light
+ * dress their frozen checkpoint locations (missions.ts) on the straight road.
+ */
+export function lessonWorldPatches(lesson: string | undefined): WorldPatch[] {
+  const poly = lessonCorridor(lesson);
+  if (poly) {
+    const yaws = pointYaws(poly);
+    return poly
+      .map(([x, z], i): WorldPatch => ({ kind: "asphalt", cx: x, cz: z, yawDeg: yaws[i] }))
+      .filter(
+        // The corridor's first/last stretch runs ON the straight road (both
+        // courses start at x=0); a patch there would Z-fight the road tiles.
+        // The corridor COLLIDERS still cover those points, so on-road stays true.
+        (p) => !isOnRoad(p.cx, p.cz, 2),
+      );
+  }
+  if (lesson === "crosswalk") {
+    // Safety checkpoint cw-safety-1 at (0,0,-30).
+    return [{ kind: "crosswalk", cx: 0, cz: -30, yawDeg: 0 }];
+  }
+  if (lesson === "railroad-crossing") {
+    // Stop checkpoint rr-stop-1 at (0,0,-60): rails just past the stop line,
+    // one crossbuck per roadside.
+    return [
+      { kind: "rail", cx: 0, cz: -62, yawDeg: 0 },
+      { kind: "rail", cx: 0, cz: -63.5, yawDeg: 0 },
+      { kind: "crossbuck", cx: 4.2, cz: -60.5, yawDeg: 0 },
+      { kind: "crossbuck", cx: -4.2, cz: -60.5, yawDeg: 0 },
+    ];
+  }
+  if (lesson === "traffic-light") {
+    // Pedestrian crossing just past the signal-1 stop line (z=-18).
+    return [{ kind: "crosswalk", cx: 0, cz: -22, yawDeg: 0 }];
+  }
+  return [];
 }
 
 export interface CoordinateContract {
