@@ -397,6 +397,8 @@ export default function VisionController() {
           };
         }
         store().setDebugInfo("Camera Started");
+        // Models load only once a camera actually exists (see the mount note).
+        startMediaPipeOnce();
       } catch (e) {
         if (disposed) return;
         console.error("Camera Error:", e);
@@ -414,6 +416,20 @@ export default function VisionController() {
 
     // Load MediaPipe models (same CDN wasm + model assets and options as the
     // original, MINUS the object detector — see the P11 deviation note above).
+    //
+    // GATED ON CAMERA SUCCESS (perf + CI-stability): without a stream the
+    // inference loop can never run, so loading ~22 MB of models and compiling
+    // their wasm is pure waste in the camera-denied path — and that main-thread
+    // jam is exactly what made the headless camera-denied e2e flaky on slow CI
+    // runners (keyboard polls starve while wasm compiles). Camera acquisition
+    // stays independent, so the denial overlay still appears immediately;
+    // `startMediaPipeOnce` guards Retry-driven repeat acquisitions.
+    let mediaPipeStarted = false;
+    const startMediaPipeOnce = () => {
+      if (mediaPipeStarted) return;
+      mediaPipeStarted = true;
+      void setupMediaPipe();
+    };
     const setupMediaPipe = async () => {
       try {
         store().setDebugInfo("Loading AI Models...");
@@ -473,8 +489,7 @@ export default function VisionController() {
       }
     };
 
-    void setupMediaPipe();
-    void acquireCamera();
+    void acquireCamera(); // models follow on success (startMediaPipeOnce)
 
     return () => {
       disposed = true;
