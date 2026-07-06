@@ -98,6 +98,11 @@ export default function VisionController() {
     let lastVideoTime = -1;
     let lastFrameTime = 0;
     let lastDebugTime = 0;
+    // Inference stagger (perf): new-video-frame counter + the time of the last
+    // POSE inference (its decision deltaTime must span pose-to-pose, not
+    // frame-to-frame, once pose runs at half rate).
+    let videoFrameIndex = 0;
+    let lastPoseTime = 0;
     let drawingUtils: DrawingUtils | null = null;
     const poseFilter = new PoseLandmarkFilterManager(1.0, 0.004, 1.5);
 
@@ -243,14 +248,6 @@ export default function VisionController() {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext("2d");
 
-      if (video.videoWidth > 0 && ctx) {
-        if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
-        }
-        ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
-      }
-
       if (
         faceRef.v &&
         handRef.v &&
@@ -263,13 +260,37 @@ export default function VisionController() {
         const deltaTime = lastFrameTime === 0 ? 16 : startTimeMs - lastFrameTime;
         lastFrameTime = startTimeMs;
         lastVideoTime = video.currentTime;
+        videoFrameIndex++;
+
+        // Preview redraw only when there IS a new camera frame — the old
+        // unconditional per-rAF drawImage repainted identical frames (the
+        // camera runs ~30 fps, the render loop 60).
+        if (ctx) {
+          if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          }
+          ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+        }
 
         try {
           if (ctx && !drawingUtils) drawingUtils = new DrawingUtils(ctx);
 
+          // ── Inference stagger (perf; the 49-fps root cause was three GPU
+          // inferences per camera frame contending with the renderer on the
+          // shared iGPU). Hands stay at FULL camera rate — steering latency is
+          // the feel-critical path. Face (head yaw for mirror checks + gaze)
+          // and pose (feet; already One-Euro-filtered and driven by absolute-
+          // time stability windows) alternate camera frames at half rate on
+          // opposite phases: 2 inferences per camera frame instead of 3, and
+          // the store contract is unchanged — values persist between their
+          // frames exactly as they persisted between rAFs before.
+          const runFace = videoFrameIndex % 2 === 0;
+          const runPose = videoFrameIndex % 2 === 1;
+
           // Face -> head rotation (yaw) + gaze.
-          const faceResult = faceRef.v.detectForVideo(video, startTimeMs);
-          if (faceResult.faceLandmarks && faceResult.faceLandmarks.length > 0) {
+          const faceResult = runFace ? faceRef.v.detectForVideo(video, startTimeMs) : null;
+          if (faceResult && faceResult.faceLandmarks && faceResult.faceLandmarks.length > 0) {
             if (drawingUtils) {
               for (const lms of faceResult.faceLandmarks) {
                 drawingUtils.drawConnectors(lms, FaceLandmarker.FACE_LANDMARKS_TESSELATION, {
@@ -313,9 +334,14 @@ export default function VisionController() {
           }
           const handInfo = processSteeringAndGear(handResult);
 
-          // Pose -> pedals.
-          const poseResult = poseRef.v ? poseRef.v.detectForVideo(video, startTimeMs) : null;
-          if (poseResult) processPoseForPedals(poseResult, deltaTime, handInfo);
+          // Pose -> pedals (half rate; deltaTime spans pose-to-pose).
+          const poseResult =
+            runPose && poseRef.v ? poseRef.v.detectForVideo(video, startTimeMs) : null;
+          if (poseResult) {
+            const poseDelta = lastPoseTime === 0 ? deltaTime : startTimeMs - lastPoseTime;
+            lastPoseTime = startTimeMs;
+            processPoseForPedals(poseResult, poseDelta, handInfo);
+          }
         } catch (e) {
           console.error(e);
         }
@@ -371,6 +397,8 @@ export default function VisionController() {
           };
         }
         store().setDebugInfo("Camera Started");
+        // Models load only once a camera actually exists (see the mount note).
+        startMediaPipeOnce();
       } catch (e) {
         if (disposed) return;
         console.error("Camera Error:", e);
@@ -388,6 +416,20 @@ export default function VisionController() {
 
     // Load MediaPipe models (same CDN wasm + model assets and options as the
     // original, MINUS the object detector — see the P11 deviation note above).
+    //
+    // GATED ON CAMERA SUCCESS (perf + CI-stability): without a stream the
+    // inference loop can never run, so loading ~22 MB of models and compiling
+    // their wasm is pure waste in the camera-denied path — and that main-thread
+    // jam is exactly what made the headless camera-denied e2e flaky on slow CI
+    // runners (keyboard polls starve while wasm compiles). Camera acquisition
+    // stays independent, so the denial overlay still appears immediately;
+    // `startMediaPipeOnce` guards Retry-driven repeat acquisitions.
+    let mediaPipeStarted = false;
+    const startMediaPipeOnce = () => {
+      if (mediaPipeStarted) return;
+      mediaPipeStarted = true;
+      void setupMediaPipe();
+    };
     const setupMediaPipe = async () => {
       try {
         store().setDebugInfo("Loading AI Models...");
@@ -447,8 +489,7 @@ export default function VisionController() {
       }
     };
 
-    void setupMediaPipe();
-    void acquireCamera();
+    void acquireCamera(); // models follow on success (startMediaPipeOnce)
 
     return () => {
       disposed = true;
