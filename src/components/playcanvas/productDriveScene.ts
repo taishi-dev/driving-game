@@ -2,6 +2,8 @@ import { Application, Vec3 } from "playcanvas";
 import type { SceneHandle } from "./showroomScene";
 import { VEHICLE_TUNING, type VehicleInput } from "./raycastVehicle";
 import { buildDriveSceneBase, type DriveDebugApi } from "./driveScene";
+import { createTrafficSignal } from "./trafficSignal";
+import { currentSignalState } from "@/lib/pcSignalView";
 import { signedThrottle } from "@/lib/pcDriveControls";
 import { useDrivingStore, type ReplayFrame } from "@/lib/store";
 import { getCoursePath } from "@/lib/course";
@@ -40,6 +42,11 @@ export function createProductDriveScene(
   isDisposed: () => boolean,
 ): SceneHandle {
   const base = buildDriveSceneBase(app, isDisposed);
+
+  // 3D traffic signal at the frozen signal-1 stop line (traffic-light lesson
+  // only). Pure view: the lit lamp derives from the store's signalStateLogs
+  // (the driving screen's cycle effect stays the clock scoring replays).
+  const signal = createTrafficSignal(app);
 
   // Hold the car still until the mission is active (briefing overlay up).
   const HOLD_INPUT: VehicleInput = { steer: 0, throttle: 0, brake: 1 };
@@ -82,6 +89,12 @@ export function createProductDriveScene(
     base.vehicle.setInput(input);
     base.vehicle.update(dt);
     base.updateCamera(dt);
+
+    // Traffic signal: visible only on its lesson; lamp = last signal log.
+    // Both handle calls are change-guarded internally, so per-frame is cheap.
+    const isTrafficLesson = st.currentLesson === "traffic-light";
+    signal.setVisible(isTrafficLesson);
+    signal.setState(isTrafficLesson ? currentSignalState(st.signalStateLogs) : null);
 
     // Telemetry write-back (rounded / on-change only).
     const s = base.vehicle.getState();
@@ -205,6 +218,7 @@ export function createProductDriveScene(
       if (debugApi && globalThis.__driveDebug === debugApi) {
         globalThis.__driveDebug = undefined;
       }
+      signal.dispose();
       base.dispose();
     },
   };
