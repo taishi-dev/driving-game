@@ -574,7 +574,7 @@ export function boundaryWalls(lesson?: string): ColliderBox[] {
     const cx = (cellCenterX(run.start) + cellCenterX(run.end)) / 2;
     const length = (run.end - run.start + 1) * WALL_CELL;
     out.push({
-      name: `wall_alongX_${idx++}`,
+      name: `wall_x_${idx++}`,
       cx,
       cy,
       cz,
@@ -589,7 +589,7 @@ export function boundaryWalls(lesson?: string): ColliderBox[] {
     const cz = (cellCenterZ(run.start) + cellCenterZ(run.end)) / 2;
     const length = (run.end - run.start + 1) * WALL_CELL;
     out.push({
-      name: `wall_alongZ_${idx++}`,
+      name: `wall_z_${idx++}`,
       cx,
       cy,
       cz,
