@@ -22,6 +22,7 @@ import {
   STRAIGHT_TILE_COUNT,
   TILE_L,
   TURN_Z,
+  boundaryWalls,
   checkCoordinateContract,
   isOnRoad,
   lessonBuildings,
@@ -179,6 +180,20 @@ export function buildDriveWorld(
       halfExtents: new Vec3(b.sx / 2, b.sy / 2, b.sz / 2),
     });
     box.addComponent("rigidbody", { type: "static", friction: 1.0, restitution: 0 });
+    box.setPosition(b.cx, b.cy, b.cz);
+    app.root.addChild(box);
+    disposables.push(box);
+  }
+
+  // 2b. BOUNDARY WALLS (track perimeter colliders). Invisible; prevent the car
+  //     from driving off the road edge into the void.
+  for (const b of boundaryWalls(lesson)) {
+    const box = new Entity(b.name);
+    box.addComponent("collision", {
+      type: "box",
+      halfExtents: new Vec3(b.sx / 2, b.sy / 2, b.sz / 2),
+    });
+    box.addComponent("rigidbody", { type: "static", friction: 0.2, restitution: 0 });
     box.setPosition(b.cx, b.cy, b.cz);
     app.root.addChild(box);
     disposables.push(box);
