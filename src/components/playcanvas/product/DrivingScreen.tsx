@@ -14,8 +14,8 @@ import { SHELL_STRINGS } from "./productStrings";
  * P9's i18n pass consolidates every screen's strings.
  */
 const HUD_STRINGS = {
-  ja: { speed: "速度", throttle: "アクセル", brake: "ブレーキ", steer: "ハンドル", warning: "警告", offTrack: "コース外" },
-  en: { speed: "SPEED", throttle: "THROTTLE", brake: "BRAKE", steer: "STEER", warning: "WARNING", offTrack: "OFF TRACK" },
+  ja: { speed: "速度", throttle: "アクセル", brake: "ブレーキ", steer: "ハンドル", warning: "警告", offTrack: "コース外", loading: "車を読み込み中…" },
+  en: { speed: "SPEED", throttle: "THROTTLE", brake: "BRAKE", steer: "STEER", warning: "WARNING", offTrack: "OFF TRACK", loading: "Loading car…" },
 } as const;
 
 // Ammo-gated PlayCanvas canvas (client-only), driving the store-wired scene.
@@ -68,6 +68,7 @@ export function DrivingScreen() {
   const brake = useDrivingStore((s) => s.brake);
   const steeringAngle = useDrivingStore((s) => s.steeringAngle);
   const isOffTrack = useDrivingStore((s) => s.isOffTrack);
+  const isCarModelReady = useDrivingStore((s) => s.isCarModelReady);
   const drivingFeedback = useDrivingStore((s) => s.drivingFeedback);
   const setMissionState = useDrivingStore((s) => s.setMissionState);
   const setHeadRotation = useDrivingStore((s) => s.setHeadRotation);
@@ -101,6 +102,10 @@ export function DrivingScreen() {
     st.setGear(controls.getGear());
     st.setPedals(0, 0);
     st.setSteering(0);
+    // Re-arm the loading overlay immediately (before the async canvas/scene
+    // mounts) so a stale `true` from a previous session can't briefly expose the
+    // placeholder box. The scene flips this back to true once the real car lands.
+    st.setCarModelReady(false);
 
     const write = () => {
       const s = useDrivingStore.getState();
@@ -182,6 +187,20 @@ export function DrivingScreen() {
       <div className="absolute inset-0 z-0">
         <DriveCanvas buildScene={createProductDriveScene} />
       </div>
+
+      {/* Car-loading overlay: covers the scene while the hero-car GLB streams in
+          (~1-2s) so the box placeholder is never visible. z-35 sits above the
+          HUD/briefing but below the exit button (z-40), so the learner can still
+          back out during a slow load. */}
+      {!isCarModelReady && (
+        <div
+          data-testid="car-loading"
+          className="absolute inset-0 z-[35] flex flex-col items-center justify-center gap-4 bg-slate-950/95"
+        >
+          <div className="h-10 w-10 rounded-full border-4 border-slate-600 border-t-blue-400 animate-spin" />
+          <p className="text-sm font-semibold tracking-wide text-slate-300">{hud.loading}</p>
+        </div>
+      )}
 
       {/* P11 webcam vision layer: hands→steering/gear, face→head/gaze,
           feet→pedals (calibrated), plus the localized status panel and the

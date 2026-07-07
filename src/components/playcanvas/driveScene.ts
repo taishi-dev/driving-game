@@ -15,6 +15,7 @@ import { buildDriveWorld, type DriveWorldHandle } from "./driveWorld";
 import { setupRearviewMirror, type RearviewMirrorHandle } from "./rearviewMirror";
 import { setupDriveSkyAndSun } from "./driveSky";
 import { createDriveControls, normalizeKey, signedThrottle } from "@/lib/pcDriveControls";
+import { chaseCameraPose, flattenHeading, type ChaseCameraConfig } from "@/lib/pcChaseCamera";
 
 /**
  * P4/P5 — the drivable world scene, split (P7a) into a reusable BASE builder and
@@ -93,6 +94,10 @@ export function buildDriveSceneBase(
   isDisposed: () => boolean,
   /** Current lesson — drives the world's per-lesson build-out (see driveWorld). */
   lesson?: string,
+  /** Called once the hero-car GLB has streamed in and replaced the box
+   *  placeholder — the product scene uses it to lift its loading overlay so the
+   *  placeholder box is never shown to the learner (bug fix). */
+  onCarReady?: () => void,
 ): DriveSceneBase {
   // Create the physics world BEFORE any rigidbody entity is added (the builder
   // runs before app.start(), so we must init it here — see ensurePhysicsWorld).
@@ -244,6 +249,8 @@ export function buildDriveSceneBase(
       // The GLB's own (static) wheels replace the synced cylinders visually —
       // see the mount note in heroCar.ts.
       for (const w of wheelEntities) w.enabled = false;
+      // Real car is in — let the consumer drop its loading overlay.
+      onCarReady?.();
     },
   });
 
@@ -256,20 +263,48 @@ export function buildDriveSceneBase(
   );
 
   // --- Chase camera --------------------------------------------------------
-  const camOffsetLocal = new Vec3(0, 3.2, -8.5); // above + behind (local −Z = behind)
-  const camTargetLocal = new Vec3(0, 1.0, 4); // look ahead of the car
+  // YAW-ONLY chase (see pcChaseCamera.ts): the camera pose is derived from the
+  // chassis' WORLD POSITION + ground HEADING only, never its roll/pitch. The old
+  // build transformed a local offset through the chassis' full world transform,
+  // so a bump or off-track tumble rocked the camera and rolled the whole horizon
+  // (the nausea bug from the real-drive recording). Now the horizon stays level
+  // no matter what the chassis does: `flattenHeading` projects the car's forward
+  // axis onto the ground, and the world-up `lookAt` keeps the camera un-rolled.
+  const CHASE_CFG: ChaseCameraConfig = {
+    distance: 8.5, // behind (was local −Z offset)
+    height: 3.2, // above
+    lookAhead: 4, // look ahead of the car
+    lookHeight: 1.0,
+  };
+  const fwd = new Vec3(); // scratch: chassis local +Z axis in world (car forward)
   const desiredPos = new Vec3();
   const targetPos = new Vec3();
   const smoothedPos = new Vec3(0, 6, 24);
+  const smoothedTarget = new Vec3(0, 1, 0);
+  let chaseInitialized = false;
   function updateCamera(dt: number) {
-    const m = chassis.getWorldTransform();
-    m.transformPoint(camOffsetLocal, desiredPos);
-    m.transformPoint(camTargetLocal, targetPos);
-    // Critically-damped-ish smoothing.
-    const a = Math.min(1, dt * 6);
-    smoothedPos.lerp(smoothedPos, desiredPos, a);
+    const pos = chassis.getPosition();
+    // getZ = the chassis' local +Z axis expressed in world space = car forward
+    // (raycastVehicle coordinate contract: local +Z is forward).
+    chassis.getWorldTransform().getZ(fwd);
+    const heading = flattenHeading({ x: fwd.x, y: fwd.y, z: fwd.z });
+    const pose = chaseCameraPose({ x: pos.x, y: pos.y, z: pos.z }, heading, CHASE_CFG);
+    desiredPos.set(pose.position.x, pose.position.y, pose.position.z);
+    targetPos.set(pose.target.x, pose.target.y, pose.target.z);
+    if (!chaseInitialized) {
+      // Snap on the first frame so the camera doesn't sweep in from the origin.
+      smoothedPos.copy(desiredPos);
+      smoothedTarget.copy(targetPos);
+      chaseInitialized = true;
+    } else {
+      // Critically-damped-ish smoothing of BOTH the eye and the look target so a
+      // fast yaw (sharp turn) eases in instead of snapping.
+      const a = Math.min(1, dt * 6);
+      smoothedPos.lerp(smoothedPos, desiredPos, a);
+      smoothedTarget.lerp(smoothedTarget, targetPos, a);
+    }
     camera.setPosition(smoothedPos);
-    camera.lookAt(targetPos);
+    camera.lookAt(smoothedTarget); // default up = world +Y → never rolls
   }
 
   return {

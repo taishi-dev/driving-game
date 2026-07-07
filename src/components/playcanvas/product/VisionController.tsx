@@ -9,6 +9,7 @@ import {
   PoseLandmarker,
   type HandLandmarkerResult,
   type PoseLandmarkerResult,
+  type NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
 import { useDrivingStore } from "@/lib/store";
 import { STABILITY_DURATION_MS } from "@/lib/footPedalRecognition";
@@ -106,6 +107,81 @@ export default function VisionController() {
     let drawingUtils: DrawingUtils | null = null;
     const poseFilter = new PoseLandmarkFilterManager(1.0, 0.004, 1.5);
 
+    // ── Overlay draw cache (flicker fix). Face + pose inference run at HALF the
+    // camera rate (staggered for perf), but the preview canvas is cleared and
+    // repainted EVERY camera frame. Drawing each skeleton only on its own
+    // inference frame made it blink on/off at ~15 Hz — the reported red/gray/
+    // green flicker that's hard on the eyes. Fix: cache the latest landmarks (+
+    // the foot's state colours) and REDRAW them every frame, so overlays stay
+    // steady while inference stays staggered. A cache is nulled only when its
+    // detector actually RAN and found nothing (a genuine loss), never on the
+    // frames it simply didn't run — that's what removes the blink.
+    let lastFaceLandmarks: NormalizedLandmark[][] | null = null;
+    let lastHandLandmarks: NormalizedLandmark[][] | null = null;
+    let lastFootDraw:
+      | { landmarks: NormalizedLandmark[]; footColor: string; landmarkColor: string }
+      | null = null;
+
+    // Draw all cached overlays onto the (already video-painted) preview canvas.
+    // Called EVERY camera frame, after inference has refreshed whatever caches ran.
+    const drawOverlays = () => {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (!ctx || !canvas || !drawingUtils) return;
+
+      // Face tessellation (subtle grey).
+      if (lastFaceLandmarks) {
+        for (const lms of lastFaceLandmarks) {
+          drawingUtils.drawConnectors(lms, FaceLandmarker.FACE_LANDMARKS_TESSELATION, {
+            color: "#C0C0C070",
+            lineWidth: 1,
+          });
+        }
+      }
+
+      // Hands (green connectors + red joints).
+      if (lastHandLandmarks) {
+        for (const lms of lastHandLandmarks) {
+          drawingUtils.drawConnectors(lms, HandLandmarker.HAND_CONNECTIONS, {
+            color: "#00FF00",
+            lineWidth: 3,
+          });
+          drawingUtils.drawLandmarks(lms, { color: "#FF0000", lineWidth: 2 });
+        }
+      }
+
+      // Right-leg skeleton, coloured by pedal state (cached from the last pose frame).
+      if (lastFootDraw) {
+        const { landmarks, footColor, landmarkColor } = lastFootDraw;
+        const rightFootConnections = [
+          [24, 26],
+          [26, 28],
+          [28, 30],
+          [30, 32],
+        ];
+        ctx.save();
+        ctx.strokeStyle = footColor;
+        ctx.lineWidth = 4;
+        for (const [start, end] of rightFootConnections) {
+          if (landmarks[start] && landmarks[end]) {
+            const sp = landmarks[start];
+            const ep = landmarks[end];
+            ctx.beginPath();
+            ctx.moveTo(sp.x * canvas.width, sp.y * canvas.height);
+            ctx.lineTo(ep.x * canvas.width, ep.y * canvas.height);
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+
+        const rightFootLandmarkIndices = [23, 24, 26, 28, 30, 32];
+        const footLandmarks = rightFootLandmarkIndices.map((i) => landmarks[i]).filter(Boolean);
+        if (footLandmarks.length > 0) {
+          drawingUtils.drawLandmarks(footLandmarks, { color: landmarkColor, lineWidth: 3, radius: 4 });
+        }
+      }
+    };
+
     const store = () => useDrivingStore.getState();
 
     const setDebugInfoThrottled = (info: string) => {
@@ -138,9 +214,6 @@ export default function VisionController() {
       // Keyboard pedal mode: the camera must not touch the pedals so the
       // keyboard's setPedals() stays authoritative. Steering still uses the camera.
       if (store().pedalInputMode === "keyboard") return;
-
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext("2d");
 
       // One-Euro-filter the pose landmarks (jitter reduction) before deciding.
       let filteredLandmarks =
@@ -191,37 +264,13 @@ export default function VisionController() {
         landmarkColor = "#AAAAAA";
       }
 
-      if (filteredLandmarks && ctx && canvas) {
-        const landmarks = filteredLandmarks;
-        const rightFootConnections = [
-          [24, 26],
-          [26, 28],
-          [28, 30],
-          [30, 32],
-        ];
-        ctx.save();
-        ctx.strokeStyle = footColor;
-        ctx.lineWidth = 4;
-        for (const [start, end] of rightFootConnections) {
-          if (landmarks[start] && landmarks[end]) {
-            const sp = landmarks[start];
-            const ep = landmarks[end];
-            ctx.beginPath();
-            ctx.moveTo(sp.x * canvas.width, sp.y * canvas.height);
-            ctx.lineTo(ep.x * canvas.width, ep.y * canvas.height);
-            ctx.stroke();
-          }
-        }
-        ctx.restore();
-
-        const rightFootLandmarkIndices = [23, 24, 26, 28, 30, 32];
-        if (drawingUtils) {
-          const footLandmarks = rightFootLandmarkIndices.map((i) => landmarks[i]).filter(Boolean);
-          if (footLandmarks.length > 0) {
-            drawingUtils.drawLandmarks(footLandmarks, { color: landmarkColor, lineWidth: 3, radius: 4 });
-          }
-        }
-      }
+      // Cache the foot skeleton for drawOverlays to repaint every frame (flicker
+      // fix). Pose runs at half rate, so on the frames it DID run we refresh the
+      // cache; a genuine no-detection frame clears it (skeleton disappears), but
+      // the every-other-frame gaps keep the last one so it never blinks.
+      lastFootDraw = filteredLandmarks
+        ? { landmarks: filteredLandmarks, footColor, landmarkColor }
+        : null;
 
       // Pure calibration/pedal decision, then apply the resulting store writes.
       const decision = decidePedalActions({
@@ -288,17 +337,16 @@ export default function VisionController() {
           const runFace = videoFrameIndex % 2 === 0;
           const runPose = videoFrameIndex % 2 === 1;
 
-          // Face -> head rotation (yaw) + gaze.
+          // Face -> head rotation (yaw) + gaze. DRAW is deferred to drawOverlays
+          // (cache the landmarks); only refresh/clear the cache on frames face ran.
           const faceResult = runFace ? faceRef.v.detectForVideo(video, startTimeMs) : null;
+          if (runFace) {
+            lastFaceLandmarks =
+              faceResult && faceResult.faceLandmarks && faceResult.faceLandmarks.length > 0
+                ? faceResult.faceLandmarks
+                : null;
+          }
           if (faceResult && faceResult.faceLandmarks && faceResult.faceLandmarks.length > 0) {
-            if (drawingUtils) {
-              for (const lms of faceResult.faceLandmarks) {
-                drawingUtils.drawConnectors(lms, FaceLandmarker.FACE_LANDMARKS_TESSELATION, {
-                  color: "#C0C0C070",
-                  lineWidth: 1,
-                });
-              }
-            }
             const landmarks = faceResult.faceLandmarks[0];
             if (landmarks) {
               const nose = landmarks[1];
@@ -321,27 +369,24 @@ export default function VisionController() {
             }
           }
 
-          // Hands -> steering + gear.
+          // Hands -> steering + gear. Hands run EVERY frame; cache for drawOverlays.
           const handResult = handRef.v.detectForVideo(video, startTimeMs);
-          if (handResult.landmarks && drawingUtils) {
-            for (const lms of handResult.landmarks) {
-              drawingUtils.drawConnectors(lms, HandLandmarker.HAND_CONNECTIONS, {
-                color: "#00FF00",
-                lineWidth: 3,
-              });
-              drawingUtils.drawLandmarks(lms, { color: "#FF0000", lineWidth: 2 });
-            }
-          }
+          lastHandLandmarks =
+            handResult.landmarks && handResult.landmarks.length > 0 ? handResult.landmarks : null;
           const handInfo = processSteeringAndGear(handResult);
 
-          // Pose -> pedals (half rate; deltaTime spans pose-to-pose).
-          const poseResult =
-            runPose && poseRef.v ? poseRef.v.detectForVideo(video, startTimeMs) : null;
-          if (poseResult) {
+          // Pose -> pedals (half rate; deltaTime spans pose-to-pose). detectForVideo
+          // always returns a result (possibly with empty landmarks), so a genuine
+          // no-detection frame flows through and clears the foot-skeleton cache.
+          if (runPose && poseRef.v) {
+            const poseResult = poseRef.v.detectForVideo(video, startTimeMs);
             const poseDelta = lastPoseTime === 0 ? deltaTime : startTimeMs - lastPoseTime;
             lastPoseTime = startTimeMs;
             processPoseForPedals(poseResult, poseDelta, handInfo);
           }
+
+          // Repaint ALL overlays from cache every camera frame (flicker fix).
+          drawOverlays();
         } catch (e) {
           console.error(e);
         }
