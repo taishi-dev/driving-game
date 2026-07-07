@@ -58,14 +58,16 @@ Algorithm (all axis-aligned, XZ plane):
    `name = "wall_<axis>_<index>"`.
 
 **Tests** (`tests/pcBoundaryWalls.test.ts`, pure — mirror `pcLessonCorridors.test.ts` style):
-1. **No trap:** for the base road lesson AND the s-curve lesson, no returned wall
-   box's XZ footprint contains any on-road sample point. Sample the drivable
-   interior on a fine grid via `isOnRoad(x,z,0,lesson)`, and explicitly include
-   `SPAWN_POS` (x,z). Assert none lies inside any wall box.
+1. **No trap:** for the base road lesson (`undefined`/`"straight"`) AND the
+   `"s-curve"` lesson, no returned wall box's XZ footprint contains any on-road
+   sample point. Sample the drivable interior on a fine grid via
+   `isOnRoad(x,z,0,lesson)`, and explicitly include the spawn point XZ `(0, 12)`
+   (do NOT import `SPAWN_POS` — it is an engine `Vec3` in `driveScene.ts`; use the
+   literal). Assert none lies inside any wall box.
 2. **Containment (closed loop):** pick several interior on-road cells; for each,
    step outward in +x, −x, +z, −z in `WALL_CELL` steps until leaving the bbox;
    assert each of the 4 rays crosses at least one wall box's footprint.
-3. **Bounded count:** `boundaryWalls("straight")` and `boundaryWalls("scurve")`
+3. **Bounded count:** `boundaryWalls("straight")` and `boundaryWalls("s-curve")`
    each return fewer than 200 boxes (proves run-merge collapses segments — the
    raw unmerged count would be many hundreds).
 4. **Buffer honored:** a point 1.0 m outside the true road edge (inside
@@ -74,7 +76,7 @@ Algorithm (all axis-aligned, XZ plane):
    wall). Use the straight strip's known X edge (`±TILE_W/2 = ±3`) at a mid-Z on
    the straight to pick the test points.
 5. **Per-lesson difference:** the union of wall extents for a corridor lesson
-   (`scurve`) differs from the base lesson (walls reach corridor points that are
+   (`s-curve`) differs from the base lesson (walls reach corridor points that are
    off the base road).
 
 TDD: write tests first, then implement until green. Run `node --test tests/pcBoundaryWalls.test.ts` and the existing `tests/pcLessonCorridors.test.ts` (shares the layout module) — both must pass.
