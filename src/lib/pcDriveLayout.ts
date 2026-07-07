@@ -432,6 +432,176 @@ export function lessonWorldPatches(lesson: string | undefined): WorldPatch[] {
   return [];
 }
 
+// ─── Boundary walls ──────────────────────────────────────────────────────────
+// Hard invisible walls along the drivable-track boundary, so the car can't
+// leave the road into the (collider-less) buildings. Derived PURELY from
+// `isOnRoad` — never a separately-authored boundary — so the walls always
+// track the actual road/corridor footprint for the active lesson.
+
+/** Margin (m) inside the true road edge where the wall line sits — the car can
+ * still roam this far past the painted edge before hitting a wall. */
+export const WALL_BUFFER = 1.25;
+/** Grid cell size (m) used to sample the boundary and emit wall runs. */
+export const WALL_CELL = 1;
+/** Wall footprint thickness (m) along the cross axis. */
+export const WALL_THICKNESS = 0.3;
+/** Wall height (m). */
+export const WALL_HEIGHT = 3;
+
+type Side = "pos" | "neg";
+
+interface RawSegment {
+  /** Fixed grid coordinate (snapped cell index) shared by the whole run. */
+  fixed: number;
+  /** Varying grid coordinate (snapped cell index) of this unit segment. */
+  varying: number;
+  side: Side;
+}
+
+/**
+ * Boundary walls for the active lesson's road/corridor footprint. Wall
+ * membership is derived from the SAME predicate the car's off-track check
+ * uses (`isOnRoad(x, z, -WALL_BUFFER, lesson)` — negative margin inflates the
+ * on-road region so the wall sits `WALL_BUFFER` outside the true edge), never
+ * a separately-authored boundary line.
+ */
+export function boundaryWalls(lesson?: string): ColliderBox[] {
+  const boxes = [...roadColliders(), ...lessonCorridorColliders(lesson)];
+  let xMin = Infinity,
+    xMax = -Infinity,
+    zMin = Infinity,
+    zMax = -Infinity;
+  for (const b of boxes) {
+    xMin = Math.min(xMin, b.cx - b.sx / 2);
+    xMax = Math.max(xMax, b.cx + b.sx / 2);
+    zMin = Math.min(zMin, b.cz - b.sz / 2);
+    zMax = Math.max(zMax, b.cz + b.sz / 2);
+  }
+
+  // Inflate so the outer ring of sampled cells is guaranteed off-road.
+  const pad = WALL_BUFFER + WALL_CELL;
+  xMin -= pad;
+  xMax += pad;
+  zMin -= pad;
+  zMax += pad;
+
+  // Snap to the WALL_CELL grid: cell i is CENTERED at gridX0 + i*WALL_CELL (grid
+  // anchored so centers fall on whole multiples of WALL_CELL, e.g. ...,3,4,5,...
+  // rather than half-cell-offset ...,3.5,4.5,...). This biases the discretized
+  // on/off transition to round OUTWARD (away from the road) rather than inward,
+  // so the wall never sits closer to the road than the true buffered edge.
+  const gridX0 = Math.floor(xMin / WALL_CELL) * WALL_CELL;
+  const gridZ0 = Math.floor(zMin / WALL_CELL) * WALL_CELL;
+  const nx = Math.ceil((xMax - gridX0) / WALL_CELL) + 1;
+  const nz = Math.ceil((zMax - gridZ0) / WALL_CELL) + 1;
+
+  const cellCenterX = (i: number) => gridX0 + i * WALL_CELL;
+  const cellCenterZ = (j: number) => gridZ0 + j * WALL_CELL;
+
+  const onRoad: boolean[][] = [];
+  for (let i = 0; i < nx; i++) {
+    const col: boolean[] = [];
+    for (let j = 0; j < nz; j++) {
+      col.push(isOnRoad(cellCenterX(i), cellCenterZ(j), -WALL_BUFFER, lesson));
+    }
+    onRoad.push(col);
+  }
+  const isOn = (i: number, j: number) => i >= 0 && i < nx && j >= 0 && j < nz && onRoad[i][j];
+
+  // Boundary edges bucketed by orientation: "alongX" segments run along X at a
+  // fixed Z (they face a ±Z neighbor); "alongZ" segments run along Z at a
+  // fixed X (they face a ±X neighbor).
+  const alongX: RawSegment[] = [];
+  const alongZ: RawSegment[] = [];
+
+  for (let i = 0; i < nx; i++) {
+    for (let j = 0; j < nz; j++) {
+      if (!isOn(i, j)) continue;
+      // +X neighbor off-road → wall segment on the shared edge, running along Z.
+      if (!isOn(i + 1, j)) alongZ.push({ fixed: i + 1, varying: j, side: "pos" });
+      // -X neighbor off-road → wall segment running along Z.
+      if (!isOn(i - 1, j)) alongZ.push({ fixed: i, varying: j, side: "neg" });
+      // +Z neighbor off-road → wall segment running along X.
+      if (!isOn(i, j + 1)) alongX.push({ fixed: j + 1, varying: i, side: "pos" });
+      // -Z neighbor off-road → wall segment running along X.
+      if (!isOn(i, j - 1)) alongX.push({ fixed: j, varying: i, side: "neg" });
+    }
+  }
+
+  /** Greedily merge contiguous unit segments sharing (fixed, side) into runs. */
+  function mergeRuns(segments: RawSegment[]): { fixed: number; side: Side; start: number; end: number }[] {
+    const byKey = new Map<string, number[]>();
+    const sideOf = new Map<string, Side>();
+    for (const s of segments) {
+      const key = `${s.fixed}|${s.side}`;
+      sideOf.set(key, s.side);
+      const arr = byKey.get(key) ?? [];
+      arr.push(s.varying);
+      byKey.set(key, arr);
+    }
+    const runs: { fixed: number; side: Side; start: number; end: number }[] = [];
+    for (const [key, varyings] of byKey) {
+      const fixed = Number(key.split("|")[0]);
+      const side = sideOf.get(key)!;
+      const sorted = [...new Set(varyings)].sort((a, b) => a - b);
+      let runStart = sorted[0];
+      let prev = sorted[0];
+      for (let k = 1; k <= sorted.length; k++) {
+        const v = sorted[k];
+        if (v === prev + 1) {
+          prev = v;
+          continue;
+        }
+        runs.push({ fixed, side, start: runStart, end: prev });
+        if (k < sorted.length) {
+          runStart = v;
+          prev = v;
+        }
+      }
+    }
+    return runs;
+  }
+
+  const out: ColliderBox[] = [];
+  const cy = WALL_HEIGHT / 2;
+
+  // alongX runs: fixed = Z grid line index (edge between cell fixed-1 and fixed,
+  // i.e. the midpoint between their centers: gridZ0 + fixed*WALL_CELL -
+  // WALL_CELL/2), varying = X cell index range [start, end].
+  let idx = 0;
+  for (const run of mergeRuns(alongX)) {
+    const cz = gridZ0 + run.fixed * WALL_CELL - WALL_CELL / 2;
+    const cx = (cellCenterX(run.start) + cellCenterX(run.end)) / 2;
+    const length = (run.end - run.start + 1) * WALL_CELL;
+    out.push({
+      name: `wall_alongX_${idx++}`,
+      cx,
+      cy,
+      cz,
+      sx: length,
+      sy: WALL_HEIGHT,
+      sz: WALL_THICKNESS,
+    });
+  }
+
+  for (const run of mergeRuns(alongZ)) {
+    const cx = gridX0 + run.fixed * WALL_CELL - WALL_CELL / 2;
+    const cz = (cellCenterZ(run.start) + cellCenterZ(run.end)) / 2;
+    const length = (run.end - run.start + 1) * WALL_CELL;
+    out.push({
+      name: `wall_alongZ_${idx++}`,
+      cx,
+      cy,
+      cz,
+      sx: WALL_THICKNESS,
+      sy: WALL_HEIGHT,
+      sz: length,
+    });
+  }
+
+  return out;
+}
+
 export interface CoordinateContract {
   ok: boolean;
   checkpoint: { x: number; y: number; z: number };
