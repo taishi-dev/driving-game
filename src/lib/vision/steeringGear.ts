@@ -1,6 +1,15 @@
 import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
 
 /**
+ * Steering sensitivity: raw hand-tilt angle (radians) is multiplied by these to
+ * get the −1..1 steering value. Lowered from 0.8 / 1.5 (learner feedback: full
+ * lock came on too fast / twitchy). Kept as exported constants so feel-tuning
+ * lives in one place and the pure tests track the value instead of a literal.
+ */
+export const TWO_HAND_SENSITIVITY = 0.7;
+export const ONE_HAND_SENSITIVITY = 1.3;
+
+/**
  * Pure steering + gear computation, extracted from VisionController's
  * processSteeringAndGear. Takes a frame's hand landmarks, object detections,
  * and the current gear; returns the computed gear, steering, and debug string.
@@ -76,8 +85,7 @@ export function computeSteeringAndGear(input: SteeringGearInput): SteeringGearRe
     const dx = right.x - left.x;
     angle = Math.atan2(dy, dx);
 
-    const sensitivity = 0.8;
-    steering = -angle * sensitivity;
+    steering = -angle * TWO_HAND_SENSITIVITY;
   } else if (steeringHands.length === 1) {
     // Single-Hand Steering: tilt of the single hand (wrist -> middle MCP).
     const wrist = steeringHands[0][0];
@@ -96,8 +104,7 @@ export function computeSteeringAndGear(input: SteeringGearInput): SteeringGearRe
     if (diff > Math.PI) diff -= 2 * Math.PI;
     if (diff < -Math.PI) diff += 2 * Math.PI;
 
-    const oneHandSensitivity = 1.5;
-    steering = diff * oneHandSensitivity;
+    steering = diff * ONE_HAND_SENSITIVITY;
     angle = diff;
   } else {
     // No hands for steering
