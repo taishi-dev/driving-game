@@ -134,6 +134,41 @@ test("rays outward from interior on-road cells each cross a wall (closed loop)",
   }
 });
 
+test("rays outward from interior s-curve cells each cross a wall (stair-stepped containment)", () => {
+  const lesson = "s-curve";
+  const walls = boundaryWalls(lesson);
+  const { xMin, xMax, zMin, zMax } = unionBBox(lesson);
+
+  const interiorCells: [number, number][] = [
+    [0, 0],
+    [10, -18],
+    [5, -45],
+    [0, -80],
+  ];
+
+  const REACH_MARGIN = WALL_BUFFER + 2 * WALL_CELL + 1;
+
+  function rayHitsWall(x0: number, z0: number, dx: number, dz: number): boolean {
+    const limit =
+      dx > 0
+        ? xMax + REACH_MARGIN
+        : dx < 0
+          ? xMin - REACH_MARGIN
+          : dz > 0
+            ? zMax + REACH_MARGIN
+            : zMin - REACH_MARGIN;
+    return walls.some((w) => rayCrossesBox(x0, z0, dx, dz, limit, w));
+  }
+
+  for (const [x, z] of interiorCells) {
+    assert.ok(isOnRoad(x, z, 0, lesson), `test setup: (${x},${z}) should be on-road for s-curve`);
+    assert.ok(rayHitsWall(x, z, 1, 0), `+x ray from (${x},${z}) missed a wall`);
+    assert.ok(rayHitsWall(x, z, -1, 0), `-x ray from (${x},${z}) missed a wall`);
+    assert.ok(rayHitsWall(x, z, 0, 1), `+z ray from (${x},${z}) missed a wall`);
+    assert.ok(rayHitsWall(x, z, 0, -1), `-z ray from (${x},${z}) missed a wall`);
+  }
+});
+
 // ─── 3. Bounded count ────────────────────────────────────────────────────────
 
 test("merged wall box count stays well under 200", () => {

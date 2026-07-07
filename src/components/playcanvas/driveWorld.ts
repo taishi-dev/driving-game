@@ -170,9 +170,9 @@ export function buildDriveWorld(
   const touchedMaterials = new Set<StandardMaterial>();
   let rafId = 0;
 
-  // 2. FLAT road colliders (physics ground + wheel-ray surface). Invisible; the
-  //    ONLY entities in the world with a collision component. Corridor lessons
-  //    add their corridor's flat boxes to the same list.
+  // 2. FLAT road colliders (physics ground + wheel-ray surface). Invisible;
+  //    these form the drivable surface. Corridor lessons add their corridor's
+  //    flat boxes to the same list. Boundary walls (below) add perimeter colliders.
   for (const b of [...roadColliders(), ...lessonCorridorColliders(lesson)]) {
     const box = new Entity(b.name);
     box.addComponent("collision", {
