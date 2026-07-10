@@ -26,7 +26,8 @@ import {
  * P11 — the PlayCanvas PRODUCT webcam/MediaPipe vision layer.
  *
  * A from-scratch, product-shell rewrite of the original R3F
- * `src/components/vision/VisionController.tsx`, keeping the store contract and
+ * `src/components/vision/VisionController.tsx` (removed; see git tag
+ * `r3f-reference-pre-delete`), keeping the store contract and
  * camera/MediaPipe lifecycle faithful while:
  *   - reusing the frozen pure modules AS-IS (computeSteeringAndGear /
  *     decidePedalActions / PoseLandmarkFilterManager / STABILITY_DURATION_MS),
