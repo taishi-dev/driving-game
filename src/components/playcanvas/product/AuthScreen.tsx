@@ -8,7 +8,8 @@ import { FirebaseError } from "firebase/app";
 
 /**
  * P10 — real auth screen for the PlayCanvas product (graduates the P7a
- * AuthStub). Ported from the original `src/components/auth/AuthScreen.tsx`:
+ * AuthStub). Ported from the original `src/components/auth/AuthScreen.tsx`
+ * (removed; see git tag `r3f-reference-pre-delete`):
  * email/password login + registration via the single fail-soft Firebase entry
  * (`@/lib/firebase`), bilingual, with the same localized error-code mapping.
  *
