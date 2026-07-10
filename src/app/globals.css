@@ -44,3 +44,31 @@ a {
     color-scheme: dark;
   }
 }
+
+/* ── Accessibility (PR-3) ─────────────────────────────────────────────────── */
+
+/* Respect the OS "reduce motion" setting: neutralize animations/transitions
+   (e.g. the HUD `animate-pulse`, toast fades, carousel scroll) for users who
+   are motion-sensitive. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Consistent, high-contrast keyboard focus ring on every interactive element.
+   Uses :focus-visible so it appears for keyboard/AT users but not on mouse
+   click. Cyan matches the app's accent so it reads as intentional. */
+:focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+:focus:not(:focus-visible) {
+  outline: none;
+}
