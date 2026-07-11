@@ -43,7 +43,7 @@ export function LanguageScreen() {
           </button>
         </div>
 
-        <p className="text-slate-600 text-xs mt-8">You can change this later from the Home screen.</p>
+        <p className="text-slate-400 text-xs mt-8">You can change this later from the Home screen.</p>
       </div>
     </div>
   );

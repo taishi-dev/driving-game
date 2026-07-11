@@ -198,7 +198,7 @@ export function HistoryScreen() {
 
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="text-center text-slate-500 mt-10">
+          <div className="text-center text-slate-400 mt-10">
             <div className="animate-pulse">{t.loadingRecords}</div>
           </div>
         ) : error ? (
@@ -216,8 +216,8 @@ export function HistoryScreen() {
         ) : missionHistory.length === 0 ? (
           <div className="text-center mt-10" data-testid="history-empty">
             <div className="text-6xl mb-4">🏎️</div>
-            <div className="text-slate-500 mb-4">{t.noHistory}</div>
-            <p className="text-slate-600 text-sm mb-6">{t.noHistorySub}</p>
+            <div className="text-slate-400 mb-4">{t.noHistory}</div>
+            <p className="text-slate-400 text-sm mb-6">{t.noHistorySub}</p>
             <button
               onClick={() => setScreen("home")}
               className="px-6 py-3 bg-blue-600 hover:bg-blue-500 rounded font-bold"
@@ -229,7 +229,7 @@ export function HistoryScreen() {
           <>
             <div className="flex justify-between items-center mb-4">
               <div className="text-sm text-slate-400">{t.totalRecords(missionHistory.length)}</div>
-              <div className="text-xs text-slate-500">{t.sortedByLatest}</div>
+              <div className="text-xs text-slate-400">{t.sortedByLatest}</div>
             </div>
             <div className="grid gap-3" data-testid="history-list">
               {missionHistory.map((item, index) => {
@@ -240,7 +240,7 @@ export function HistoryScreen() {
                     key={item.id}
                     className="bg-slate-800 p-4 rounded-lg flex items-center gap-4 border border-slate-700 hover:border-slate-600 transition-colors"
                   >
-                    <div className="text-xl font-bold text-slate-600 w-10 text-center">
+                    <div className="text-xl font-bold text-slate-400 w-10 text-center">
                       #{missionHistory.length - index}
                     </div>
                     {/* Main info */}
@@ -249,7 +249,7 @@ export function HistoryScreen() {
                         <span className="font-bold text-lg text-white">
                           {lessonName(item.lesson, language)}
                         </span>
-                        <span className="text-xs text-slate-500">
+                        <span className="text-xs text-slate-400">
                           {new Date(item.timestamp).toLocaleString(language === "en" ? "en-US" : "ja-JP", {
                             month: "short",
                             day: "numeric",
@@ -263,13 +263,13 @@ export function HistoryScreen() {
 
                     {/* Time */}
                     <div className="text-center px-3">
-                      <div className="text-xs text-slate-500">{t.time}</div>
+                      <div className="text-xs text-slate-400">{t.time}</div>
                       <div className="text-lg font-mono text-white">{item.clearTime}</div>
                     </div>
 
                     {/* Score */}
                     <div className="text-center px-3">
-                      <div className="text-xs text-slate-500">{t.score}</div>
+                      <div className="text-xs text-slate-400">{t.score}</div>
                       <div
                         className={`text-2xl font-bold ${
                           item.score >= 80
