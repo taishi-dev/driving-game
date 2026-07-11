@@ -16,6 +16,7 @@ import { STABILITY_DURATION_MS } from "@/lib/footPedalRecognition";
 import { PoseLandmarkFilterManager } from "@/lib/oneEuroFilter";
 import { computeSteeringAndGear } from "@/lib/vision/steeringGear";
 import { decidePedalActions } from "@/lib/vision/pedalDecision";
+import { computeHeadPose } from "@/lib/vision/headPose";
 import {
   getVisionStatusDisplay,
   cameraErrorMessage,
@@ -347,25 +348,11 @@ export default function VisionController() {
                 : null;
           }
           if (faceResult && faceResult.faceLandmarks && faceResult.faceLandmarks.length > 0) {
-            const landmarks = faceResult.faceLandmarks[0];
-            if (landmarks) {
-              const nose = landmarks[1];
-              const leftEar = landmarks[234];
-              const rightEar = landmarks[454];
-              const midEarX = (leftEar.x + rightEar.x) / 2;
-              const yawEstimate = (nose.x - midEarX) * 20;
-              store().setHeadRotation({ pitch: 0, yaw: -yawEstimate, roll: 0 });
-
-              const leftInner = landmarks[33].x;
-              const leftOuter = landmarks[133].x;
-              const leftIris = landmarks[468].x;
-              const rightInner = landmarks[362].x;
-              const rightOuter = landmarks[263].x;
-              const rightIris = landmarks[473].x;
-              const leftRatio = (leftIris - leftInner) / (leftOuter - leftInner);
-              const rightRatio = (rightIris - rightInner) / (rightOuter - rightInner);
-              const avgRatio = (leftRatio + rightRatio) / 2;
-              store().setGaze({ x: (avgRatio - 0.5) * 5, y: 0 });
+            // Head yaw (mirror/safety checks) + gaze — pure module (headPose.ts).
+            const pose = computeHeadPose(faceResult.faceLandmarks[0]);
+            if (pose) {
+              store().setHeadRotation({ pitch: 0, yaw: pose.yaw, roll: 0 });
+              store().setGaze(pose.gaze);
             }
           }
 
