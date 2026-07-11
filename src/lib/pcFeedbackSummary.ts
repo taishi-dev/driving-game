@@ -21,13 +21,17 @@ const DEVIATION_MESSAGES = {
   ja: "コースから外れて走行しました。車線の中央を維持しましょう。",
 } as const;
 
+// `|| 0` mirrors FeedbackScreen's score formula (`Math.floor(deviationPenalty || 0)`)
+// so a non-numeric value can never spuriously trip the threshold.
+const deviationPoints = (deviationPenalty: number): number => Math.floor(deviationPenalty || 0);
+
 /** Localized "you drifted from the course" point, or null if deviation is minor. */
 export function deviationFeedbackPoint(deviationPenalty: number, lang: Language): string | null {
-  if (Math.floor(deviationPenalty) < DEVIATION_FEEDBACK_THRESHOLD) return null;
+  if (deviationPoints(deviationPenalty) < DEVIATION_FEEDBACK_THRESHOLD) return null;
   return DEVIATION_MESSAGES[lang];
 }
 
 /** True only when there are no kaizen logs AND deviation is below the threshold. */
 export function isCleanRun(kaizenCount: number, deviationPenalty: number): boolean {
-  return kaizenCount === 0 && Math.floor(deviationPenalty) < DEVIATION_FEEDBACK_THRESHOLD;
+  return kaizenCount === 0 && deviationPoints(deviationPenalty) < DEVIATION_FEEDBACK_THRESHOLD;
 }

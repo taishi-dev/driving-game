@@ -17,9 +17,14 @@ test("clean run: no deviation, no kaizen -> isCleanRun true, no deviation point"
   assert.equal(deviationFeedbackPoint(0, "en"), null);
 });
 
-test("below threshold: minor deviation still reads as clean", () => {
+test("below threshold: minor deviation still reads as clean (incl. the just-below edge)", () => {
   assert.equal(deviationFeedbackPoint(3, "en"), null);
   assert.equal(isCleanRun(0, 3), true);
+  // Just below the threshold (floor(4) = 4 < 5) — the boundary from the low side.
+  assert.equal(deviationFeedbackPoint(4, "en"), null);
+  assert.equal(isCleanRun(0, 4), true);
+  // A non-numeric value must not spuriously trip the threshold (|| 0 parity).
+  assert.equal(isCleanRun(0, NaN), true);
 });
 
 test("at/above threshold: deviation point appears (both languages) and run is not clean", () => {
