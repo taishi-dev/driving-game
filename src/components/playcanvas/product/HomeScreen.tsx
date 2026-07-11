@@ -112,7 +112,7 @@ export function HomeScreen() {
                   {t.login}
                 </button>
               )}
-              <span className="text-slate-600">|</span>
+              <span className="text-slate-400">|</span>
               <button
                 data-testid="home-history"
                 onClick={() => setScreen("history")}
@@ -144,7 +144,7 @@ export function HomeScreen() {
 
                 <div className="absolute inset-0 p-6 flex flex-col justify-between text-left">
                   <div className="flex justify-between items-start">
-                    <span className="text-xs font-black text-slate-500 bg-slate-950 px-2 py-1 rounded border border-slate-800 group-hover:text-blue-400 group-hover:border-blue-500/50 transition-colors">
+                    <span className="text-xs font-black text-slate-400 bg-slate-950 px-2 py-1 rounded border border-slate-800 group-hover:text-blue-400 group-hover:border-blue-500/50 transition-colors">
                       {card.sub}
                     </span>
                     <div

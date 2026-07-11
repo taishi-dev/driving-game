@@ -219,7 +219,7 @@ export function AuthScreen() {
         <button
           onClick={() => setScreen("home")}
           data-testid="auth-back-guest"
-          className="mt-4 w-full text-xs text-slate-500 hover:text-slate-300"
+          className="mt-4 w-full text-xs text-slate-400 hover:text-slate-300"
           disabled={loading}
         >
           {t.backAsGuest}
