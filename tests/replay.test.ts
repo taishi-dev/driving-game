@@ -97,3 +97,21 @@ test("binary search lands in the correct segment for many frames", () => {
   const s = sampleReplay(frames, 3333)!;
   assert.ok(Math.abs(s.position[0] - 33.33) < 0.1, `got x=${s.position[0]}`);
 });
+
+test("interpolates rotation the SHORT way across the ±180° euler wrap", () => {
+  const D2R = Math.PI / 180;
+  // The straight course faces −Z (SPAWN_YAW = 180°), so the chassis yaw sits on
+  // the ±180° boundary the whole run. Two frames straddling it (170° then −170°)
+  // represent only a 20° turn (170 → 190 ≡ −170) through 180°. A LINEAR euler
+  // lerp would instead sweep the LONG way through 0° (facing +Z), spinning the
+  // replay car ~340° — the "car rotating on the road" bug.
+  const frames: ReplayFrame[] = [
+    { timestamp: 0, position: [0, 0.5, 0], rotation: [0, 170 * D2R, 0], steering: 0, speed: 0, headRotation: { pitch: 0, yaw: 0, roll: 0 } },
+    { timestamp: 100, position: [0, 0.5, -1], rotation: [0, -170 * D2R, 0], steering: 0, speed: 0, headRotation: { pitch: 0, yaw: 0, roll: 0 } },
+  ];
+  const s = sampleReplay(frames, 50)!; // midpoint of the short arc is ±180°, not 0°
+  assert.ok(
+    Math.abs(Math.abs(s.rotation[1]) - Math.PI) < 0.02,
+    `yaw should be ~±180° (facing −Z), got ${(s.rotation[1] / D2R).toFixed(1)}°`,
+  );
+});
