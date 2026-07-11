@@ -4,8 +4,9 @@ import assert from "node:assert/strict";
 import { buildMissionLog, getScoreRank } from "../src/lib/pcMissionLog.ts";
 
 // P10 — the Firestore mission_logs record builder must reproduce the ORIGINAL
-// app's save semantics exactly (src/components/ui/FeedbackScreen.tsx
-// saveResultToFirestore): same fields, same score formula, same mm:ss clear
+// app's save semantics exactly (original components/ui/FeedbackScreen.tsx
+// saveResultToFirestore; removed — see git tag `r3f-reference-pre-delete`):
+// same fields, same score formula, same mm:ss clear
 // time (the saved record has NO centiseconds, unlike the on-screen display),
 // same first-kaizen summary strings — so records written by the PlayCanvas
 // port are indistinguishable from the original's and pass the same deployed

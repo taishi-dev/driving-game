@@ -3,8 +3,9 @@
 import dynamic from "next/dynamic";
 
 // P7a: the root route now mounts the PlayCanvas product shell (store-driven
-// screens over the frozen zustand store). The original R3F ClientApp stays
-// in-tree as the flow-semantics reference but is no longer routed.
+// screens over the frozen zustand store). The original R3F ClientApp tree was
+// removed (2026-07); it lives at git tag `r3f-reference-pre-delete` as the
+// flow-semantics reference.
 //
 // ssr:false — the shell reads localStorage at store-init time and every screen
 // eventually touches WebGL, so the whole app is client-only (same convention as

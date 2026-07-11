@@ -10,8 +10,9 @@ const VisionController = dynamic(() => import("./VisionController"), { ssr: fals
 
 /**
  * P7b — the tutorial flow, ported DOM-native from the original
- * `src/components/ui/TutorialScreen.tsx` (strings verbatim, same 5 steps and
- * step-4 calibration + keyboard-fallback semantics). Graduates the P7a TutorialStub.
+ * `src/components/ui/TutorialScreen.tsx` (removed; see git tag
+ * `r3f-reference-pre-delete`) — strings verbatim, same 5 steps and
+ * step-4 calibration + keyboard-fallback semantics. Graduates the P7a TutorialStub.
  *
  * Deliberate differences from the original, for the PlayCanvas port:
  *   - No VisionController camera background — the MediaPipe vision layer arrives
