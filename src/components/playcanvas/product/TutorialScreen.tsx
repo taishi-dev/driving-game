@@ -10,8 +10,9 @@ const VisionController = dynamic(() => import("./VisionController"), { ssr: fals
 
 /**
  * P7b — the tutorial flow, ported DOM-native from the original
- * `src/components/ui/TutorialScreen.tsx` (strings verbatim, same 5 steps and
- * step-4 calibration + keyboard-fallback semantics). Graduates the P7a TutorialStub.
+ * `src/components/ui/TutorialScreen.tsx` (removed; see git tag
+ * `r3f-reference-pre-delete`) — strings verbatim, same 5 steps and
+ * step-4 calibration + keyboard-fallback semantics. Graduates the P7a TutorialStub.
  *
  * Deliberate differences from the original, for the PlayCanvas port:
  *   - No VisionController camera background — the MediaPipe vision layer arrives
@@ -184,7 +185,7 @@ export function TutorialScreen() {
               >
                 {s}
               </div>
-              <div className={`text-xs ${step >= s ? "text-blue-400" : "text-slate-500"}`}>
+              <div className={`text-xs ${step >= s ? "text-blue-400" : "text-slate-400"}`}>
                 {s === 1
                   ? t.stepIntro
                   : s === 2
@@ -267,7 +268,7 @@ export function TutorialScreen() {
                 />
                 <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white/50 transform -translate-x-1/2" />
               </div>
-              <div className="flex justify-between text-xs text-slate-500 mt-1 px-1">
+              <div className="flex justify-between text-xs text-slate-400 mt-1 px-1">
                 <span>{t.steeringLeft}</span>
                 <span>{t.steeringCenter}</span>
                 <span>{t.steeringRight}</span>

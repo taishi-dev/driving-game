@@ -4,7 +4,8 @@
  * Rewritten for the E2 branch (D1.a), but the CONTENT is not open for redesign:
  * the trial already settled the wording — course titles/descriptions verbatim
  * from the original `ClientApp.tsx` MISSION_INFO, home-card labels from the
- * original `HomeScreen.tsx` with E1's FINAL fixes applied (traffic-light ja
+ * original `HomeScreen.tsx` with E1's FINAL fixes applied (both removed; see git
+ * tag `r3f-reference-pre-delete`) (traffic-light ja
  * label unified to 「信号機」, card descriptions localized ja/en instead of
  * English-only) — and technical tokens (LEVEL 01, BASIC, FREE) stay English in
  * both languages. Free of playcanvas/browser/firebase/three imports so

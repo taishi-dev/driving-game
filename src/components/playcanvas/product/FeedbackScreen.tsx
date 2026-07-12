@@ -234,7 +234,7 @@ export function FeedbackScreen() {
               <DriveCanvas buildScene={createReplayScene} showFps fit="container" />
             </div>
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm px-8 text-center">
+            <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm px-8 text-center">
               {t.noReplay}
             </div>
           )}
@@ -278,14 +278,14 @@ export function FeedbackScreen() {
             {/* Score + clear time */}
             <div className="grid grid-cols-2 gap-4 mb-8">
               <div className="p-6 bg-slate-800 rounded-xl border border-slate-700">
-                <div className="text-xs text-slate-500 mb-1">{t.score}</div>
+                <div className="text-xs text-slate-400 mb-1">{t.score}</div>
                 <div className="text-5xl font-bold text-blue-400" data-testid="feedback-score">
                   {score}
-                  <span className="text-lg text-slate-500">/100</span>
+                  <span className="text-lg text-slate-400">/100</span>
                 </div>
               </div>
               <div className="p-6 bg-slate-800 rounded-xl border border-slate-700">
-                <div className="text-xs text-slate-500 mb-1">{t.clearTime}</div>
+                <div className="text-xs text-slate-400 mb-1">{t.clearTime}</div>
                 <div className="text-5xl font-bold" data-testid="feedback-time">
                   {clearTime}
                 </div>
@@ -330,7 +330,7 @@ export function FeedbackScreen() {
             <div className="mb-8 p-6 bg-slate-800 rounded-xl border border-slate-700">
               <h3 className="text-lg font-bold mb-4 text-blue-400">{t.checkpoints}</h3>
               {gradedCheckpoints.length === 0 ? (
-                <p className="text-slate-500 text-sm">{t.noCheckpoints}</p>
+                <p className="text-slate-400 text-sm">{t.noCheckpoints}</p>
               ) : (
                 <ul className="space-y-2">
                   {gradedCheckpoints.map((cp) => {
