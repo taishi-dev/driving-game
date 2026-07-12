@@ -64,3 +64,12 @@ next-env.d.ts
 # engine-trial: source assets (large EXR, zip packs, raw GLBs — kept for
 # reproducibility but not shipped in the build or tracked in git)
 /assets/source/
+
+# self-hosted MediaPipe vision assets (fetched at build by
+# scripts/fetch-vision-assets.mjs; ~20 MB — not tracked). The GLBs under
+# public/models/ ARE tracked; only the fetched .task models are ignored.
+/public/mediapipe/
+/public/models/*.task
+
+# Local drive-test recordings (never commit)
+/test_video/

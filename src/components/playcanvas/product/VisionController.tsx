@@ -16,9 +16,16 @@ import { STABILITY_DURATION_MS } from "@/lib/footPedalRecognition";
 import { PoseLandmarkFilterManager } from "@/lib/oneEuroFilter";
 import { computeSteeringAndGear } from "@/lib/vision/steeringGear";
 import { decidePedalActions } from "@/lib/vision/pedalDecision";
+import { computeHeadPose } from "@/lib/vision/headPose";
+import {
+  VISION_WASM_PATH,
+  VISION_MODEL_PATHS,
+  withDelegateFallback,
+} from "@/lib/vision/modelSources";
 import {
   getVisionStatusDisplay,
   cameraErrorMessage,
+  modelErrorMessage,
   type CameraErrorKind,
   type VisionStatusTone,
 } from "@/lib/pcVisionStatus";
@@ -87,9 +94,13 @@ export default function VisionController() {
 
   // User-facing camera failure kind (drives the localized retry overlay).
   const [cameraError, setCameraError] = useState<CameraErrorKind | null>(null);
-  // Re-acquire hook, assigned inside the mount effect so the Retry button can
-  // call it without the effect depending on a render-scope callback.
+  // Model-load failure (GPU→CPU both failed / assets unreachable). Distinct from
+  // the camera failure: different copy + different retry (re-load models).
+  const [modelError, setModelError] = useState(false);
+  // Re-acquire / re-load hooks, assigned inside the mount effect so the Retry
+  // buttons can call them without the effect depending on a render-scope callback.
   const retryRef = useRef<() => void>(() => {});
+  const retryModelsRef = useRef<() => void>(() => {});
 
   // Subscribed store fields for the localized status panel only.
   const language = useDrivingStore((s) => s.language);
@@ -355,25 +366,11 @@ export default function VisionController() {
                 : null;
           }
           if (faceResult && faceResult.faceLandmarks && faceResult.faceLandmarks.length > 0) {
-            const landmarks = faceResult.faceLandmarks[0];
-            if (landmarks) {
-              const nose = landmarks[1];
-              const leftEar = landmarks[234];
-              const rightEar = landmarks[454];
-              const midEarX = (leftEar.x + rightEar.x) / 2;
-              const yawEstimate = (nose.x - midEarX) * 20;
-              store().setHeadRotation({ pitch: 0, yaw: -yawEstimate, roll: 0 });
-
-              const leftInner = landmarks[33].x;
-              const leftOuter = landmarks[133].x;
-              const leftIris = landmarks[468].x;
-              const rightInner = landmarks[362].x;
-              const rightOuter = landmarks[263].x;
-              const rightIris = landmarks[473].x;
-              const leftRatio = (leftIris - leftInner) / (leftOuter - leftInner);
-              const rightRatio = (rightIris - rightInner) / (rightOuter - rightInner);
-              const avgRatio = (leftRatio + rightRatio) / 2;
-              store().setGaze({ x: (avgRatio - 0.5) * 5, y: 0 });
+            // Head yaw (mirror/safety checks) + gaze — pure module (headPose.ts).
+            const pose = computeHeadPose(faceResult.faceLandmarks[0]);
+            if (pose) {
+              store().setHeadRotation({ pitch: 0, yaw: pose.yaw, roll: 0 });
+              store().setGaze(pose.gaze);
             }
           }
 
@@ -466,9 +463,16 @@ export default function VisionController() {
       setCameraError(null);
       void acquireCamera();
     };
+    // Retry after a model-load failure: clear the flag and re-attempt the load
+    // (mediaPipeStarted was reset to false in the catch so this can run again).
+    retryModelsRef.current = () => {
+      setModelError(false);
+      startMediaPipeOnce();
+    };
 
-    // Load MediaPipe models (same CDN wasm + model assets and options as the
-    // original, MINUS the object detector — see the P11 deviation note above).
+    // Load MediaPipe models from SELF-HOSTED same-origin assets (see
+    // modelSources.ts / ADR 0004), MINUS the object detector (P11 deviation note
+    // above), with GPU→CPU delegate fallback.
     //
     // GATED ON CAMERA SUCCESS (perf + CI-stability): without a stream the
     // inference loop can never run, so loading ~22 MB of models and compiling
@@ -485,44 +489,48 @@ export default function VisionController() {
     };
     const setupMediaPipe = async () => {
       try {
+        setModelError(false);
         store().setDebugInfo("Loading AI Models...");
-        const filesetResolver = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm",
+        // Self-hosted, same-origin assets (see modelSources.ts / ADR 0004).
+        const filesetResolver = await FilesetResolver.forVisionTasks(VISION_WASM_PATH);
+        // Each model tries the GPU delegate, then falls back to CPU (GPU-less /
+        // broken-driver devices) rather than failing outright.
+        const onFallback = (label: string) => (e: unknown) =>
+          console.warn(`[vision] ${label}: GPU delegate failed, retrying on CPU`, e);
+        const faceLandmarker = await withDelegateFallback(
+          (delegate) =>
+            FaceLandmarker.createFromOptions(filesetResolver, {
+              baseOptions: { modelAssetPath: VISION_MODEL_PATHS.face, delegate },
+              outputFaceBlendshapes: true,
+              runningMode: "VIDEO",
+              numFaces: 1,
+            }),
+          onFallback("face"),
         );
-        const faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
-          baseOptions: {
-            modelAssetPath:
-              "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-            delegate: "GPU",
-          },
-          outputFaceBlendshapes: true,
-          runningMode: "VIDEO",
-          numFaces: 1,
-        });
-        const handLandmarker = await HandLandmarker.createFromOptions(filesetResolver, {
-          baseOptions: {
-            modelAssetPath:
-              "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-            delegate: "GPU",
-          },
-          runningMode: "VIDEO",
-          numHands: 2,
-          minHandDetectionConfidence: 0.3,
-          minHandPresenceConfidence: 0.3,
-          minTrackingConfidence: 0.3,
-        });
-        const poseLandmarker = await PoseLandmarker.createFromOptions(filesetResolver, {
-          baseOptions: {
-            modelAssetPath:
-              "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task",
-            delegate: "GPU",
-          },
-          runningMode: "VIDEO",
-          numPoses: 1,
-          minPoseDetectionConfidence: 0.3,
-          minPosePresenceConfidence: 0.3,
-          minTrackingConfidence: 0.3,
-        });
+        const handLandmarker = await withDelegateFallback(
+          (delegate) =>
+            HandLandmarker.createFromOptions(filesetResolver, {
+              baseOptions: { modelAssetPath: VISION_MODEL_PATHS.hand, delegate },
+              runningMode: "VIDEO",
+              numHands: 2,
+              minHandDetectionConfidence: 0.3,
+              minHandPresenceConfidence: 0.3,
+              minTrackingConfidence: 0.3,
+            }),
+          onFallback("hand"),
+        );
+        const poseLandmarker = await withDelegateFallback(
+          (delegate) =>
+            PoseLandmarker.createFromOptions(filesetResolver, {
+              baseOptions: { modelAssetPath: VISION_MODEL_PATHS.pose, delegate },
+              runningMode: "VIDEO",
+              numPoses: 1,
+              minPoseDetectionConfidence: 0.3,
+              minPosePresenceConfidence: 0.3,
+              minTrackingConfidence: 0.3,
+            }),
+          onFallback("pose"),
+        );
         if (disposed) {
           // Unmounted while models were still loading (StrictMode double mount):
           // release the LOCALS we just created; never touch a concurrent run's refs.
@@ -538,7 +546,14 @@ export default function VisionController() {
         store().setDebugInfo("Models Ready.");
         maybeStartLoop();
       } catch (error) {
-        console.error(error);
+        // Both delegates failed / assets unreachable. Surface a user-facing
+        // error + Retry instead of hanging silently on "Loading AI Models…".
+        console.error("[vision] model load failed (GPU+CPU):", error);
+        if (!disposed) {
+          setModelError(true);
+          store().setDebugInfo("AI model load failed.");
+          mediaPipeStarted = false; // let Retry re-attempt the load
+        }
       }
     };
 
@@ -573,6 +588,7 @@ export default function VisionController() {
   );
   const tone = TONE_COLORS[status.tone];
   const errorCopy = cameraError ? cameraErrorMessage(cameraError, language) : null;
+  const modelErrorCopy = modelError ? modelErrorMessage(language) : null;
   const retryLabel = language === "ja" ? "再試行" : "Retry";
 
   return (
@@ -619,6 +635,45 @@ export default function VisionController() {
           <button
             data-testid="vision-camera-retry"
             onClick={() => retryRef.current()}
+            style={{
+              padding: "6px 14px",
+              fontSize: "13px",
+              fontWeight: "bold",
+              color: "#7f1d1d",
+              backgroundColor: "#fff",
+              border: "none",
+              borderRadius: "6px",
+              cursor: "pointer",
+            }}
+          >
+            {retryLabel}
+          </button>
+        </div>
+      )}
+
+      {modelErrorCopy && (
+        <div
+          data-testid="vision-model-error"
+          style={{
+            backgroundColor: "rgba(127, 29, 29, 0.95)",
+            border: "2px solid #f87171",
+            color: "#fff",
+            padding: "14px 16px",
+            borderRadius: "10px",
+            width: "280px",
+            marginBottom: "8px",
+            boxSizing: "border-box",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
+            fontSize: "13px",
+            lineHeight: 1.5,
+            pointerEvents: "auto",
+          }}
+        >
+          <div style={{ fontWeight: "bold", marginBottom: "6px", fontSize: "14px" }}>{modelErrorCopy.title}</div>
+          <div style={{ marginBottom: "10px" }}>{modelErrorCopy.body}</div>
+          <button
+            data-testid="vision-model-retry"
+            onClick={() => retryModelsRef.current()}
             style={{
               padding: "6px 14px",
               fontSize: "13px",

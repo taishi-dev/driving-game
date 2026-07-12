@@ -14,8 +14,10 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     // Static/vendored assets are never linted (e.g. the minified Draco decoder
-    // glue shipped under public/lib/draco for runtime glTF Draco decoding).
+    // glue shipped under public/lib/draco for runtime glTF Draco decoding, and
+    // the self-hosted MediaPipe WASM glue JS fetched into public/mediapipe).
     "public/lib/**",
+    "public/mediapipe/**",
     // Archived engine-trial git worktrees are full repo copies; never lint them
     // (they otherwise dominate the report with tens of thousands of stale hits).
     ".worktrees/**",

@@ -116,3 +116,19 @@ export function cameraErrorMessage(kind: CameraErrorKind, lang: Language): { tit
   const s = CAMERA_ERROR_STRINGS[lang];
   return { title: s.title, body: s[kind] };
 }
+
+const MODEL_ERROR_STRINGS = {
+  ja: {
+    title: "🤖 AIモデルを読み込めません",
+    body: "AIモデルの読み込みに失敗しました。通信環境を確認して再試行するか、キーボードで運転してください（矢印キーでハンドル操作）。",
+  },
+  en: {
+    title: "🤖 Could not load AI models",
+    body: "The AI models failed to load. Check your connection and retry, or drive with the keyboard (use the arrow keys to steer).",
+  },
+} as const;
+
+/** Localized model-load-error overlay copy (title + body). */
+export function modelErrorMessage(lang: Language): { title: string; body: string } {
+  return MODEL_ERROR_STRINGS[lang];
+}
