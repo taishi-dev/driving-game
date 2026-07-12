@@ -64,3 +64,6 @@ next-env.d.ts
 # engine-trial: source assets (large EXR, zip packs, raw GLBs — kept for
 # reproducibility but not shipped in the build or tracked in git)
 /assets/source/
+
+# Local drive-test recordings (never commit — see the 55MB accident)
+/test_video/
