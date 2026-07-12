@@ -13,6 +13,15 @@ import { heroCarUniformScale } from "@/lib/pcHeroCarFit";
 /** Shipped Draco+WebP hero car (see assets/CREDITS.md). */
 export const HERO_CAR_URL = "/models3d/CarConcept-draco-webp.glb";
 
+/**
+ * If the GLB hasn't mounted within this budget, consumers that passed an
+ * `onError` (the drive scene, to lift its blocking loading overlay) are told to
+ * fall back to their placeholder rather than hang on a spinner forever. A
+ * late-arriving GLB still upgrades in via `onMounted`, so this is a floor, not a
+ * cap. Only armed when `onError` is provided (the showroom/replay don't need it).
+ */
+const HERO_CAR_LOAD_TIMEOUT_MS = 8000;
+
 /** Local Draco decoder (no runtime CDN). Apache-2.0; see public/lib/draco/. */
 const DRACO_GLUE_URL = "/lib/draco/draco_wasm_wrapper.js";
 const DRACO_WASM_URL = "/lib/draco/draco_decoder.wasm";
@@ -63,6 +72,10 @@ export interface HeroCarMountOptions {
   groundLocalY: number;
   /** Called once the car is mounted (e.g. to remove a placeholder). */
   onMounted?: () => void;
+  /** Called if the GLB fails to load / never mounts within the timeout, so the
+   *  consumer can lift a loading overlay and keep its placeholder instead of
+   *  hanging forever. Fires at most once, and never after `onMounted`. */
+  onError?: () => void;
 }
 
 /**
@@ -156,8 +169,27 @@ export function loadHeroCar(
 
   let carRoot: Entity | null = null;
   let rafId = 0;
+  let loadTimer: ReturnType<typeof setTimeout> | undefined;
+  // First of {mount, error, timeout} wins: settled guards against onError firing
+  // after a successful mount (or twice).
+  let settled = false;
+
+  const clearLoadTimer = () => {
+    if (loadTimer !== undefined) {
+      clearTimeout(loadTimer);
+      loadTimer = undefined;
+    }
+  };
+  const settleError = (reason: string, err?: unknown) => {
+    if (settled || isDisposed()) return;
+    settled = true;
+    clearLoadTimer();
+    console.error(`[heroCar] ${reason}`, err ?? "");
+    mount?.onError?.();
+  };
 
   const asset = new Asset("hero-car", "container", { url: HERO_CAR_URL });
+  asset.on("error", (err: string) => settleError("GLB failed to load", err));
 
   asset.on("load", () => {
     if (isDisposed()) return;
@@ -310,6 +342,10 @@ export function loadHeroCar(
         mount.parent.addChild(entity);
         entity.setLocalScale(s, s, s);
         entity.setLocalPosition(-center.x * s, mount.groundLocalY - min.y * s, -center.z * s);
+        // Real car is in: mark settled so a pending timeout can't later fire
+        // onError, then hand off. (A late GLB after a timeout still lands here.)
+        settled = true;
+        clearLoadTimer();
         mount.onMounted?.();
       } else {
         const pos = entity.getPosition();
@@ -332,12 +368,18 @@ export function loadHeroCar(
     if (isDisposed()) return;
     app.assets.add(asset);
     app.assets.load(asset);
+    // Only consumers that can fall back (pass onError) get the anti-hang timeout;
+    // the showroom/replay have their own handling and don't need it.
+    if (mount?.onError) {
+      loadTimer = setTimeout(() => settleError("GLB load timed out"), HERO_CAR_LOAD_TIMEOUT_MS);
+    }
   });
 
   return {
     getEntity: () => carRoot,
     dispose() {
       if (rafId) cancelAnimationFrame(rafId);
+      clearLoadTimer();
       carRoot?.destroy();
       carRoot = null;
       asset.unload();

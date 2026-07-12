@@ -70,3 +70,6 @@ next-env.d.ts
 # public/models/ ARE tracked; only the fetched .task models are ignored.
 /public/mediapipe/
 /public/models/*.task
+
+# Local drive-test recordings (never commit)
+/test_video/

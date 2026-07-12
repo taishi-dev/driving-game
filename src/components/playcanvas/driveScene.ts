@@ -252,6 +252,12 @@ export function buildDriveSceneBase(
       // Real car is in — let the consumer drop its loading overlay.
       onCarReady?.();
     },
+    onError: () => {
+      // GLB failed / never mounted: keep the placeholder box+cab+wheels visible
+      // (do NOT disable them) and still drop the loading overlay, so the drive is
+      // playable with the placeholder instead of hanging on a permanent spinner.
+      onCarReady?.();
+    },
   });
 
   // --- Rearview mirror (P5b) -----------------------------------------------

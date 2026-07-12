@@ -6,6 +6,7 @@ import { useDrivingStore } from "@/lib/store";
 import { MISSION_CHECKPOINTS } from "@/lib/mission/missions";
 import { getLessonTitle } from "@/lib/pcLessonCatalog";
 import { buildMissionLog } from "@/lib/pcMissionLog";
+import { deviationFeedbackPoint, isCleanRun } from "@/lib/pcFeedbackSummary";
 import { db } from "@/lib/firebase";
 import { addDoc, collection } from "firebase/firestore";
 import { createReplayScene } from "../replayScene";
@@ -163,6 +164,10 @@ export function FeedbackScreen() {
   }, []);
 
   const kaizenLogs = feedbackLogs.filter((l) => l.type === "KAIZEN");
+  // Task 2: path-deviation wander subtracts from the score but produces NO
+  // kaizen log, so an empty kaizenLogs list alone can't mean "clean run" —
+  // see src/lib/pcFeedbackSummary.ts.
+  const devPoint = deviationFeedbackPoint(deviationPenalty, language);
 
   // Original score formula, VERBATIM (ui/FeedbackScreen.tsx): 100 − Σ KAIZEN
   // penalties (default 5) − floor(deviationPenalty), clamped at 0.
@@ -229,7 +234,7 @@ export function FeedbackScreen() {
               <DriveCanvas buildScene={createReplayScene} showFps fit="container" />
             </div>
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-slate-500 text-sm px-8 text-center">
+            <div className="absolute inset-0 flex items-center justify-center text-slate-400 text-sm px-8 text-center">
               {t.noReplay}
             </div>
           )}
@@ -273,14 +278,14 @@ export function FeedbackScreen() {
             {/* Score + clear time */}
             <div className="grid grid-cols-2 gap-4 mb-8">
               <div className="p-6 bg-slate-800 rounded-xl border border-slate-700">
-                <div className="text-xs text-slate-500 mb-1">{t.score}</div>
+                <div className="text-xs text-slate-400 mb-1">{t.score}</div>
                 <div className="text-5xl font-bold text-blue-400" data-testid="feedback-score">
                   {score}
-                  <span className="text-lg text-slate-500">/100</span>
+                  <span className="text-lg text-slate-400">/100</span>
                 </div>
               </div>
               <div className="p-6 bg-slate-800 rounded-xl border border-slate-700">
-                <div className="text-xs text-slate-500 mb-1">{t.clearTime}</div>
+                <div className="text-xs text-slate-400 mb-1">{t.clearTime}</div>
                 <div className="text-5xl font-bold" data-testid="feedback-time">
                   {clearTime}
                 </div>
@@ -293,7 +298,7 @@ export function FeedbackScreen() {
                 <span>✨</span> {t.aiInstructorFeedback}
               </h3>
               <div className="space-y-4 text-slate-300 leading-relaxed">
-                {kaizenLogs.length === 0 ? (
+                {isCleanRun(kaizenLogs.length, deviationPenalty) ? (
                   <p>{t.feedbackPerfect}</p>
                 ) : (
                   <>
@@ -309,6 +314,11 @@ export function FeedbackScreen() {
                             <span className="font-bold text-white">{log.message}</span>
                           </li>
                         ))}
+                        {devPoint && (
+                          <li key="deviation">
+                            <span className="font-bold text-white">{devPoint}</span>
+                          </li>
+                        )}
                       </ul>
                     </div>
                   </>
@@ -320,7 +330,7 @@ export function FeedbackScreen() {
             <div className="mb-8 p-6 bg-slate-800 rounded-xl border border-slate-700">
               <h3 className="text-lg font-bold mb-4 text-blue-400">{t.checkpoints}</h3>
               {gradedCheckpoints.length === 0 ? (
-                <p className="text-slate-500 text-sm">{t.noCheckpoints}</p>
+                <p className="text-slate-400 text-sm">{t.noCheckpoints}</p>
               ) : (
                 <ul className="space-y-2">
                   {gradedCheckpoints.map((cp) => {

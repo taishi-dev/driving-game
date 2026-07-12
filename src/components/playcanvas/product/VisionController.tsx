@@ -34,7 +34,8 @@ import {
  * P11 — the PlayCanvas PRODUCT webcam/MediaPipe vision layer.
  *
  * A from-scratch, product-shell rewrite of the original R3F
- * `src/components/vision/VisionController.tsx`, keeping the store contract and
+ * `src/components/vision/VisionController.tsx` (removed; see git tag
+ * `r3f-reference-pre-delete`), keeping the store contract and
  * camera/MediaPipe lifecycle faithful while:
  *   - reusing the frozen pure modules AS-IS (computeSteeringAndGear /
  *     decidePedalActions / PoseLandmarkFilterManager / STABILITY_DURATION_MS),
@@ -76,6 +77,16 @@ const TONE_COLORS: Record<VisionStatusTone, { color: string; bg: string }> = {
   accel: { color: "#00FF00", bg: "rgba(0,255,0,0.2)" },
   idle: { color: "#FFFFFF", bg: "rgba(255,255,255,0.1)" },
 };
+
+// Right-leg skeleton overlay topology — constant, hoisted out of the per-frame
+// draw so it isn't re-allocated ~30×/s.
+const RIGHT_FOOT_CONNECTIONS: readonly (readonly [number, number])[] = [
+  [24, 26],
+  [26, 28],
+  [28, 30],
+  [30, 32],
+];
+const RIGHT_FOOT_LANDMARK_INDICES = [23, 24, 26, 28, 30, 32] as const;
 
 export default function VisionController() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -164,16 +175,10 @@ export default function VisionController() {
       // Right-leg skeleton, coloured by pedal state (cached from the last pose frame).
       if (lastFootDraw) {
         const { landmarks, footColor, landmarkColor } = lastFootDraw;
-        const rightFootConnections = [
-          [24, 26],
-          [26, 28],
-          [28, 30],
-          [30, 32],
-        ];
         ctx.save();
         ctx.strokeStyle = footColor;
         ctx.lineWidth = 4;
-        for (const [start, end] of rightFootConnections) {
+        for (const [start, end] of RIGHT_FOOT_CONNECTIONS) {
           if (landmarks[start] && landmarks[end]) {
             const sp = landmarks[start];
             const ep = landmarks[end];
@@ -185,8 +190,7 @@ export default function VisionController() {
         }
         ctx.restore();
 
-        const rightFootLandmarkIndices = [23, 24, 26, 28, 30, 32];
-        const footLandmarks = rightFootLandmarkIndices.map((i) => landmarks[i]).filter(Boolean);
+        const footLandmarks = RIGHT_FOOT_LANDMARK_INDICES.map((i) => landmarks[i]).filter(Boolean);
         if (footLandmarks.length > 0) {
           drawingUtils.drawLandmarks(footLandmarks, { color: landmarkColor, lineWidth: 3, radius: 4 });
         }
@@ -224,7 +228,11 @@ export default function VisionController() {
     ) => {
       // Keyboard pedal mode: the camera must not touch the pedals so the
       // keyboard's setPedals() stays authoritative. Steering still uses the camera.
-      if (store().pedalInputMode === "keyboard") return;
+      // Clear the cached foot skeleton so a stale one doesn't linger on the preview.
+      if (store().pedalInputMode === "keyboard") {
+        lastFootDraw = null;
+        return;
+      }
 
       // One-Euro-filter the pose landmarks (jitter reduction) before deciding.
       let filteredLandmarks =

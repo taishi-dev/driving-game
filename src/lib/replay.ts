@@ -9,6 +9,21 @@ export interface ReplaySample {
 }
 
 const ZERO_HEAD = { pitch: 0, yaw: 0, roll: 0 };
+const TWO_PI = 2 * Math.PI;
+
+/**
+ * Shortest-path interpolation between two angles in RADIANS. A plain linear lerp
+ * of euler angles sweeps the long way around when the two values straddle the
+ * ±π wrap (e.g. the −Z-facing straight course, whose yaw sits at ±π): 170°→−170°
+ * is a 20° turn, but linear lerp would spin ~340° through 0°. This wraps the
+ * delta into (−π, π] first so the car turns the short way.
+ */
+function lerpAngle(a: number, b: number, f: number): number {
+  let d = (b - a) % TWO_PI;
+  if (d > Math.PI) d -= TWO_PI;
+  else if (d < -Math.PI) d += TWO_PI;
+  return a + d * f;
+}
 
 /** Total recorded wall-clock span (ms) — first to last frame timestamp. */
 export function replayDurationMs(frames: ReplayFrame[]): number {
@@ -59,7 +74,9 @@ export function sampleReplay(frames: ReplayFrame[], elapsedMs: number): ReplaySa
 
   return {
     position: [lerp(a.position[0], b.position[0]), lerp(a.position[1], b.position[1]), lerp(a.position[2], b.position[2])],
-    rotation: [lerp(a.rotation[0], b.rotation[0]), lerp(a.rotation[1], b.rotation[1]), lerp(a.rotation[2], b.rotation[2])],
+    // Chassis euler is an ANGLE triple — interpolate the short way so a heading
+    // sitting on the ±π wrap (the −Z straight course) doesn't spin the car.
+    rotation: [lerpAngle(a.rotation[0], b.rotation[0], f), lerpAngle(a.rotation[1], b.rotation[1], f), lerpAngle(a.rotation[2], b.rotation[2], f)],
     headRotation: { pitch: lerp(ha.pitch, hb.pitch), yaw: lerp(ha.yaw, hb.yaw), roll: lerp(ha.roll, hb.roll) },
     done: false,
   };

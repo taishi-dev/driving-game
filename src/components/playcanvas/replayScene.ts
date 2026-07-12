@@ -18,6 +18,10 @@ import { sampleReplay, replayDurationMs } from "@/lib/replay";
 
 const RAD2DEG = 180 / Math.PI;
 
+// If the hero car GLB hasn't mounted within this window, fall back to showing
+// the box/cab/wheel placeholder rather than leaving the replay car-less.
+const PLACEHOLDER_FALLBACK_MS = 4000;
+
 /**
  * P8 — the feedback screen's replay-review scene.
  *
@@ -87,6 +91,9 @@ export function createReplayScene(
   app.root.addChild(carRoot);
 
   const body = new Entity("replay-car-body");
+  // Hidden until the hero car GLB mounts (or the fallback timer below fires) so
+  // the box placeholder doesn't flash during the ~1s GLB decode.
+  body.enabled = false;
   body.addComponent("render", { type: "box" });
   const bodyMat = new StandardMaterial();
   bodyMat.useMetalness = true;
@@ -103,6 +110,7 @@ export function createReplayScene(
   carRoot.addChild(body);
 
   const cab = new Entity("replay-car-cab");
+  cab.enabled = false; // see the body's note above
   cab.addComponent("render", { type: "box" });
   const cabMat = new StandardMaterial();
   cabMat.diffuse = new Color(0.12, 0.14, 0.2);
@@ -134,6 +142,7 @@ export function createReplayScene(
   ];
   for (let i = 0; i < 4; i++) {
     const w = new Entity(`replay-wheel-${i}`);
+    w.enabled = false; // see the body's note above
     w.addComponent("render", { type: "cylinder" });
     w.render!.material = wheelMat;
     // Cylinder axis is local Y; a disc scaled flat in Y + rotated so it lies as
@@ -145,16 +154,32 @@ export function createReplayScene(
     wheelEntities.push(w);
   }
 
-  // The PBR hero car replaces the box rig once its GLB lands (box stays as the
-  // streaming placeholder). Same fit/seat math as the drive scene — the
-  // recorded transform is the CHASSIS pose, so the ground plane offset is the
-  // drive car's rest-pose one.
+  // The PBR hero car replaces the box rig once its GLB lands (box starts
+  // hidden — see the entities above — so it never flashes during the decode).
+  // If the GLB fails or is slow beyond PLACEHOLDER_FALLBACK_MS, the timer below
+  // re-enables the box/cab/wheels as a fallback so the replay isn't car-less.
+  let heroMounted = false;
+  let fallbackTimer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => {
+    fallbackTimer = undefined;
+    if (heroMounted || isDisposed()) return;
+    body.enabled = true;
+    cab.enabled = true;
+    for (const w of wheelEntities) w.enabled = true;
+  }, PLACEHOLDER_FALLBACK_MS);
+
+  // Same fit/seat math as the drive scene — the recorded transform is the
+  // CHASSIS pose, so the ground plane offset is the drive car's rest-pose one.
   const heroCar = loadHeroCar(app, isDisposed, undefined, {
     parent: carRoot,
     chassisWidth: T.chassisHalfExtents.x * 2,
     chassisLength: T.chassisHalfExtents.z * 2,
     groundLocalY: chassisGroundLocalY(T.wheelConnectionY, T.suspensionRest, T.wheelRadius),
     onMounted: () => {
+      heroMounted = true;
+      if (fallbackTimer !== undefined) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = undefined;
+      }
       body.enabled = false;
       cab.enabled = false;
       // The GLB's own (static) wheels replace the cosmetic cylinders — see
@@ -302,6 +327,10 @@ export function createReplayScene(
   return {
     dispose() {
       app.off("update", onUpdate);
+      if (fallbackTimer !== undefined) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = undefined;
+      }
       if (exposed && typeof window !== "undefined") {
         delete (globalThis as unknown as { __replayDebug?: unknown }).__replayDebug;
       }
