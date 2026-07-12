@@ -6,6 +6,7 @@ import { useDrivingStore } from "@/lib/store";
 import { MISSION_CHECKPOINTS } from "@/lib/mission/missions";
 import { getLessonTitle } from "@/lib/pcLessonCatalog";
 import { buildMissionLog } from "@/lib/pcMissionLog";
+import { deviationFeedbackPoint, isCleanRun } from "@/lib/pcFeedbackSummary";
 import { db } from "@/lib/firebase";
 import { addDoc, collection } from "firebase/firestore";
 import { createReplayScene } from "../replayScene";
@@ -163,6 +164,10 @@ export function FeedbackScreen() {
   }, []);
 
   const kaizenLogs = feedbackLogs.filter((l) => l.type === "KAIZEN");
+  // Task 2: path-deviation wander subtracts from the score but produces NO
+  // kaizen log, so an empty kaizenLogs list alone can't mean "clean run" —
+  // see src/lib/pcFeedbackSummary.ts.
+  const devPoint = deviationFeedbackPoint(deviationPenalty, language);
 
   // Original score formula, VERBATIM (ui/FeedbackScreen.tsx): 100 − Σ KAIZEN
   // penalties (default 5) − floor(deviationPenalty), clamped at 0.
@@ -293,7 +298,7 @@ export function FeedbackScreen() {
                 <span>✨</span> {t.aiInstructorFeedback}
               </h3>
               <div className="space-y-4 text-slate-300 leading-relaxed">
-                {kaizenLogs.length === 0 ? (
+                {isCleanRun(kaizenLogs.length, deviationPenalty) ? (
                   <p>{t.feedbackPerfect}</p>
                 ) : (
                   <>
@@ -309,6 +314,11 @@ export function FeedbackScreen() {
                             <span className="font-bold text-white">{log.message}</span>
                           </li>
                         ))}
+                        {devPoint && (
+                          <li key="deviation">
+                            <span className="font-bold text-white">{devPoint}</span>
+                          </li>
+                        )}
                       </ul>
                     </div>
                   </>

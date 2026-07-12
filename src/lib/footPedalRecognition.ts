@@ -48,12 +48,12 @@
  * - Calibration completes automatically once the foot position is stable
  * - Transitions automatically to the driving screen even while paused or on the start screen
  *
- * ### Accelerator
- * - Moving the foot from the initial position (brake position) to the right (left as seen by the camera) turns the accelerator ON
- * - Records the pressed position and holds the accelerator at that position
- * - Returning to the initial position, or moving to a place different from the pressed position, turns the accelerator OFF
- * - When the accelerator is OFF, creep produces slow forward movement (throttle = 0.05)
- * - Adjusts the accelerator strength by the angle of the foot tip (it gets stronger as the tip lowers)
+ * ### Accelerator (leg-extension model)
+ * - Stretching the leg out (straightening the knee past the seated brake pose) turns the accelerator ON — like pushing a real gas pedal
+ * - The throttle scales with how far the leg is extended (more straightening = more gas)
+ * - Returning toward the brake pose (knee re-bent, with hysteresis) turns the accelerator OFF
+ * - Spreading the legs sideways does NOT open the throttle (only knee straightening does)
+ * - See {@link ACCEL_TUNING}; thresholds must be tuned against a real webcam + seated driver
  *
  * ### Brake
  * - Tilting the foot tip toward the ground relative to the initial position (reference position) turns the brake ON
@@ -169,6 +169,30 @@ function calculateAngleBetweenPoints(
   const dy = p2.y - p1.y;
   const dx = p2.x - p1.x;
   return Math.atan2(dy, dx);
+}
+
+/**
+ * Interior angle at the knee (radians), in 2D image space (x, y).
+ *
+ * Uses the thigh vector (knee→hip) and shin vector (knee→ankle). A STRAIGHT leg
+ * (thigh and shin aligned) → ~π; a bent, seated leg → a smaller angle. So
+ * "stretching the leg out" — the accelerator gesture — INCREASES this angle
+ * toward π. Returns 0 on degenerate (coincident) landmarks so a bad detection
+ * can never read as "straight" and falsely open the throttle.
+ */
+function kneeExtensionAngle(
+  hip: { x: number; y: number },
+  knee: { x: number; y: number },
+  ankle: { x: number; y: number },
+): number {
+  const thighX = hip.x - knee.x;
+  const thighY = hip.y - knee.y;
+  const shinX = ankle.x - knee.x;
+  const shinY = ankle.y - knee.y;
+  const dot = thighX * shinX + thighY * shinY;
+  const mag = Math.hypot(thighX, thighY) * Math.hypot(shinX, shinY);
+  if (mag < 1e-6) return 0;
+  return Math.acos(Math.max(-1, Math.min(1, dot / mag)));
 }
 
 /**
@@ -317,14 +341,36 @@ export function checkFootStability(
 }
 
 /**
- * Recognize the accelerator operation (new logic)
+ * Tuning for the leg-extension accelerator (radians of extra knee straightening
+ * past the calibrated brake pose). Grouped for one-place edits because these
+ * MUST be tuned against a real webcam + a real seated driver — the defaults are
+ * a sane starting point, not validated feel.
+ */
+export const ACCEL_TUNING = {
+  /** Engage the throttle once the leg straightens this far past the brake pose (~10°). */
+  engage: 0.18,
+  /** Hysteresis: once engaged, stay engaged until extension falls back below this (~6°). */
+  release: 0.1,
+  /** Extension (past `release`) that maps to full throttle (~40°). */
+  full: 0.7,
+  /** Floor so a just-engaged press still moves the car (matches the old creep floor). */
+  minThrottle: 0.2,
+} as const;
+
+/**
+ * Recognize the accelerator operation — LEG-EXTENSION model.
  *
- * Logic:
- * - The accelerator turns ON when the right foot moves from the reference position (brake position) to the right (appears on the left due to camera mirroring)
- * - Record the pressed position
- * - The accelerator turns OFF when returning to the reference position (creep)
- * - The accelerator also turns OFF when it differs from the pressed position
- * - Control the accelerator strength by the change in the foot-tip angle
+ * The accelerator is driven by STRETCHING THE LEG OUT (straightening the knee,
+ * like pushing a real gas pedal), NOT by moving the foot sideways or spreading
+ * the legs. We measure the knee's interior angle (`kneeExtensionAngle`) against
+ * the angle captured at calibration (the seated brake pose):
+ *
+ * - Straighten the leg past `ACCEL_TUNING.engage` beyond the brake pose → throttle ON.
+ * - Throttle scales with how far the leg is extended (more straightening = more gas).
+ * - Return toward the brake pose (below `release`, with hysteresis) → throttle OFF.
+ *
+ * Sideways leg spread barely changes the knee's interior angle, so it no longer
+ * opens the throttle (the reported "accelerates when I spread my legs" bug).
  */
 export function recognizeAcceleration(
   landmarks: NormalizedLandmark[],
@@ -335,132 +381,35 @@ export function recognizeAcceleration(
     return { throttle: 0, isAccelPressed: false, updatedCalibration: calibration };
   }
 
-  const leftHip = landmarks[POSE_LANDMARKS.LEFT_HIP];
   const rightHip = landmarks[POSE_LANDMARKS.RIGHT_HIP];
   const rightKnee = landmarks[POSE_LANDMARKS.RIGHT_KNEE];
   const rightAnkle = landmarks[POSE_LANDMARKS.RIGHT_ANKLE];
-  const rightFootIndex = landmarks[POSE_LANDMARKS.RIGHT_FOOT_INDEX];
 
-  // Current ankle position
-  const currentAnklePos = { x: rightAnkle.x, y: rightAnkle.y, z: rightAnkle.z };
+  // Reference (seated brake-pose) knee angle, from the calibration snapshot's
+  // stored hip/knee/ankle — no new calibration field needed.
+  const calibAngle = kneeExtensionAngle(calibration.rightHip, calibration.rightKnee, calibration.rightAnkle);
+  // How straight the leg is right now.
+  const currentAngle = kneeExtensionAngle(rightHip, rightKnee, rightAnkle);
+  // Positive = leg straightened past the brake pose (accelerator); ≤0 = at or
+  // tighter than the rest pose (no throttle).
+  const extension = currentAngle - calibAngle;
 
-  // Current angle of the foot tip
-  const currentAngle = calculateFootAngle(rightAnkle, rightFootIndex);
+  // Leg-extension accel never touches the accel-press* fields the old positional
+  // model tracked; clear them so nothing stale leaks into other logic.
+  const updatedCalibration = { ...calibration, accelPressPosition: null, accelPressAngle: null };
 
-  // Calculate the distance from the reference position (brake position)
-  const distanceFromBrake = calculateDistance(calibration.rightAnkle, currentAnklePos);
+  const { engage, release, full, minThrottle } = ACCEL_TUNING;
+  // Hysteresis: a looser bar to STAY engaged than to engage, so a leg trembling
+  // near the edge doesn't chatter the throttle on/off.
+  const threshold = previousState.isAccelPressed ? release : engage;
 
-  // Calculate the current hip midpoint
-  const currentHipCenter = {
-    x: (leftHip.x + rightHip.x) / 2,
-    y: (leftHip.y + rightHip.y) / 2,
-    z: (leftHip.z + rightHip.z) / 2,
-  };
-
-  // Calculate the current angle from the hip midpoint to the right knee
-  const currentHipToKneeAngle = calculateAngleBetweenPoints(
-    currentHipCenter,
-    { x: rightKnee.x, y: rightKnee.y, z: rightKnee.z }
-  );
-
-  // Difference from the reference angle
-  const kneeAngleDiff = currentHipToKneeAngle - calibration.hipToRightKneeAngle;
-
-  // Threshold settings
-  const POSITION_THRESHOLD = 0.03; // Threshold for deciding the reference position (with margin for stability)
-  const ACCEL_MOVE_THRESHOLD = 0.01; // Threshold for deciding an accelerator press (from the body center to the right)
-  const ACCEL_RETURN_THRESHOLD = 0.02; // Threshold for returning from the accelerator (hysteresis)
-  const ANGLE_SENSITIVITY = 7.0; // Angle sensitivity
-  const KNEE_ANGLE_THRESHOLD = 0.25; // Hip-knee angle threshold (radians, about 5.8 degrees)
-
-  let isAccelPressed = false;
-  let throttle = 0;
-  const updatedCalibration = { ...calibration };
-
-  // Calculate the movement in the accelerator direction (accounting for camera mirroring)
-  // Actual movement to the right = movement to the left on camera = decrease in the x coordinate
-  // In other words, a positive horizontalMovement means the accelerator direction
-  const horizontalMovement = calibration.rightAnkle.x - currentAnklePos.x;
-  const isMovingToAccel = horizontalMovement > ACCEL_MOVE_THRESHOLD; // Movement to the right (left on camera)
-
-  // Determine whether the hip-knee angle is opening in the accelerator direction
-  const isKneeAngleOpening = kneeAngleDiff > KNEE_ANGLE_THRESHOLD;
-
-
-
-  // Determine whether the foot is at the reference position (brake position)
-  // Hysteresis: use a stricter threshold when the accelerator is pressed
-  const brakeThreshold = previousState.isAccelPressed ? ACCEL_RETURN_THRESHOLD : POSITION_THRESHOLD;
-  const isAtBrakePosition = distanceFromBrake < brakeThreshold && !isMovingToAccel && !isKneeAngleOpening;
-  if (isAtBrakePosition) {
-    // At the reference position = accelerator OFF
-    isAccelPressed = false;
-    throttle = 0;
-    // Reset the accelerator press position
-    updatedCalibration.accelPressPosition = null;
-    updatedCalibration.accelPressAngle = null;
-  } else if (isMovingToAccel || isKneeAngleOpening) {
-    // Moving in the accelerator direction, or the hip-knee angle is opening
-
-    if (calibration.accelPressPosition === null) {
-      // First time moving to the accelerator position
-      // Record it as the accelerator press position
-      updatedCalibration.accelPressPosition = currentAnklePos;
-      updatedCalibration.accelPressAngle = currentAngle;
-      isAccelPressed = true;
-
-      // Basic throttle value (based on movement distance)
-      const moveDistance = Math.abs(horizontalMovement);
-      const baseThrottle = Math.min((moveDistance - ACCEL_MOVE_THRESHOLD) / 0.1, 0.8);
-      throttle = Math.max(0.20, baseThrottle); // Minimum 20% to account for creep
-    } else {
-      // The accelerator press position is already recorded
-      // Calculate the distance from the pressed position
-      const distanceFromAccel = calculateDistance(calibration.accelPressPosition, currentAnklePos);
-
-      // Determine whether the foot is at the accelerator position (with margin)
-      const isAtAccelPosition = distanceFromAccel < POSITION_THRESHOLD * 2;
-
-      if (isAtAccelPosition && isMovingToAccel) {
-        // At the accelerator position and in the accelerator direction = accelerator ON
-        isAccelPressed = true;
-
-        // Basic throttle value
-        const baseThrottle = 0.6;
-
-        // Strength adjustment by the foot-tip angle
-        if (calibration.accelPressAngle !== null) {
-          const angleDiff = currentAngle - calibration.accelPressAngle;
-
-          // The accelerator gets stronger as the foot tip lowers (the angle increases)
-          const angleAdjustment = angleDiff * ANGLE_SENSITIVITY;
-          throttle = Math.max(0.20, Math.min(1.0, baseThrottle + angleAdjustment));
-        } else {
-          throttle = baseThrottle;
-        }
-      } else {
-        // Moved away from the pressed position, or not in the accelerator direction = accelerator OFF
-        isAccelPressed = false;
-        throttle = 0;
-        updatedCalibration.accelPressPosition = null;
-        updatedCalibration.accelPressAngle = null;
-      }
-    }
-  } else {
-    // Movement other than the accelerator direction = accelerator OFF
-    isAccelPressed = false;
-    throttle = 0;
-    updatedCalibration.accelPressPosition = null;
-    updatedCalibration.accelPressAngle = null;
+  if (extension > threshold) {
+    const ramp = (extension - release) / (full - release);
+    const throttle = Math.max(minThrottle, Math.min(1.0, ramp));
+    return { throttle, isAccelPressed: true, updatedCalibration };
   }
 
-  // Creep implementation (right after releasing the accelerator)
-  if (!isAccelPressed && previousState.isAccelPressed && !isAtBrakePosition) {
-    // Creep if the accelerator was just released and has not yet returned to the brake position
-    throttle = 0.05; // Slow forward movement
-  }
-
-  return { throttle, isAccelPressed, updatedCalibration };
+  return { throttle: 0, isAccelPressed: false, updatedCalibration };
 }
 
 /**

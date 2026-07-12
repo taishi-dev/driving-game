@@ -87,6 +87,10 @@ export interface DrivingState {
   replayViewMode: "chase" | "driver";
 
   isVisionReady: boolean;
+  /** True once the hero-car GLB has streamed in and replaced the box placeholder
+   *  in the drive scene. The driving screen shows a loading overlay until then so
+   *  the placeholder box is never visible to the learner. */
+  isCarModelReady: boolean;
   debugInfo: string;
 
   // Auth / History
@@ -112,6 +116,7 @@ export interface DrivingState {
   setDrivingFeedback: (msg: string | null) => void;
   setHeadRotation: (rotation: { pitch: number; yaw: number; roll: number }) => void;
   setVisionReady: (ready: boolean) => void;
+  setCarModelReady: (ready: boolean) => void;
   setDebugInfo: (info: string) => void;
   setFootCalibration: (calibration: FootCalibration | null) => void;
   updatePedalState: (pedalState: PedalState) => void;
@@ -205,6 +210,7 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   replayViewMode: "chase",
 
   isVisionReady: false,
+  isCarModelReady: false,
   debugInfo: "Initializing...",
 
   user: null,
@@ -292,6 +298,7 @@ export const useDrivingStore = create<DrivingState>((set) => ({
   setDrivingFeedback: (msg) => set({ drivingFeedback: msg }),
   setHeadRotation: (rotation) => set({ headRotation: rotation }),
   setVisionReady: (ready) => set({ isVisionReady: ready }),
+  setCarModelReady: (ready) => set({ isCarModelReady: ready }),
   setDebugInfo: (info) => set({ debugInfo: info }),
   setFootCalibration: (calibration) => set({ footCalibration: calibration }),
   updatePedalState: (pedalState) =>

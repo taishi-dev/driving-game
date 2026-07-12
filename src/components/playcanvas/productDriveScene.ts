@@ -45,7 +45,14 @@ export function createProductDriveScene(
   // remounts the canvas per lesson) — it drives the world's per-lesson
   // build-out (corridor paving/colliders, checkpoint dressing, off-track).
   const sceneLesson = useDrivingStore.getState().currentLesson;
-  const base = buildDriveSceneBase(app, isDisposed, sceneLesson);
+  // The hero-car GLB streams in ~1-2s after the scene mounts; until then a box
+  // placeholder stands in. Flag the store when the real car lands so the driving
+  // screen can keep a loading overlay up over that window (the learner never sees
+  // the box). Reset to false now so a remount re-arms the overlay.
+  useDrivingStore.getState().setCarModelReady(false);
+  const base = buildDriveSceneBase(app, isDisposed, sceneLesson, () =>
+    useDrivingStore.getState().setCarModelReady(true),
+  );
 
   // 3D traffic signal at the frozen signal-1 stop line (traffic-light lesson
   // only). Pure view: the lit lamp derives from the store's signalStateLogs

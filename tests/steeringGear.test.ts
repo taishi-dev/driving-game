@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { NormalizedLandmark } from "@mediapipe/tasks-vision";
 
-import { computeSteeringAndGear } from "../src/lib/vision/steeringGear.ts";
+import { computeSteeringAndGear, TWO_HAND_SENSITIVITY } from "../src/lib/vision/steeringGear.ts";
 
 // Build a 21-point hand landmark array; only index 0 (wrist) and 9 (middle MCP)
 // are read by the steering logic. `pts` overrides specific indices.
@@ -55,7 +55,7 @@ test("two level hands -> angle 0 -> steering 0", () => {
   assert.equal(r.info, "Hands: 2 | Gear: D | Str: 0.00");
 });
 
-test("two tilted hands -> -angle*0.8, clamped at the -1 rail", () => {
+test("two tilted hands -> -angle*sensitivity, clamped at the -1 rail", () => {
   const hand0 = hand({ 0: { x: 0.45, y: 0.2 }, 9: { x: 0.45, y: 0.01 } });
   const hand1 = hand({ 0: { x: 0.55, y: 0.2 }, 9: { x: 0.55, y: 0.99 } });
   const r = computeSteeringAndGear({ landmarks: [hand0, hand1], detections: null });
@@ -70,12 +70,12 @@ test("two tilted hands the other way -> clamps at the +1 rail (sign check)", () 
   assert.equal(r.steering, 1);
 });
 
-test("two mildly tilted hands -> exactly -angle*0.8", () => {
+test("two mildly tilted hands -> exactly -angle*sensitivity", () => {
   const hand0 = hand({ 0: { x: 0.4, y: 0.4 }, 9: { x: 0.4, y: 0.4 } });
   const hand1 = hand({ 0: { x: 0.6, y: 0.4 }, 9: { x: 0.6, y: 0.5 } });
   const r = computeSteeringAndGear({ landmarks: [hand0, hand1], detections: null });
   // left=hand0[9]=(0.4,0.4), right=hand1[9]=(0.6,0.5): dy=0.1, dx=0.2
-  const expected = -Math.atan2(0.1, 0.2) * 0.8;
+  const expected = -Math.atan2(0.1, 0.2) * TWO_HAND_SENSITIVITY;
   assert.ok(Math.abs(r.steering - expected) < 1e-12, `steering ${r.steering} != ${expected}`);
 });
 
@@ -91,7 +91,7 @@ test("deadzone: raw |steering| > 0.05 passes through unchanged", () => {
   const hand0 = hand({ 0: { x: 0.4, y: 0.3 }, 9: { x: 0.4, y: 0.5 } });
   const hand1 = hand({ 0: { x: 0.6, y: 0.3 }, 9: { x: 0.6, y: 0.52 } });
   const r = computeSteeringAndGear({ landmarks: [hand0, hand1], detections: null });
-  const expected = -Math.atan2(0.02, 0.2) * 0.8; // ~ -0.0798
+  const expected = -Math.atan2(0.02, 0.2) * TWO_HAND_SENSITIVITY; // ~ -0.0698
   assert.notEqual(r.steering, 0);
   assert.ok(Math.abs(r.steering - expected) < 1e-12, `steering ${r.steering} != ${expected}`);
 });
